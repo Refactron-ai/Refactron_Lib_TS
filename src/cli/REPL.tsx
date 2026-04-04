@@ -14,29 +14,27 @@ import { VirtualMessageList, type MessageLine } from './components/VirtualMessag
 import { SpinnerWithVerb } from './components/SpinnerWithVerb.js';
 import { StatusLine } from './components/StatusLine.js';
 import { PromptInput } from './components/PromptInput.js';
+import { createWelcomeBanner } from './components/WelcomeBanner.js';
 
 interface REPLProps {
   ctx: CommandContext;
   version: string;
+  email?: string | null | undefined;
+  plan?: string | null | undefined;
 }
 
 // Reserved rows at bottom: spinner row + prompt row + status line
 const CHROME_ROWS = 3;
 
-export function REPL({ ctx, version }: REPLProps): React.ReactElement {
+export function REPL({ ctx, version, email, plan }: REPLProps): React.ReactElement {
   const { exit } = useApp();
   const { stdout } = useStdout();
 
   const viewportHeight = Math.max(4, (stdout.rows ?? 24) - CHROME_ROWS);
 
-  const [lines, setLines] = useState<MessageLine[]>([
-    {
-      id: 0,
-      text: `  refactron v${version}  —  type help for commands, exit to quit`,
-      color: theme.colors.accent,
-    },
-    { id: 1, text: '', color: undefined },
-  ]);
+  const [lines, setLines] = useState<MessageLine[]>(() =>
+    createWelcomeBanner(version, email, plan, ctx.adapter.displayName),
+  );
   const [input, setInput] = useState('');
   const [isRunning, setIsRunning] = useState(false);
   const [runningCmd, setRunningCmd] = useState('');

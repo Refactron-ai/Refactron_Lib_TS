@@ -1,40 +1,61 @@
 // src/cli/components/LoginFlow.tsx
-// Interactive OAuth Device Authorization flow rendered in the terminal.
-// Shown when the CLI starts without valid credentials.
+// Full-screen OAuth Device Authorization flow.
+// Shown when CLI starts without valid credentials.
 import React, { useState, useCallback } from 'react';
 import { Box, Text, useInput, useApp } from 'ink';
 import { theme } from '../../ui/theme.js';
 import { runLoginFlow } from '../../auth/index.js';
 import type { RefactronCredentials } from '../../auth/index.js';
 
-type LoginState =
-  | 'prompt' // "Log in to continue? [y/n]"
-  | 'running' // doing the OAuth flow
-  | 'success'
-  | 'denied' // user said no
-  | 'error';
+type LoginState = 'prompt' | 'running' | 'success' | 'denied' | 'error';
 
 interface LoginFlowProps {
   onAuthenticated: (creds: RefactronCredentials) => void;
   onExit: () => void;
+  version: string;
 }
 
-export function LoginFlow({ onAuthenticated, onExit }: LoginFlowProps): React.ReactElement {
+const W = 56;
+const BOX_TOP = `  ╭${'─'.repeat(W)}╮`;
+const BOX_BOTTOM = `  ╰${'─'.repeat(W)}╯`;
+const BOX_MID = `  ├${'─'.repeat(W)}┤`;
+const BOX_EMPTY = `  │${' '.repeat(W)}│`;
+
+function boxLine(text: string, color?: string): React.ReactElement {
+  return <Text color={color ?? theme.colors.text}>{`  │  ${text.padEnd(W - 2)}│`}</Text>;
+}
+
+export function LoginFlow({
+  onAuthenticated,
+  onExit,
+  version,
+}: LoginFlowProps): React.ReactElement {
   const { exit } = useApp();
   const [state, setState] = useState<LoginState>('prompt');
   const [statusLines, setStatusLines] = useState<string[]>([]);
+  const [code, setCode] = useState<string>('');
+  const [url, setUrl] = useState<string>('');
   const [errorMsg, setErrorMsg] = useState('');
+  const [successEmail, setSuccessEmail] = useState('');
 
   const appendStatus = useCallback((msg: string) => {
-    setStatusLines((prev) => [...prev, msg]);
+    // Extract code and URL for prominent display
+    if (msg.startsWith('Visit: ')) {
+      setUrl(msg.replace('Visit: ', ''));
+    } else if (msg.startsWith('Code:  ')) {
+      setCode(msg.replace('Code:  ', ''));
+    } else {
+      setStatusLines((prev) => [...prev, msg]);
+    }
   }, []);
 
   const startLogin = useCallback(() => {
     setState('running');
     runLoginFlow(false, appendStatus)
       .then((creds) => {
+        setSuccessEmail(creds.email ?? '');
         setState('success');
-        setTimeout(() => onAuthenticated(creds), 600);
+        setTimeout(() => onAuthenticated(creds), 800);
       })
       .catch((err: unknown) => {
         setErrorMsg(String(err));
@@ -53,9 +74,8 @@ export function LoginFlow({ onAuthenticated, onExit }: LoginFlowProps): React.Re
       }
 
       const ch = inputChar.toLowerCase();
-      if (ch === 'y') {
-        startLogin();
-      } else if (ch === 'n' || key.return) {
+      if (ch === 'y') startLogin();
+      else if (ch === 'n' || key.return) {
         setState('denied');
         setTimeout(() => {
           onExit();
@@ -67,71 +87,115 @@ export function LoginFlow({ onAuthenticated, onExit }: LoginFlowProps): React.Re
   );
 
   return (
-    <Box flexDirection="column" paddingX={2} paddingY={1}>
-      {/* Header */}
-      <Box marginBottom={1}>
-        <Text color={theme.colors.accent} bold>
-          {'  refactron '}
-        </Text>
-        <Text color={theme.colors.textDim}>— authentication required</Text>
-      </Box>
+    <Box flexDirection="column">
+      {/* ── Logo box ─────────────────────────────────────────────── */}
+      <Text color={theme.colors.border}>{BOX_TOP}</Text>
+      <Text color={theme.colors.border}>{BOX_EMPTY}</Text>
+      <Text color={theme.colors.accent}>
+        {`  │  ◈  refactron${' '.repeat(W - 17 - version.length - 2)}v${version}  │`}
+      </Text>
+      <Text color={theme.colors.textDim}>
+        {`  │     safety-first refactoring${' '.repeat(W - 30)}│`}
+      </Text>
+      <Text color={theme.colors.border}>{BOX_EMPTY}</Text>
+      <Text color={theme.colors.border}>{BOX_MID}</Text>
+      <Text color={theme.colors.border}>{BOX_EMPTY}</Text>
 
-      {/* Prompt */}
+      {/* ── Auth prompt ──────────────────────────────────────────── */}
       {state === 'prompt' && (
-        <Box flexDirection="column" gap={1}>
-          <Text color={theme.colors.text}>You need to log in to use Refactron.</Text>
-          <Text color={theme.colors.textDim}>
-            This opens your browser for a quick one-time approval.
-          </Text>
-          <Box marginTop={1}>
+        <>
+          {boxLine('Authentication required', theme.colors.warning)}
+          {boxLine('')}
+          {boxLine('Refactron uses OAuth 2.0 — no password needed.', theme.colors.textDim)}
+          {boxLine('Your browser opens, you approve, done.', theme.colors.textDim)}
+          {boxLine('')}
+          <Text color={theme.colors.border}>{BOX_EMPTY}</Text>
+          <Text>
+            {`  │  `}
             <Text color={theme.colors.accent} bold>
               Log in to continue?{' '}
             </Text>
-            <Text color={theme.colors.textDim}>[y/n] </Text>
+            <Text color={theme.colors.textDim}>[y / n] </Text>
             <Text color={theme.colors.accent}>█</Text>
-          </Box>
-        </Box>
+            {`${' '.repeat(W - 24)}│`}
+          </Text>
+          <Text color={theme.colors.border}>{BOX_EMPTY}</Text>
+        </>
       )}
 
-      {/* Running — show status stream */}
+      {/* ── Running — show code + URL prominently ────────────────── */}
       {state === 'running' && (
-        <Box flexDirection="column" gap={0}>
-          {statusLines.map((line, i) => (
-            <Text
-              key={i}
-              color={i === statusLines.length - 1 ? theme.colors.text : theme.colors.textDim}
-            >
-              {i === statusLines.length - 1 ? `  ${theme.symbols.arrow} ` : '    '}
-              {line}
-            </Text>
-          ))}
-          {statusLines.length === 0 && (
-            <Text color={theme.colors.textDim}> Starting login flow…</Text>
+        <>
+          {code ? (
+            <>
+              {boxLine('Open this URL in your browser:', theme.colors.textDim)}
+              {boxLine('')}
+              {boxLine(url, theme.colors.accent)}
+              {boxLine('')}
+              <Text color={theme.colors.border}>{BOX_MID}</Text>
+              <Text color={theme.colors.border}>{BOX_EMPTY}</Text>
+              {boxLine('Verification code:', theme.colors.textDim)}
+              <Text>
+                {`  │     `}
+                <Text color={theme.colors.accent} bold>
+                  {code}
+                </Text>
+                {`${' '.repeat(Math.max(0, W - 5 - code.length))}│`}
+              </Text>
+              <Text color={theme.colors.border}>{BOX_EMPTY}</Text>
+              <Text color={theme.colors.border}>{BOX_MID}</Text>
+              <Text color={theme.colors.border}>{BOX_EMPTY}</Text>
+              {statusLines
+                .slice(-2)
+                .map((l, i) =>
+                  boxLine(
+                    l,
+                    i === statusLines.length - 1 ? theme.colors.text : theme.colors.textDim,
+                  ),
+                )}
+            </>
+          ) : (
+            <>{boxLine('Connecting to Refactron…', theme.colors.textDim)}</>
           )}
-        </Box>
+          <Text color={theme.colors.border}>{BOX_EMPTY}</Text>
+        </>
       )}
 
-      {/* Success */}
+      {/* ── Success ──────────────────────────────────────────────── */}
       {state === 'success' && (
-        <Text color={theme.colors.success}>
-          {theme.symbols.pass} Authenticated. Loading Refactron…
-        </Text>
+        <>
+          <Text>
+            {`  │  `}
+            <Text color={theme.colors.success} bold>
+              {theme.symbols.pass} Authenticated — {successEmail}
+            </Text>
+            {`${' '.repeat(Math.max(0, W - 18 - successEmail.length))}│`}
+          </Text>
+          {boxLine('Loading Refactron…', theme.colors.textDim)}
+          <Text color={theme.colors.border}>{BOX_EMPTY}</Text>
+        </>
       )}
 
-      {/* Denied */}
-      {state === 'denied' && <Text color={theme.colors.textDim}> Cancelled. Goodbye.</Text>}
+      {/* ── Denied ───────────────────────────────────────────────── */}
+      {state === 'denied' && (
+        <>
+          {boxLine('Cancelled. Goodbye.', theme.colors.textDim)}
+          <Text color={theme.colors.border}>{BOX_EMPTY}</Text>
+        </>
+      )}
 
-      {/* Error */}
+      {/* ── Error ────────────────────────────────────────────────── */}
       {state === 'error' && (
-        <Box flexDirection="column" gap={1}>
-          <Text color={theme.colors.error}>
-            {theme.symbols.fail} Login failed: {errorMsg}
-          </Text>
-          <Text color={theme.colors.textDim}>
-            Run <Text color={theme.colors.accent}>refactron login</Text> to try again.
-          </Text>
-        </Box>
+        <>
+          {boxLine(`${theme.symbols.fail}  Login failed`, theme.colors.error)}
+          {boxLine(errorMsg.slice(0, W - 2), theme.colors.textDim)}
+          {boxLine('')}
+          {boxLine('Run  refactron login  to try again.', theme.colors.textDim)}
+          <Text color={theme.colors.border}>{BOX_EMPTY}</Text>
+        </>
       )}
+
+      <Text color={theme.colors.border}>{BOX_BOTTOM}</Text>
     </Box>
   );
 }

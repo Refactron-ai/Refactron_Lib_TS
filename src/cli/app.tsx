@@ -48,15 +48,27 @@ function AppRoot({
   projectRoot,
   initialCreds,
 }: AppRootProps): React.ReactElement {
-  const [authenticated, setAuthenticated] = useState(isAuthenticated(initialCreds));
+  const [creds, setCreds] = useState<RefactronCredentials | null>(initialCreds);
+  const authenticated = isAuthenticated(creds);
 
   if (!authenticated) {
     return (
-      <LoginFlow onAuthenticated={() => setAuthenticated(true)} onExit={() => process.exit(0)} />
+      <LoginFlow
+        version={version}
+        onAuthenticated={(newCreds) => setCreds(newCreds)}
+        onExit={() => process.exit(0)}
+      />
     );
   }
 
-  return <REPL ctx={{ adapter, config, projectRoot }} version={version} />;
+  return (
+    <REPL
+      ctx={{ adapter, config, projectRoot }}
+      version={version}
+      email={creds?.email}
+      plan={creds?.plan}
+    />
+  );
 }
 
 export async function run(_argv: string[]): Promise<void> {
