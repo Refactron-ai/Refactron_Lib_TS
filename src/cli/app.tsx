@@ -55,6 +55,7 @@ function AppRoot({
     return (
       <LoginFlow
         version={version}
+        adapterName={adapter.displayName}
         onAuthenticated={(newCreds) => setCreds(newCreds)}
         onExit={() => process.exit(0)}
       />

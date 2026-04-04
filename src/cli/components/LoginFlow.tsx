@@ -1,11 +1,16 @@
 // src/cli/components/LoginFlow.tsx
-// Full-screen OAuth Device Authorization flow.
-// Shown when CLI starts without valid credentials.
-import React, { useState, useCallback } from 'react';
+// First-run / unauthenticated startup screen.
+// Matches Claude Code's ConsoleOAuthFlow style:
+//   - BannerLogo at top (mascot + product info)
+//   - Clean inline text, no box-drawing borders
+//   - Spinner while waiting for browser approval
+//   - Prominent URL + code display during OAuth poll
+import React, { useState, useCallback, useEffect } from 'react';
 import { Box, Text, useInput, useApp } from 'ink';
 import { theme } from '../../ui/theme.js';
 import { runLoginFlow } from '../../auth/index.js';
 import type { RefactronCredentials } from '../../auth/index.js';
+import { BannerLogo } from './BannerLogo.js';
 
 type LoginState = 'prompt' | 'running' | 'success' | 'denied' | 'error';
 
@@ -13,39 +18,44 @@ interface LoginFlowProps {
   onAuthenticated: (creds: RefactronCredentials) => void;
   onExit: () => void;
   version: string;
+  adapterName?: string;
 }
 
-const W = 56;
-const BOX_TOP = `  ╭${'─'.repeat(W)}╮`;
-const BOX_BOTTOM = `  ╰${'─'.repeat(W)}╯`;
-const BOX_MID = `  ├${'─'.repeat(W)}┤`;
-const BOX_EMPTY = `  │${' '.repeat(W)}│`;
+// Spinner frames for the "waiting for approval" animation
+const SPIN = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
 
-function boxLine(text: string, color?: string): React.ReactElement {
-  return <Text color={color ?? theme.colors.text}>{`  │  ${text.padEnd(W - 2)}│`}</Text>;
+function useSpinner(active: boolean): string {
+  const [frame, setFrame] = useState(0);
+  useEffect(() => {
+    if (!active) return;
+    const t = setInterval(() => setFrame((f) => (f + 1) % SPIN.length), 80);
+    return () => clearInterval(t);
+  }, [active]);
+  return SPIN[frame] ?? '⠋';
 }
 
 export function LoginFlow({
   onAuthenticated,
   onExit,
   version,
+  adapterName = 'auto',
 }: LoginFlowProps): React.ReactElement {
   const { exit } = useApp();
   const [state, setState] = useState<LoginState>('prompt');
-  const [statusLines, setStatusLines] = useState<string[]>([]);
-  const [code, setCode] = useState<string>('');
-  const [url, setUrl] = useState<string>('');
+  const [statusMsg, setStatusMsg] = useState('');
+  const [code, setCode] = useState('');
+  const [url, setUrl] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
   const [successEmail, setSuccessEmail] = useState('');
+  const spinner = useSpinner(state === 'running');
 
   const appendStatus = useCallback((msg: string) => {
-    // Extract code and URL for prominent display
     if (msg.startsWith('Visit: ')) {
-      setUrl(msg.replace('Visit: ', ''));
+      setUrl(msg.replace('Visit: ', '').trim());
     } else if (msg.startsWith('Code:  ')) {
-      setCode(msg.replace('Code:  ', ''));
+      setCode(msg.replace('Code:  ', '').trim());
     } else {
-      setStatusLines((prev) => [...prev, msg]);
+      setStatusMsg(msg);
     }
   }, []);
 
@@ -55,7 +65,7 @@ export function LoginFlow({
       .then((creds) => {
         setSuccessEmail(creds.email ?? '');
         setState('success');
-        setTimeout(() => onAuthenticated(creds), 800);
+        setTimeout(() => onAuthenticated(creds), 600);
       })
       .catch((err: unknown) => {
         setErrorMsg(String(err));
@@ -65,22 +75,18 @@ export function LoginFlow({
 
   useInput(
     (inputChar, key) => {
-      if (state !== 'prompt') return;
-
       if (key.ctrl && inputChar === 'c') {
         onExit();
         exit();
         return;
       }
-
+      if (state !== 'prompt') return;
       const ch = inputChar.toLowerCase();
-      if (ch === 'y') startLogin();
-      else if (ch === 'n' || key.return) {
+      if (ch === 'y') {
+        startLogin();
+      } else if (ch === 'n' || key.escape) {
         setState('denied');
-        setTimeout(() => {
-          onExit();
-          exit();
-        }, 300);
+        setTimeout(() => { onExit(); exit(); }, 300);
       }
     },
     { isActive: process.stdin.isTTY === true },
@@ -88,114 +94,107 @@ export function LoginFlow({
 
   return (
     <Box flexDirection="column">
-      {/* ── Logo box ─────────────────────────────────────────────── */}
-      <Text color={theme.colors.border}>{BOX_TOP}</Text>
-      <Text color={theme.colors.border}>{BOX_EMPTY}</Text>
-      <Text color={theme.colors.accent}>
-        {`  │  ◈  refactron${' '.repeat(W - 17 - version.length - 2)}v${version}  │`}
-      </Text>
-      <Text color={theme.colors.textDim}>
-        {`  │     safety-first refactoring${' '.repeat(W - 30)}│`}
-      </Text>
-      <Text color={theme.colors.border}>{BOX_EMPTY}</Text>
-      <Text color={theme.colors.border}>{BOX_MID}</Text>
-      <Text color={theme.colors.border}>{BOX_EMPTY}</Text>
+      {/* ── Startup banner — same as authenticated REPL ─────────── */}
+      <BannerLogo version={version} adapterName={adapterName} />
 
-      {/* ── Auth prompt ──────────────────────────────────────────── */}
-      {state === 'prompt' && (
-        <>
-          {boxLine('Authentication required', theme.colors.warning)}
-          {boxLine('')}
-          {boxLine('Refactron uses OAuth 2.0 — no password needed.', theme.colors.textDim)}
-          {boxLine('Your browser opens, you approve, done.', theme.colors.textDim)}
-          {boxLine('')}
-          <Text color={theme.colors.border}>{BOX_EMPTY}</Text>
-          <Text>
-            {`  │  `}
+      {/* ── Auth section ─────────────────────────────────────────── */}
+      <Box flexDirection="column" paddingLeft={2} gap={0}>
+
+        {/* ── prompt: ask to log in ──────────────────────────────── */}
+        {state === 'prompt' && (
+          <Box flexDirection="column" gap={1}>
             <Text color={theme.colors.accent} bold>
-              Log in to continue?{' '}
+              Welcome to Refactron!
             </Text>
-            <Text color={theme.colors.textDim}>[y / n] </Text>
-            <Text color={theme.colors.accent}>█</Text>
-            {`${' '.repeat(W - 24)}│`}
-          </Text>
-          <Text color={theme.colors.border}>{BOX_EMPTY}</Text>
-        </>
-      )}
 
-      {/* ── Running — show code + URL prominently ────────────────── */}
-      {state === 'running' && (
-        <>
-          {code ? (
-            <>
-              {boxLine('Open this URL in your browser:', theme.colors.textDim)}
-              {boxLine('')}
-              {boxLine(url, theme.colors.accent)}
-              {boxLine('')}
-              <Text color={theme.colors.border}>{BOX_MID}</Text>
-              <Text color={theme.colors.border}>{BOX_EMPTY}</Text>
-              {boxLine('Verification code:', theme.colors.textDim)}
-              <Text>
-                {`  │     `}
-                <Text color={theme.colors.accent} bold>
-                  {code}
-                </Text>
-                {`${' '.repeat(Math.max(0, W - 5 - code.length))}│`}
+            <Box flexDirection="column">
+              <Text dimColor>Sign in to start refactoring safely.</Text>
+              <Text dimColor>
+                Refactron uses OAuth 2.0 — no password needed.
               </Text>
-              <Text color={theme.colors.border}>{BOX_EMPTY}</Text>
-              <Text color={theme.colors.border}>{BOX_MID}</Text>
-              <Text color={theme.colors.border}>{BOX_EMPTY}</Text>
-              {statusLines
-                .slice(-2)
-                .map((l, i) =>
-                  boxLine(
-                    l,
-                    i === statusLines.length - 1 ? theme.colors.text : theme.colors.textDim,
-                  ),
-                )}
-            </>
-          ) : (
-            <>{boxLine('Connecting to Refactron…', theme.colors.textDim)}</>
-          )}
-          <Text color={theme.colors.border}>{BOX_EMPTY}</Text>
-        </>
-      )}
+              <Text dimColor>
+                Your browser will open to approve access.
+              </Text>
+            </Box>
 
-      {/* ── Success ──────────────────────────────────────────────── */}
-      {state === 'success' && (
-        <>
-          <Text>
-            {`  │  `}
-            <Text color={theme.colors.success} bold>
-              {theme.symbols.pass} Authenticated — {successEmail}
-            </Text>
-            {`${' '.repeat(Math.max(0, W - 18 - successEmail.length))}│`}
-          </Text>
-          {boxLine('Loading Refactron…', theme.colors.textDim)}
-          <Text color={theme.colors.border}>{BOX_EMPTY}</Text>
-        </>
-      )}
+            <Box gap={1}>
+              <Text color={theme.colors.accent} bold>Log in to continue?</Text>
+              <Text dimColor>[y / n]</Text>
+              <Text color={theme.colors.accent}>█</Text>
+            </Box>
+          </Box>
+        )}
 
-      {/* ── Denied ───────────────────────────────────────────────── */}
-      {state === 'denied' && (
-        <>
-          {boxLine('Cancelled. Goodbye.', theme.colors.textDim)}
-          <Text color={theme.colors.border}>{BOX_EMPTY}</Text>
-        </>
-      )}
+        {/* ── running: show spinner + URL + code ────────────────── */}
+        {state === 'running' && (
+          <Box flexDirection="column" gap={1}>
+            {!code ? (
+              <Box gap={1}>
+                <Text color={theme.colors.accent}>{spinner}</Text>
+                <Text dimColor>Opening browser…</Text>
+              </Box>
+            ) : (
+              <>
+                <Box flexDirection="column">
+                  <Text dimColor>Browser didn&apos;t open? Visit this URL:</Text>
+                  <Box paddingLeft={2}>
+                    <Text color={theme.colors.accent}>{url}</Text>
+                  </Box>
+                </Box>
 
-      {/* ── Error ────────────────────────────────────────────────── */}
-      {state === 'error' && (
-        <>
-          {boxLine(`${theme.symbols.fail}  Login failed`, theme.colors.error)}
-          {boxLine(errorMsg.slice(0, W - 2), theme.colors.textDim)}
-          {boxLine('')}
-          {boxLine('Run  refactron login  to try again.', theme.colors.textDim)}
-          <Text color={theme.colors.border}>{BOX_EMPTY}</Text>
-        </>
-      )}
+                <Box flexDirection="column">
+                  <Text dimColor>Verification code:</Text>
+                  <Box paddingLeft={2}>
+                    <Text color={theme.colors.accent} bold>{code}</Text>
+                  </Box>
+                </Box>
 
-      <Text color={theme.colors.border}>{BOX_BOTTOM}</Text>
+                <Box gap={1}>
+                  <Text color={theme.colors.accent}>{spinner}</Text>
+                  <Text dimColor>
+                    {statusMsg !== '' ? statusMsg : 'Waiting for browser approval…'}
+                  </Text>
+                </Box>
+              </>
+            )}
+          </Box>
+        )}
+
+        {/* ── success ───────────────────────────────────────────── */}
+        {state === 'success' && (
+          <Box flexDirection="column">
+            <Box gap={1}>
+              <Text color={theme.colors.success} bold>{theme.symbols.pass}</Text>
+              <Text color={theme.colors.success} bold>
+                Authenticated{successEmail !== '' ? ` as ${successEmail}` : ''}
+              </Text>
+            </Box>
+            <Box paddingLeft={2}>
+              <Text dimColor>Loading Refactron…</Text>
+            </Box>
+          </Box>
+        )}
+
+        {/* ── denied ────────────────────────────────────────────── */}
+        {state === 'denied' && (
+          <Text dimColor>Cancelled. Goodbye.</Text>
+        )}
+
+        {/* ── error ─────────────────────────────────────────────── */}
+        {state === 'error' && (
+          <Box flexDirection="column" gap={1}>
+            <Box gap={1}>
+              <Text color={theme.colors.error} bold>{theme.symbols.fail}</Text>
+              <Text color={theme.colors.error} bold>Login failed</Text>
+            </Box>
+            <Box paddingLeft={2} flexDirection="column">
+              <Text dimColor>{errorMsg}</Text>
+              <Text dimColor>Run  refactron login  to try again.</Text>
+            </Box>
+          </Box>
+        )}
+
+      </Box>
     </Box>
   );
 }
