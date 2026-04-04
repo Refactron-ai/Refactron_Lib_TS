@@ -1,0 +1,28 @@
+# refactron.yaml — default configuration
+version: 1
+analyzers:
+  complexity:
+    enabled: true
+    threshold: 10
+  security:
+    enabled: true
+  code_smell:
+    enabled: true
+    max_method_lines: 50
+  dead_code:
+    enabled: true
+  type_hints:
+    enabled: true
+  dependencies:
+    enabled: true
+  performance:
+    enabled: true
+verification:
+  timeout_seconds: 45
+  critical_timeout_seconds: 120
+autofix:
+  dry_run: false
+  require_verification: true
+output:
+  format: terminal
+  fail_on: null

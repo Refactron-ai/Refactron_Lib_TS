@@ -1,0 +1,25 @@
+# Worktrees
+.worktrees/
+
+# Build output
+dist/
+*.js.map
+*.d.ts.map
+
+# Dependencies
+node_modules/
+
+# Test coverage
+coverage/
+
+# Session data
+.refactron/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/
+.idea/
+*.swp

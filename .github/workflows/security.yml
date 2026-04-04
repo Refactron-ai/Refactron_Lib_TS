@@ -1,0 +1,64 @@
+name: Security
+
+on:
+  schedule:
+    - cron: '0 9 * * 1'
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  dependency-audit:
+    name: npm Audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - run: npm ci
+      - run: npm audit --audit-level=high
+
+  codeql:
+    name: CodeQL Analysis
+    runs-on: ubuntu-latest
+    permissions:
+      security-events: write
+      actions: read
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: github/codeql-action/init@v3
+        with:
+          languages: typescript, javascript
+          queries: security-extended
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - run: npm ci && npm run build
+      - uses: github/codeql-action/analyze@v3
+        with:
+          category: '/language:typescript'
+
+  self-analysis:
+    name: Refactron Self-Analysis
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - run: npm ci && npm run build
+      - run: |
+          node dist/cli/index.js analyze src/ \
+            --format json \
+            --output analysis-report.json \
+            --fail-on critical
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: self-analysis-report
+          path: analysis-report.json
