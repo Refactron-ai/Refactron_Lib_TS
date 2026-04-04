@@ -6,9 +6,6 @@ import type { ILanguageAdapter } from '../adapters/interface.js';
 import type { RefactronConfig } from '../core/config.js';
 import type { AnalysisResult, Severity } from '../core/models.js';
 import { VerificationEngine } from '../verification/engine.js';
-import { AutoFixEngine } from '../autofix/engine.js';
-import { BackupManager } from '../infrastructure/backup.js';
-import { atomicWrite } from '../verification/atomic-writer.js';
 import { Orchestrator } from '../core/orchestrator.js';
 import { WorkSessionManager } from '../session/manager.js';
 import type { WorkSession, WorkSessionVerifyEntry } from '../session/types.js';
@@ -226,9 +223,7 @@ export async function executeCommand(
     onLine('', undefined);
     onLine('  Commands:', theme.colors.accent);
     onLine('  analyze  [target]              scan files, create a session', theme.colors.text);
-    onLine('  issues   [--severity X]        list issues from active session', theme.colors.text);
-    onLine('  fix      <#|id|--file F|--severity S>  fix specific issue(s)', theme.colors.text);
-    onLine('  autofix  [--dry-run] [--verify] fix ALL fixable issues in session', theme.colors.text);
+    onLine('  autofix  [--dry-run] [--verify] fix issues in active session', theme.colors.text);
     onLine('  verify   [file]                verify files in active session', theme.colors.text);
     onLine('  status                         show active session details', theme.colors.text);
     onLine('  session list                   list all saved sessions', theme.colors.text);
@@ -274,178 +269,6 @@ export async function executeCommand(
     formatAnalysis(analysis, onLine);
     onLine('', undefined);
     onLine(`  ${theme.symbols.pass}  Session ${session.id} created  —  run autofix or verify to continue.`, theme.colors.textDim);
-    onLine('', undefined);
-    return {};
-  }
-
-  // ── issues — numbered list from active session ───────────────────────────
-
-  if (command === 'issues') {
-    const active = ctx.sessions.getActive();
-    if (!active) {
-      onLine('', undefined);
-      onLine(`  ${theme.symbols.fail}  No active session. Run: analyze <target> first.`, theme.colors.error);
-      onLine('', undefined);
-      return {};
-    }
-
-    const sevFilter = typeof flags['severity'] === 'string' ? flags['severity'] as Severity : null;
-    const fileFilter = typeof flags['file'] === 'string' ? path.resolve(flags['file']) : null;
-
-    let issues = active.analysis.issues;
-    if (sevFilter) issues = issues.filter((i) => i.severity === sevFilter);
-    if (fileFilter) issues = issues.filter((i) => i.file === fileFilter);
-
-    if (issues.length === 0) {
-      onLine('  No issues match the filter.', theme.colors.textDim);
-      return {};
-    }
-
-    const bySev: Record<Severity, typeof issues> = { critical: [], high: [], medium: [], low: [] };
-    for (const issue of issues) bySev[issue.severity].push(issue);
-
-    // Print with global index so user can reference by number
-    let idx = 1;
-    for (const sev of ['critical', 'high', 'medium', 'low'] as Severity[]) {
-      const group = bySev[sev];
-      if (group.length === 0) continue;
-      onLine('', undefined);
-      onLine(`  ${sev.toUpperCase()} (${group.length})`, severityColor(sev));
-      for (const issue of group) {
-        const rel = path.relative(ctx.projectRoot, issue.file);
-        const fixTag = issue.fixable ? theme.colors.success : theme.colors.textDim;
-        const fixLabel = issue.fixable ? ' [fixable]' : '';
-        onLine(
-          `  ${String(idx).padStart(4)}  ${issue.message.slice(0, 52).padEnd(53)} ${rel}:${issue.line}${fixLabel}`,
-          fixTag,
-        );
-        idx++;
-      }
-    }
-    onLine('', undefined);
-    onLine(`  ${issues.length} issue(s) — use: fix <#>  or  fix --severity high  or  fix --file <path>`, theme.colors.textDim);
-    onLine('', undefined);
-    return {};
-  }
-
-  // ── fix — targeted fix of specific issue(s) ──────────────────────────────
-
-  if (command === 'fix') {
-    const active = ctx.sessions.getActive();
-    if (!active) {
-      onLine('', undefined);
-      onLine(`  ${theme.symbols.fail}  No active session. Run: analyze <target> first.`, theme.colors.error);
-      onLine('', undefined);
-      return {};
-    }
-
-    const dryRun = flags['dry-run'] === true;
-
-    // Determine which issues to fix
-    let targetIssues = active.analysis.issues.filter((i) => i.fixable);
-
-    if (typeof flags['severity'] === 'string') {
-      targetIssues = targetIssues.filter((i) => i.severity === (flags['severity'] as Severity));
-    } else if (typeof flags['file'] === 'string') {
-      const absFile = path.resolve(flags['file']);
-      targetIssues = targetIssues.filter((i) => i.file === absFile);
-    } else if (target !== '.') {
-      // Could be a number (index), an issue ID, or a file path
-      const asNum = parseInt(target, 10);
-      if (!isNaN(asNum)) {
-        // Index into the full ordered issues list (same order as `issues` command)
-        const ordered = active.analysis.issues;
-        const issue = ordered[asNum - 1]; // 1-based
-        if (!issue) {
-          onLine(`  ${theme.symbols.fail}  Issue #${asNum} not found. Run: issues to see the list.`, theme.colors.error);
-          return {};
-        }
-        if (!issue.fixable) {
-          onLine(`  ${theme.symbols.fail}  Issue #${asNum} is not fixable automatically.`, theme.colors.error);
-          return {};
-        }
-        targetIssues = [issue];
-      } else if (target.length === 24 || target.length > 8) {
-        // Looks like an issue ID
-        const issue = active.analysis.issues.find((i) => i.id === target);
-        if (!issue) {
-          onLine(`  ${theme.symbols.fail}  Issue ID not found: ${target}`, theme.colors.error);
-          return {};
-        }
-        if (!issue.fixable) {
-          onLine(`  ${theme.symbols.fail}  Issue "${target}" is not fixable automatically.`, theme.colors.error);
-          return {};
-        }
-        targetIssues = [issue];
-      } else {
-        // Treat as file path
-        const absFile = path.resolve(target);
-        targetIssues = targetIssues.filter((i) => i.file === absFile);
-      }
-    }
-
-    if (targetIssues.length === 0) {
-      onLine('  No fixable issues match. Run: issues to see the list.', theme.colors.textDim);
-      return {};
-    }
-
-    const autofixEngine = new AutoFixEngine();
-    const backupManager = new BackupManager(ctx.projectRoot);
-    const verEngine = new VerificationEngine(ctx.adapter);
-
-    onLine('', undefined);
-    onLine(`  ${dryRun ? 'Previewing' : 'Fixing'} ${targetIssues.length} issue(s) …`, theme.colors.textDim);
-    onLine('', undefined);
-
-    let applied = 0;
-    let blocked = 0;
-    let skipped = 0;
-
-    // Group by file so we apply all fixes per file together
-    const byFile = new Map<string, typeof targetIssues>();
-    for (const issue of targetIssues) {
-      const list = byFile.get(issue.file) ?? [];
-      list.push(issue);
-      byFile.set(issue.file, list);
-    }
-
-    for (const [filePath, fileIssues] of byFile) {
-      if (signal.aborted) return {};
-      const rel = path.relative(ctx.projectRoot, filePath);
-      let code = await fs.readFile(filePath, 'utf-8');
-
-      for (const issue of fileIssues) {
-        const transform = await autofixEngine.fix(filePath, code, issue);
-        if (!transform) { skipped++; continue; }
-
-        // Verify if requested or config requires it
-        if (ctx.config.autofix.require_verification) {
-          const verResult = await verEngine.verify(filePath, transform.transformedCode, issue.blastRadius);
-          if (!verResult.safeToApply) {
-            onLine(`  ${theme.symbols.fail}  ${rel}:${issue.line}  — blocked: ${verResult.blockingReason ?? 'verification failed'}`, theme.colors.error);
-            blocked++;
-            continue;
-          }
-        }
-
-        if (!dryRun) {
-          if (applied === 0) await backupManager.backup(filePath); // backup before first write
-          code = transform.transformedCode; // chain fixes in same file
-        }
-        onLine(`  ${theme.symbols.pass}  ${rel}:${issue.line}  ${issue.message.slice(0, 50)}`, theme.colors.success);
-        applied++;
-      }
-
-      if (!dryRun && applied > 0) {
-        await atomicWrite(filePath, code);
-      }
-    }
-
-    onLine('', undefined);
-    onLine(
-      `  ${applied} fixed  ${blocked} blocked  ${skipped} skipped${dryRun ? '  [dry-run]' : ''}`,
-      blocked > 0 ? theme.colors.error : theme.colors.success,
-    );
     onLine('', undefined);
     return {};
   }

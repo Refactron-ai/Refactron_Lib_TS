@@ -16,13 +16,10 @@ interface SlashCommand {
 }
 
 const SLASH_COMMANDS: SlashCommand[] = [
-  { name: 'analyze',  description: 'Scan files, create a session' },
-  { name: 'issues',   description: 'List issues from active session' },
-  { name: 'fix',      description: 'Fix specific issue(s) by #, file, or severity' },
-  { name: 'autofix',  description: 'Fix ALL fixable issues in session' },
-  { name: 'verify',   description: 'Verify files in active session' },
-  { name: 'status',   description: 'Show active session details' },
-  { name: 'session',  description: 'List or load sessions' },
+  { name: 'analyze',  description: 'Scan files for issues' },
+  { name: 'autofix',  description: 'Fix issues with verification' },
+  { name: 'verify',   description: 'Verify a file is safe to change' },
+  { name: 'status',   description: 'Show last session summary' },
   { name: 'diff',     description: 'Show fix diff' },
   { name: 'rollback', description: 'Restore from last backup' },
   { name: 'login',    description: 'Authenticate with Refactron' },
