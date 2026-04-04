@@ -1,14 +1,17 @@
 // src/cli/REPL.tsx
-// Standard-Ink REPL: Static for completed output (scrolls naturally),
-// dynamic bottom section for spinner / prompt / status line.
+// Claude Code-style REPL layout:
+//   BannerLogo  — live component with animated mascot, always visible at top
+//   Static      — completed output (scrolls naturally as session grows)
+//   SpinnerWithVerb | PromptInput  — dynamic bottom section
+//   StatusLine  — always at the very bottom
 import React, { useState, useCallback, useRef } from 'react';
 import { Box, Static, Text, useApp, useInput } from 'ink';
 import { theme } from '../ui/theme.js';
 import { parseInput, executeCommand, type CommandContext } from './runner.js';
+import { BannerLogo } from './components/BannerLogo.js';
 import { SpinnerWithVerb } from './components/SpinnerWithVerb.js';
 import { StatusLine } from './components/StatusLine.js';
 import { PromptInput } from './components/PromptInput.js';
-import { createWelcomeBanner } from './components/WelcomeBanner.js';
 import type { MessageLine } from './types.js';
 
 export type { MessageLine };
@@ -23,20 +26,18 @@ interface REPLProps {
 export function REPL({ ctx, version, email, plan }: REPLProps): React.ReactElement {
   const { exit } = useApp();
 
-  const [lines, setLines] = useState<MessageLine[]>(() =>
-    createWelcomeBanner(version, email, plan, ctx.adapter.displayName),
-  );
+  // Lines start empty — BannerLogo handles the startup display as a live component
+  const [lines, setLines] = useState<MessageLine[]>([]);
   const [isRunning, setIsRunning] = useState(false);
   const [runningCmd, setRunningCmd] = useState('');
   const [lastProgressTime, setLastProgressTime] = useState<number>(Date.now());
   const [history, setHistory] = useState<string[]>([]);
 
-  // Issue counts for status line (updated by analyze command)
   const [issueCount] = useState<number | undefined>(undefined);
   const [criticalCount] = useState<number | undefined>(undefined);
   const [sessionState] = useState<string | undefined>(undefined);
 
-  const lineIdRef = useRef(2);
+  const lineIdRef = useRef(0);
   const abortRef = useRef<AbortController | null>(null);
 
   const appendLines = useCallback((newLines: MessageLine[]) => {
@@ -49,13 +50,11 @@ export function REPL({ ctx, version, email, plan }: REPLProps): React.ReactEleme
       const trimmed = raw.trim();
       if (!trimmed) return;
 
-      // Add to history (deduplicate consecutive)
       setHistory((prev) => {
         if (prev[prev.length - 1] === trimmed) return prev;
         return [...prev, trimmed];
       });
 
-      // Echo the command
       appendLines([
         {
           id: lineIdRef.current++,
@@ -66,14 +65,12 @@ export function REPL({ ctx, version, email, plan }: REPLProps): React.ReactEleme
 
       const parsed = parseInput(trimmed);
 
-      // Exit
       if (['exit', 'quit', '/exit', 'q'].includes(parsed.command)) {
         appendLines([{ id: lineIdRef.current++, text: '  Goodbye.', color: theme.colors.textDim }]);
         setTimeout(() => exit(), 80);
         return;
       }
 
-      // Clear
       if (parsed.command === 'clear') {
         process.stdout.write('\x1b[H\x1b[2J');
         setLines([]);
@@ -113,7 +110,6 @@ export function REPL({ ctx, version, email, plan }: REPLProps): React.ReactEleme
     [ctx, exit, appendLines],
   );
 
-  // Global keys — Ctrl+C to cancel/exit, no scroll keys needed (terminal scrolls naturally)
   useInput(
     (inputChar, key) => {
       if (isRunning) {
@@ -140,9 +136,21 @@ export function REPL({ ctx, version, email, plan }: REPLProps): React.ReactEleme
   return (
     <Box flexDirection="column">
       {/*
-        Static: Ink renders these items once and never re-renders them.
-        They print to stdout and scroll up naturally as new lines appear.
-        This is the correct standard-Ink pattern for append-only terminal output.
+        BannerLogo: live component — mascot animates on click.
+        Renders once at startup; scrolls off naturally as session output grows.
+        Mirrors Claude Code's CondensedLogo position in the REPL tree.
+      */}
+      <BannerLogo
+        version={version}
+        adapterName={ctx.adapter.displayName}
+        email={email}
+        plan={plan}
+      />
+
+      {/*
+        Static: Ink prints each item once and never re-renders it.
+        Output accumulates and scrolls naturally — the terminal's own
+        scrollback handles history. No viewport math needed.
       */}
       <Static items={lines}>
         {(line) =>
@@ -156,7 +164,7 @@ export function REPL({ ctx, version, email, plan }: REPLProps): React.ReactEleme
         }
       </Static>
 
-      {/* Dynamic bottom section — spinner while running, prompt when idle */}
+      {/* Dynamic bottom: spinner while running, prompt when idle */}
       {isRunning ? (
         <SpinnerWithVerb
           verb={runningCmd.split(' ')[0] ?? 'working'}
@@ -171,7 +179,6 @@ export function REPL({ ctx, version, email, plan }: REPLProps): React.ReactEleme
         />
       )}
 
-      {/* Status line always visible at bottom */}
       <StatusLine
         adapterName={ctx.adapter.displayName}
         version={version}
