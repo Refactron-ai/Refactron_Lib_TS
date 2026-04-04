@@ -11,7 +11,6 @@ import { theme } from '../ui/theme.js';
 import { parseInput, executeCommand, type CommandContext, type CommandResult } from './runner.js';
 import { SessionHeader } from './components/SessionHeader.js';
 import { SpinnerWithVerb } from './components/SpinnerWithVerb.js';
-import { StatusLine } from './components/StatusLine.js';
 import { PromptInput } from './components/PromptInput.js';
 import { IssueBrowser } from './components/IssueBrowser.js';
 import type { MessageLine } from './types.js';
@@ -257,14 +256,6 @@ export function REPL({ ctx, version, email, plan }: REPLProps): React.ReactEleme
         </Box>
       )}
 
-      <StatusLine
-        adapterName={ctx.adapter.displayName}
-        version={version}
-        issueCount={issueCount}
-        criticalCount={criticalCount}
-        sessionState={sessionState}
-        isRunning={isRunning}
-      />
     </Box>
   );
 }

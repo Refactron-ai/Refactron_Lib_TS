@@ -102,6 +102,20 @@ const SpinnerAnimationRow = memo(function SpinnerAnimationRow({
   );
 });
 
+// ── Hints shown while running ───────────────────────────────────────────────
+const HINTS = [
+  "use 'd' in the browser to preview a diff before applying",
+  "press Ctrl+C to cancel the current operation",
+  "run 'session list' to see all previous sessions",
+  "use 'A' in the issue browser to fix all issues at once",
+  "after analyzing, the issue browser opens automatically",
+  "use '/' in the browser to filter by file, message or severity",
+  "run 'rollback' to undo the last autofix",
+  "use 'j'/'k' or ↑/↓ to navigate issues in the browser",
+  "run 'status' to see details of the active session",
+  "press 'g' / 'G' to jump to first or last issue",
+];
+
 // ── SpinnerWithVerb — outer component, stall timer ──────────────────────────
 interface SpinnerWithVerbProps {
   verb: string;
@@ -119,10 +133,24 @@ export function SpinnerWithVerb({
   const { stdout } = useStdout();
   const columns = stdout?.columns ?? 80;
   const [now, setNow] = useState(() => Date.now());
+  const [hintIdx, setHintIdx] = useState(() => Math.floor(Math.random() * HINTS.length));
 
   useEffect(() => {
     if (!isActive) return;
     const t = setInterval(() => setNow(Date.now()), 500);
+    return () => clearInterval(t);
+  }, [isActive]);
+
+  // Rotate to a new random hint every 4s while active
+  useEffect(() => {
+    if (!isActive) return;
+    const t = setInterval(() => {
+      setHintIdx((i) => {
+        let next = Math.floor(Math.random() * HINTS.length);
+        if (next === i) next = (i + 1) % HINTS.length;
+        return next;
+      });
+    }, 4000);
     return () => clearInterval(t);
   }, [isActive]);
 
@@ -140,6 +168,10 @@ export function SpinnerWithVerb({
           stallMs={stallMs}
           reducedMotion={reducedMotion}
         />
+      </Box>
+      <Box paddingLeft={2} height={1}>
+        <Text dimColor>{'hint: '}</Text>
+        <Text dimColor>{HINTS[hintIdx]}</Text>
       </Box>
     </Box>
   );

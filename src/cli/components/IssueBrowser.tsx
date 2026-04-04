@@ -571,19 +571,6 @@ export function IssueBrowser({
 
       <Text color={theme.colors.border}>{border}</Text>
 
-      {/* ── Rotating next-step hint ────────────────────────────────────── */}
-      {!isWorking && !filterMode && currentHint && (
-        <Box paddingLeft={2}>
-          <Text dimColor>{'  → '}</Text>
-          <Text color={currentHint.color ?? theme.colors.textDim}>{currentHint.text}</Text>
-          {currentHint.highlight && (
-            <Text color={theme.colors.brand}>{currentHint.highlight}</Text>
-          )}
-          {hints.length > 1 && (
-            <Text dimColor>{'  '}{hintIdx + 1}{'/'}{hints.length}</Text>
-          )}
-        </Box>
-      )}
 
       {/* ── Footer ────────────────────────────────────────────────────── */}
       <Box paddingLeft={1}>
