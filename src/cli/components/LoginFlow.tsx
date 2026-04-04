@@ -141,9 +141,9 @@ export function LoginFlow({
 
       // ── prompt state ──────────────────────────────────────────────────
       if (state === 'prompt') {
-        const ch = inputChar.toLowerCase();
-        if (ch === 'y') { startLogin(); return; }
-        if (ch === 'n' || key.escape) {
+        // Enter or 'y' → login (Enter = default yes)
+        if (key.return || inputChar.toLowerCase() === 'y') { startLogin(); return; }
+        if (inputChar.toLowerCase() === 'n' || key.escape) {
           setState('denied');
           setTimeout(() => { onExit(); exit(); }, 300);
         }
@@ -195,9 +195,12 @@ export function LoginFlow({
             </Box>
             <Box gap={1}>
               <Text color={theme.colors.accent} bold>Log in to continue?</Text>
-              <Text dimColor>[y / n]</Text>
+              <Text dimColor>[</Text>
+              <Text color={theme.colors.accent} bold>Y</Text>
+              <Text dimColor>/ n]</Text>
               <Text color={theme.colors.accent}>█</Text>
             </Box>
+            <Text dimColor>Press Enter to open browser</Text>
           </Box>
         )}
 
