@@ -8,6 +8,26 @@ import { AnalysisEngine } from '../analysis/engine.js';
 import { Orchestrator } from '../core/orchestrator.js';
 import { SessionStore } from '../pipeline/store.js';
 import { theme } from '../ui/theme.js';
+import {
+  loadCredentials,
+  deleteCredentials,
+  isAuthenticated,
+  runLoginFlow,
+} from '../auth/index.js';
+
+// Commands that never require auth
+const AUTH_EXEMPT = new Set([
+  'login',
+  'logout',
+  'auth',
+  'help',
+  '?',
+  'clear',
+  'exit',
+  'quit',
+  'q',
+  '',
+]);
 
 export interface CommandContext {
   adapter: ILanguageAdapter;
@@ -136,6 +156,76 @@ export async function executeCommand(
   const { command, target, flags } = parsed;
   const absTarget = path.resolve(target);
 
+  // ── Auth commands (exempt from auth check) ──────────────────────────────
+
+  if (command === 'login') {
+    const noBrowser = flags['no-browser'] === true;
+    onLine('', undefined);
+    try {
+      await runLoginFlow(noBrowser, (msg) => onLine(`  ${msg}`, theme.colors.textDim));
+      const creds = await loadCredentials();
+      if (creds) {
+        onLine('', undefined);
+        onLine(
+          `  ${theme.symbols.pass}  Logged in as ${creds.email ?? 'unknown'} (${creds.plan ?? 'free'} plan)`,
+          theme.colors.success,
+        );
+      }
+    } catch (err) {
+      onLine(`  ${theme.symbols.fail}  ${String(err)}`, theme.colors.error);
+    }
+    onLine('', undefined);
+    return;
+  }
+
+  if (command === 'logout') {
+    await deleteCredentials();
+    onLine('', undefined);
+    onLine('  Logged out. Credentials removed.', theme.colors.textDim);
+    onLine('  Run: login  to authenticate again.', theme.colors.textDim);
+    onLine('', undefined);
+    return;
+  }
+
+  if (command === 'auth') {
+    // auth status
+    onLine('', undefined);
+    const creds = await loadCredentials();
+    if (!creds || !isAuthenticated(creds)) {
+      onLine('  Status     Not authenticated', theme.colors.error);
+      onLine('  Run: login  to log in.', theme.colors.textDim);
+    } else {
+      const expiresAt = creds.expires_at ? new Date(creds.expires_at).toLocaleString() : 'never';
+      onLine('  ┌─────────────────────────────────┐', theme.colors.border);
+      onLine(`  │  Status    Active               │`, theme.colors.success);
+      onLine(`  │  User      ${(creds.email ?? 'unknown').padEnd(21)}│`, theme.colors.text);
+      onLine(
+        `  │  Plan      ${(creds.plan?.toUpperCase() ?? 'FREE').padEnd(21)}│`,
+        theme.colors.text,
+      );
+      onLine(`  │  API URL   ${creds.api_base_url.slice(8, 30).padEnd(21)}│`, theme.colors.textDim);
+      onLine(`  │  Expires   ${expiresAt.slice(0, 20).padEnd(21)}│`, theme.colors.textDim);
+      onLine('  └─────────────────────────────────┘', theme.colors.border);
+    }
+    onLine('', undefined);
+    return;
+  }
+
+  // ── Auth gate — all other commands require a valid token ─────────────────
+
+  if (!AUTH_EXEMPT.has(command)) {
+    const creds = await loadCredentials();
+    if (!isAuthenticated(creds)) {
+      onLine('', undefined);
+      onLine(`  ${theme.symbols.fail}  Not authenticated.`, theme.colors.error);
+      onLine(`  Run: login  to log in.`, theme.colors.textDim);
+      onLine('', undefined);
+      return;
+    }
+  }
+
+  // ── Regular commands ─────────────────────────────────────────────────────
+
   if (command === 'help' || command === '?') {
     onLine('', undefined);
     onLine('  Commands:', theme.colors.accent);
@@ -145,6 +235,9 @@ export async function executeCommand(
     onLine('  status                         show last session', theme.colors.text);
     onLine('  rollback                       restore from last backup', theme.colors.text);
     onLine('  diff     [target]              show fix diff', theme.colors.text);
+    onLine('  login                          authenticate with Refactron', theme.colors.text);
+    onLine('  logout                         remove stored credentials', theme.colors.text);
+    onLine('  auth                           show auth status', theme.colors.text);
     onLine('  clear                          clear the screen', theme.colors.text);
     onLine('  exit                           quit refactron', theme.colors.text);
     onLine('', undefined);
