@@ -8,7 +8,7 @@
 import React, { useState, useCallback, useRef } from 'react';
 import { Box, Static, Text, useApp, useInput } from 'ink';
 import { theme } from '../ui/theme.js';
-import { parseInput, executeCommand, type CommandContext } from './runner.js';
+import { parseInput, executeCommand, type CommandContext, type CommandResult } from './runner.js';
 import { WelcomeSplash } from './components/WelcomeSplash.js';
 import { SpinnerWithVerb } from './components/SpinnerWithVerb.js';
 import { StatusLine } from './components/StatusLine.js';
@@ -100,8 +100,9 @@ export function REPL({ ctx, version, email, plan }: REPLProps): React.ReactEleme
       // Rule before output
       buffer.push(...ruleLines(nextId));
 
+      let result: CommandResult = {};
       try {
-        await executeCommand(
+        result = await executeCommand(
           parsed,
           ctx,
           (text, color) => {
@@ -121,6 +122,10 @@ export function REPL({ ctx, version, email, plan }: REPLProps): React.ReactEleme
         setIsRunning(false);
         setRunningCmd('');
         abortRef.current = null;
+      }
+
+      if (result.shouldExit) {
+        setTimeout(() => exit(), 80);
       }
     },
     [ctx, exit, appendLines, nextId],

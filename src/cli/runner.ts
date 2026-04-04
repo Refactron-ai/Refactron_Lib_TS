@@ -147,12 +147,16 @@ function formatSession(
   onLine(`  State:    ${session.state}`, theme.colors.textDim);
 }
 
+export interface CommandResult {
+  shouldExit?: boolean;
+}
+
 export async function executeCommand(
   parsed: ParsedCommand,
   ctx: CommandContext,
   onLine: (line: string, color?: string) => void,
   signal: AbortSignal,
-): Promise<void> {
+): Promise<CommandResult> {
   const { command, target, flags } = parsed;
   const absTarget = path.resolve(target);
 
@@ -182,16 +186,16 @@ export async function executeCommand(
       onLine(`  ${theme.symbols.fail}  ${String(err)}`, theme.colors.error);
     }
     onLine('', undefined);
-    return;
+    return {};
   }
 
   if (command === 'logout') {
     await deleteCredentials();
     onLine('', undefined);
     onLine('  Logged out. Credentials removed.', theme.colors.textDim);
-    onLine('  Run: login  to authenticate again.', theme.colors.textDim);
+    onLine('  Goodbye.', theme.colors.textDim);
     onLine('', undefined);
-    return;
+    return { shouldExit: true };
   }
 
   if (command === 'auth') {
@@ -215,7 +219,7 @@ export async function executeCommand(
       onLine('  └─────────────────────────────────┘', theme.colors.border);
     }
     onLine('', undefined);
-    return;
+    return {};
   }
 
   // ── Auth gate — all other commands require a valid token ─────────────────
@@ -227,7 +231,7 @@ export async function executeCommand(
       onLine(`  ${theme.symbols.fail}  Not authenticated.`, theme.colors.error);
       onLine(`  Run: login  to log in.`, theme.colors.textDim);
       onLine('', undefined);
-      return;
+      return {};
     }
   }
 
@@ -248,16 +252,16 @@ export async function executeCommand(
     onLine('  clear                          clear the screen', theme.colors.text);
     onLine('  exit                           quit refactron', theme.colors.text);
     onLine('', undefined);
-    return;
+    return {};
   }
 
   if (command === 'analyze') {
     onLine(`  Scanning ${absTarget} ...`, theme.colors.textDim);
     const engine = new AnalysisEngine(ctx.adapter, ctx.config);
     const result = await engine.analyze(absTarget);
-    if (signal.aborted) return;
+    if (signal.aborted) return {};
     formatAnalysis(result, onLine);
-    return;
+    return {};
   }
 
   if (command === 'autofix') {
@@ -266,9 +270,9 @@ export async function executeCommand(
     onLine(`  ${dryRun ? 'Previewing' : 'Fixing'} ${absTarget} ...`, theme.colors.textDim);
     const orchestrator = new Orchestrator(ctx.adapter, ctx.config, ctx.projectRoot);
     const session = await orchestrator.autofix(absTarget, { dryRun, verify });
-    if (signal.aborted) return;
+    if (signal.aborted) return {};
     formatSession(session, onLine);
-    return;
+    return {};
   }
 
   if (command === 'status') {
@@ -276,33 +280,34 @@ export async function executeCommand(
     const session = await store.latest();
     if (!session) {
       onLine('  No session found. Run: analyze <target>', theme.colors.textDim);
-      return;
+      return {};
     }
     onLine(`  Session  ${session.sessionId}`, theme.colors.accent);
     onLine(`  Target   ${session.target}`, theme.colors.textDim);
     onLine(`  Issues   ${session.totalIssues}  |  Files ${session.totalFiles}`, theme.colors.text);
     formatSession(session, onLine);
-    return;
+    return {};
   }
 
   if (command === 'rollback') {
     onLine('  Rollback is applied per-session via BackupManager.', theme.colors.textDim);
     onLine('  Run: autofix <target> to start a new session with backups.', theme.colors.textDim);
-    return;
+    return {};
   }
 
   if (command === 'diff') {
     onLine('  No pending diff. Run: autofix <target> --dry-run', theme.colors.textDim);
-    return;
+    return {};
   }
 
   if (command === 'clear') {
     // Signal handled in REPL
     onLine('\x1Bc', undefined);
-    return;
+    return {};
   }
 
-  if (command === '') return;
+  if (command === '') return {};
 
   onLine(`  Unknown command: ${command}. Type help for usage.`, theme.colors.error);
+  return {};
 }
