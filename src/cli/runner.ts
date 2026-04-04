@@ -20,7 +20,7 @@ import {
 // Commands that never require auth
 const AUTH_EXEMPT = new Set([
   'login', 'logout', 'auth', 'help', '?',
-  'clear', 'exit', 'quit', 'q', 'session', '',
+  'clear', 'exit', 'quit', 'q', 'session', 'issues', '',
 ]);
 
 export interface CommandContext {
@@ -141,6 +141,7 @@ function printSessionCard(
 
 export interface CommandResult {
   shouldExit?: boolean;
+  openBrowser?: boolean; // trigger interactive issue browser in REPL
 }
 
 export async function executeCommand(
@@ -223,7 +224,8 @@ export async function executeCommand(
     onLine('', undefined);
     onLine('  Commands:', theme.colors.accent);
     onLine('  analyze  [target]              scan files, create a session', theme.colors.text);
-    onLine('  autofix  [--dry-run] [--verify] fix issues in active session', theme.colors.text);
+    onLine('  issues                         open interactive issue browser', theme.colors.text);
+    onLine('  autofix  [--dry-run] [--verify] fix all fixable issues in session', theme.colors.text);
     onLine('  verify   [file]                verify files in active session', theme.colors.text);
     onLine('  status                         show active session details', theme.colors.text);
     onLine('  session list                   list all saved sessions', theme.colors.text);
@@ -237,6 +239,19 @@ export async function executeCommand(
     onLine('  exit                           quit refactron', theme.colors.text);
     onLine('', undefined);
     return {};
+  }
+
+  // ── issues — open interactive browser ───────────────────────────────────
+
+  if (command === 'issues') {
+    const active = ctx.sessions.getActive();
+    if (!active) {
+      onLine('', undefined);
+      onLine(`  ${theme.symbols.fail}  No active session. Run: analyze <target> first.`, theme.colors.error);
+      onLine('', undefined);
+      return {};
+    }
+    return { openBrowser: true };
   }
 
   // ── analyze — creates a new session ─────────────────────────────────────
