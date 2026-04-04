@@ -26,7 +26,6 @@ export function REPL({ ctx, version, email, plan }: REPLProps): React.ReactEleme
   const [lines, setLines] = useState<MessageLine[]>(() =>
     createWelcomeBanner(version, email, plan, ctx.adapter.displayName),
   );
-  const [input, setInput] = useState('');
   const [isRunning, setIsRunning] = useState(false);
   const [runningCmd, setRunningCmd] = useState('');
   const [lastProgressTime, setLastProgressTime] = useState<number>(Date.now());
@@ -166,12 +165,7 @@ export function REPL({ ctx, version, email, plan }: REPLProps): React.ReactEleme
         />
       ) : (
         <PromptInput
-          value={input}
-          onChange={setInput}
-          onSubmit={(v) => {
-            setInput('');
-            void handleSubmit(v);
-          }}
+          onSubmit={(v) => void handleSubmit(v)}
           isActive={!isRunning}
           history={history}
         />

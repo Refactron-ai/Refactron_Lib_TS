@@ -1,78 +1,67 @@
 // src/cli/components/SpinnerWithVerb.tsx
-// Two-layer architecture matching Claude Code:
-//   SpinnerWithVerb — outer, reads state, renders SpinnerAnimationRow
-//   SpinnerAnimationRow — inner, OWNS 50ms interval, shimmer sweep, stalled ramp
-//   Shimmer: glimmerIndex sweeps L→R across verb chars, only 3 chars near sweep re-render
-//   Stalled: no progress for >3s ramps spinner color toward red
-import React, { useState, useEffect } from 'react';
+// Spinner with shimmer sweep across verb text.
+// Architecture: SpinnerAnimationRow owns one 80ms interval (was 50ms — reduced
+// to cut render rate). Shimmer is computed per-render from a single index
+// and rendered as React.Fragment of Text nodes — no extra component per char.
+// SpinnerWithVerb outer component owns stall detection (500ms interval,
+// only while active).
+import React, { useState, useEffect, memo } from 'react';
 import { Box, Text } from 'ink';
 import { theme } from '../../ui/theme.js';
 
 const SPINNER_FRAMES = theme.symbols.spinner;
-const SHIMMER_COLORS = [
-  '#4a9eff', // base accent
-  '#7ab8ff',
-  '#aad3ff',
-  '#ffffff', // peak
-  '#aad3ff',
-  '#7ab8ff',
-  '#4a9eff',
-];
-// Color lerp from accent (#4a9eff) toward red (#ff4444) in steps
-const STALL_RAMP_COLORS = ['#4a9eff', '#7a8eff', '#aa6eff', '#cc5599', '#ee4466', '#ff4444'];
 
-interface ShimmerCharProps {
-  char: string;
-  glimmerIndex: number;
-  charIndex: number;
-}
-
-function ShimmerChar({ char, glimmerIndex, charIndex }: ShimmerCharProps): React.ReactElement {
-  const dist = Math.abs(charIndex - glimmerIndex);
-  const colorIdx = Math.min(dist, Math.floor(SHIMMER_COLORS.length / 2));
-  // Center of sweep = brightest
-  const color =
-    SHIMMER_COLORS[Math.floor(SHIMMER_COLORS.length / 2) - colorIdx] ?? SHIMMER_COLORS[0]!;
-  return <Text color={color}>{char}</Text>;
-}
+// Color ramp accent → white → accent for shimmer center
+const SHIMMER_COLORS = ['#4a9eff', '#7ab8ff', '#aad3ff', '#ffffff', '#aad3ff', '#7ab8ff', '#4a9eff'];
+// Color ramp accent → red for stall
+const STALL_RAMP = ['#4a9eff', '#7a8eff', '#aa6eff', '#cc5599', '#ee4466', '#ff4444'];
 
 interface SpinnerAnimationRowProps {
   verb: string;
-  stallMs: number; // milliseconds since last "progress" signal
+  stallMs: number;
 }
 
-function SpinnerAnimationRow({ verb, stallMs }: SpinnerAnimationRowProps): React.ReactElement {
-  const [frame, setFrame] = useState(0);
-  const [glimmerIndex, setGlimmerIndex] = useState(-3);
+const SpinnerAnimationRow = memo(function SpinnerAnimationRow({
+  verb,
+  stallMs,
+}: SpinnerAnimationRowProps): React.ReactElement {
+  const [tick, setTick] = useState(0);
 
   useEffect(() => {
-    const t = setInterval(() => {
-      setFrame((f) => (f + 1) % SPINNER_FRAMES.length);
-      setGlimmerIndex((g) => (g + 1) % (verb.length + 6)); // sweep past verb + padding
-    }, 50);
+    const t = setInterval(() => setTick((n) => n + 1), 80);
     return () => clearInterval(t);
-  }, [verb.length]);
+  }, []);
 
-  // Stall color ramp
-  const stallStep = Math.min(Math.floor(stallMs / 1000), STALL_RAMP_COLORS.length - 1);
-  const spinnerColor = STALL_RAMP_COLORS[stallStep] ?? theme.colors.accent;
-  const spinnerChar = SPINNER_FRAMES[frame % SPINNER_FRAMES.length] ?? '⠋';
+  const frame = tick % SPINNER_FRAMES.length;
+  const glimmer = tick % (verb.length + 6);
+
+  const stallStep = Math.min(Math.floor(stallMs / 1000), STALL_RAMP.length - 1);
+  const spinnerColor = STALL_RAMP[stallStep] ?? theme.colors.accent;
+  const spinnerChar = SPINNER_FRAMES[frame] ?? '⠋';
+
+  const half = Math.floor(SHIMMER_COLORS.length / 2);
 
   return (
     <Box>
       <Text color={spinnerColor}>{spinnerChar} </Text>
-      {verb.split('').map((char, i) => (
-        <ShimmerChar key={i} char={char} glimmerIndex={glimmerIndex} charIndex={i} />
-      ))}
+      {verb.split('').map((char, i) => {
+        const dist = Math.min(Math.abs(i - glimmer), half);
+        const color = SHIMMER_COLORS[half - dist] ?? SHIMMER_COLORS[0]!;
+        return (
+          <Text key={i} color={color}>
+            {char}
+          </Text>
+        );
+      })}
       <Text color={theme.colors.textDim}>{'…'}</Text>
     </Box>
   );
-}
+});
 
 interface SpinnerWithVerbProps {
   verb: string;
   isActive: boolean;
-  lastProgressTime?: number; // Date.now() of last output line
+  lastProgressTime?: number;
 }
 
 export function SpinnerWithVerb({
@@ -80,7 +69,7 @@ export function SpinnerWithVerb({
   isActive,
   lastProgressTime,
 }: SpinnerWithVerbProps): React.ReactElement | null {
-  const [now, setNow] = useState(Date.now);
+  const [now, setNow] = useState(() => Date.now());
 
   useEffect(() => {
     if (!isActive) return;

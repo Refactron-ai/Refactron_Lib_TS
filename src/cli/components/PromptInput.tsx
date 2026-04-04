@@ -1,9 +1,6 @@
 // src/cli/components/PromptInput.tsx
-// Enhanced prompt input with:
-//   - History navigation (up/down arrow keys)
-//   - Typeahead ghost text from command completions
-//   - Cursor block (█) at insert position
-//   - Slash command hint on empty input
+// Self-contained prompt — manages its own value state.
+// Only calls onSubmit when Enter is pressed — no per-keystroke parent re-renders.
 import React, { useState } from 'react';
 import { Box, Text, useInput } from 'ink';
 import { theme } from '../../ui/theme.js';
@@ -21,20 +18,13 @@ const KNOWN_COMMANDS = [
 ];
 
 interface PromptInputProps {
-  value: string;
-  onChange: (v: string) => void;
   onSubmit: (v: string) => void;
   isActive: boolean;
   history: string[];
 }
 
-export function PromptInput({
-  value,
-  onChange,
-  onSubmit,
-  isActive,
-  history,
-}: PromptInputProps): React.ReactElement {
+export function PromptInput({ onSubmit, isActive, history }: PromptInputProps): React.ReactElement {
+  const [value, setValue] = useState('');
   const [historyIdx, setHistoryIdx] = useState(-1);
   const [savedDraft, setSavedDraft] = useState('');
 
@@ -49,14 +39,16 @@ export function PromptInput({
       if (!isActive) return;
 
       if (key.return) {
+        const submitted = value;
+        setValue('');
         setHistoryIdx(-1);
         setSavedDraft('');
-        onSubmit(value);
+        onSubmit(submitted);
         return;
       }
 
       if (key.backspace || key.delete) {
-        onChange(value.slice(0, -1));
+        setValue((v) => v.slice(0, -1));
         setHistoryIdx(-1);
         return;
       }
@@ -67,25 +59,25 @@ export function PromptInput({
         if (historyIdx === -1) setSavedDraft(value);
         const newIdx = Math.min(historyIdx + 1, history.length - 1);
         setHistoryIdx(newIdx);
-        onChange(history[history.length - 1 - newIdx] ?? '');
+        setValue(history[history.length - 1 - newIdx] ?? '');
         return;
       }
 
       if (key.downArrow) {
         if (historyIdx <= 0) {
           setHistoryIdx(-1);
-          onChange(savedDraft);
+          setValue(savedDraft);
           return;
         }
         const newIdx = historyIdx - 1;
         setHistoryIdx(newIdx);
-        onChange(history[history.length - 1 - newIdx] ?? '');
+        setValue(history[history.length - 1 - newIdx] ?? '');
         return;
       }
 
       // Tab completion — accept ghost
       if (key.tab && ghost) {
-        onChange(ghost);
+        setValue(ghost);
         return;
       }
 
@@ -93,7 +85,7 @@ export function PromptInput({
       if (key.leftArrow || key.rightArrow) return;
 
       if (inputChar && inputChar.length > 0) {
-        onChange(value + inputChar);
+        setValue((v) => v + inputChar);
         setHistoryIdx(-1);
       }
     },
@@ -106,9 +98,7 @@ export function PromptInput({
         {'❯ '}
       </Text>
       <Text color={theme.colors.text}>{value}</Text>
-      {/* Ghost typeahead */}
       {ghost && <Text color={theme.colors.border}>{ghost.slice(value.length)}</Text>}
-      {/* Block cursor */}
       <Text color={theme.colors.accent}>{'█'}</Text>
     </Box>
   );
