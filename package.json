@@ -1,13 +1,29 @@
 {
   "name": "refactron",
-  "version": "0.1.0-beta.1",
+  "version": "0.1.0-beta.2",
   "description": "Safety-first refactoring — finds, fixes, and verifies changes are safe before touching the filesystem",
-  "bin": { "refactron": "./dist/cli/index.js" },
+  "bin": {
+    "refactron": "./dist/cli/index.js"
+  },
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "type": "module",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Refactron-ai/Refactron_Lib_TS.git"
+  },
+  "homepage": "https://github.com/Refactron-ai/Refactron_Lib_TS#readme",
+  "bugs": {
+    "url": "https://github.com/Refactron-ai/Refactron_Lib_TS/issues"
+  },
   "scripts": {
-    "build": "tsc --project tsconfig.build.json",
+    "build": "tsc --project tsconfig.build.json && chmod +x dist/cli/index.js",
     "build:watch": "tsc --project tsconfig.build.json --watch",
     "typecheck": "tsc --noEmit",
     "lint": "eslint src/ tests/ --ext .ts,.tsx --max-warnings 0",
@@ -18,11 +34,30 @@
     "test:coverage": "vitest run --coverage",
     "test:verification": "vitest run tests/verification/",
     "clean": "rimraf dist",
-    "prepublishOnly": "npm run clean && npm run build && npm run typecheck && npm test"
+    "prepublishOnly": "npm run clean && npm run build && npm run typecheck && npm run lint && npm test"
   },
-  "keywords": ["refactoring","python","typescript","code-quality","ast","cli","safety","verification","blast-radius"],
-  "engines": { "node": ">=18.0.0" },
-  "files": ["dist/","README.md","LICENSE"],
+  "keywords": [
+    "refactoring",
+    "python",
+    "typescript",
+    "code-quality",
+    "ast",
+    "cli",
+    "safety",
+    "verification",
+    "blast-radius",
+    "autofix",
+    "static-analysis"
+  ],
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "files": [
+    "dist/",
+    "README.md",
+    "LICENSE",
+    "CHANGELOG.md"
+  ],
   "dependencies": {
     "ink": "^5.0.0",
     "react": "^18.0.0",
