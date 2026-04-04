@@ -24,9 +24,6 @@ interface REPLProps {
   plan?: string | null | undefined;
 }
 
-// Stable single-item array — Static never re-renders it
-const SPLASH_ITEMS = [{ id: 'splash' }];
-
 // YRC BLACK_CIRCLE: ⏺ on macOS (U+23FA), ● elsewhere (U+25CF)
 const OUTPUT_CIRCLE = process.platform === 'darwin' ? '\u23FA' : '\u25CF';
 
@@ -159,20 +156,7 @@ export function REPL({ ctx, version, email, plan }: REPLProps): React.ReactEleme
 
   return (
     <Box flexDirection="column">
-      {/* SessionHeader: Static single item — printed once at top, scrolls up */}
-      <Static items={SPLASH_ITEMS}>
-        {() => (
-          <SessionHeader
-            key="splash"
-            version={version}
-            adapterName={ctx.adapter.displayName}
-            email={email}
-            plan={plan}
-          />
-        )}
-      </Static>
-
-      {/* Session output */}
+      {/* ── Output history (append-only, scrolls above the live area) ─────── */}
       <Static items={lines}>
         {(line) =>
           line.color !== undefined ? (
@@ -183,7 +167,19 @@ export function REPL({ ctx, version, email, plan }: REPLProps): React.ReactEleme
         }
       </Static>
 
-      {/* Empty state — live, disappears after first command */}
+      {/* ── Live viewport ─────────────────────────────────────────────────── */}
+
+      {/* SessionHeader: always visible in the live area (YRC CondensedLogo pattern).
+          NOT in Static — Static items render above Ink's managed viewport in alternate
+          screen mode and scroll out of view. The header lives here so it stays anchored. */}
+      <SessionHeader
+        version={version}
+        adapterName={ctx.adapter.displayName}
+        email={email}
+        plan={plan}
+      />
+
+      {/* Empty state — disappears after first command */}
       {lines.length === 0 && !isRunning && (
         <Box paddingLeft={2} paddingBottom={1} flexDirection="column">
           <Box gap={1}>
@@ -197,8 +193,7 @@ export function REPL({ ctx, version, email, plan }: REPLProps): React.ReactEleme
         </Box>
       )}
 
-      {/* Dynamic bottom: spinner while running, prompt when idle */}
-      {/* Input / spinner area — PromptInput owns the top border; spinner mirrors it */}
+      {/* Spinner while running, prompt when idle — both show the top border */}
       {isRunning ? (
         <SpinnerWithVerb
           verb={runningCmd.split(' ')[0] ?? 'working'}
