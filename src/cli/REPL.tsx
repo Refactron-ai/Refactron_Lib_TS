@@ -9,7 +9,7 @@ import React, { useState, useCallback, useRef } from 'react';
 import { Box, Static, Text, useApp, useInput } from 'ink';
 import { theme } from '../ui/theme.js';
 import { parseInput, executeCommand, type CommandContext, type CommandResult } from './runner.js';
-import { WelcomeSplash } from './components/WelcomeSplash.js';
+import { SessionHeader } from './components/SessionHeader.js';
 import { SpinnerWithVerb } from './components/SpinnerWithVerb.js';
 import { StatusLine } from './components/StatusLine.js';
 import { PromptInput } from './components/PromptInput.js';
@@ -158,7 +158,7 @@ export function REPL({ ctx, version, email, plan }: REPLProps): React.ReactEleme
       {/* WelcomeSplash: Static single item — printed once at top */}
       <Static items={SPLASH_ITEMS}>
         {() => (
-          <WelcomeSplash
+          <SessionHeader
             key="splash"
             version={version}
             adapterName={ctx.adapter.displayName}

@@ -29,7 +29,8 @@ export const theme = {
     userMessageBg:  '#1e2430', // user-turn block background
 
     // ── Mascot ───────────────────────────────────────────────────────────
-    mascot: '#4a9eff', // body foreground (no backgroundColor — avoids glitch)
+    mascot:     '#4a9eff', // body foreground (no backgroundColor — avoids glitch)
+    clawd_body: '#4a9eff', // YRC parity: color="clawd_body" on Clawd segments
 
     // ── Semantic states ───────────────────────────────────────────────────
     success:  '#3fb950',

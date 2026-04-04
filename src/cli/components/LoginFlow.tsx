@@ -32,16 +32,15 @@ interface LoginFlowProps {
   adapterName?: string;
 }
 
-const SPIN = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
-
 function useSpinner(active: boolean): string {
+  const frames = theme.symbols.spinner; // ['·','✢','✳','✶','✻','✽', ...reverse]
   const [frame, setFrame] = useState(0);
   useEffect(() => {
     if (!active) return;
-    const t = setInterval(() => setFrame((f) => (f + 1) % SPIN.length), 80);
+    const t = setInterval(() => setFrame((f) => (f + 1) % frames.length), 80);
     return () => clearInterval(t);
-  }, [active]);
-  return SPIN[frame] ?? '⠋';
+  }, [active, frames.length]);
+  return frames[frame] ?? '·';
 }
 
 export function LoginFlow({
@@ -198,8 +197,8 @@ export function LoginFlow({
 
   return (
     <Box flexDirection="column">
-      {/* WelcomeSplash replaces the plain Banner — full-box style on login screen */}
-      <WelcomeSplash version={version} adapterName={adapterName} />
+      {/* WelcomeSplash: open WelcomeV2-style layout (no box borders) */}
+      <WelcomeSplash version={version} />
 
       <Box flexDirection="column" paddingLeft={2} gap={1}>
 

@@ -23,7 +23,7 @@ const SHIMMER_COLORS = [
 ];
 
 // Error red for stall ramp (matches YRC's ERROR_RED)
-const ERROR_RED = { r: 248, g: 81, b: 73 }; // theme.colors.error
+const ERROR_RED = { r: 171, g: 43, b: 63 }; // YRC SpinnerGlyph.tsx exact value
 const BRAND_RGB = { r: 74, g: 158, b: 255 };
 
 function lerpColor(
