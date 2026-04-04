@@ -88,6 +88,7 @@ function enterAltScreen(): void {
   process.stdout.write('\x1b[?1003l'); // disable all mouse motion tracking
   process.stdout.write('\x1b[?1006l'); // disable SGR extended mouse mode
   process.stdout.write('\x1b[?1015l'); // disable URXVT extended mouse mode
+  process.stdout.write('\x1b[?1007l'); // disable alternate scroll mode (wheel → arrows)
 }
 
 /** Leave alternate screen, restore cursor, re-enable mouse. Safe to call multiple times. */

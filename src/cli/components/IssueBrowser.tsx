@@ -99,8 +99,9 @@ export function IssueBrowser({
     setStatus({ text, color, id: ++statusSeq });
   }, []);
 
-  // ── Rotating hints — rebuild when state changes, cycle every 3.5s ─────
-  const hints = useMemo(() => {
+  // ── Footer line: cycles between keybindings and one contextual tip ────
+  // Keybindings row is always index 0; contextual tips rotate through after.
+  const footerLines = useMemo<string[]>(() => {
     const hasAnyFixed = fixedIds.size > 0;
     const fixedNotVerified = [...fixedIds].some((id) => {
       const issue = issues.find((i) => i.id === id);
@@ -110,47 +111,23 @@ export function IssueBrowser({
     const allVerifiedSafe = hasAnyFixed && !fixedNotVerified && !hasBlocked;
     const unfixedCount = issues.filter((i) => i.fixable && !fixedIds.has(i.id)).length;
 
-    const list: Array<{ text: string; color?: string; highlight?: string }> = [];
+    const tips: string[] = [];
+    if (allVerifiedSafe)      tips.push('✔ All verified safe — q to exit');
+    else if (hasBlocked)      tips.push('✘ Blocked — q to exit · then run rollback');
+    else if (fixedNotVerified) tips.push('Fixed · select a ✔ issue and press v to verify');
+    else if (unfixedCount > 0) tips.push(`${unfixedCount} fixable · a fix one · A fix all · d preview`);
 
-    if (allVerifiedSafe) {
-      list.push({ text: '✔ All fixed issues verified safe — press ', highlight: 'q', color: theme.colors.success });
-      list.push({ text: 'Changes are written to disk. Press ', highlight: 'q to exit', color: theme.colors.success });
-    } else if (hasBlocked) {
-      list.push({ text: '✘ Blocked issues found — press ', highlight: 'q', color: theme.colors.error });
-      list.push({ text: 'Run ', highlight: 'rollback', color: theme.colors.error });
-      list.push({ text: 'To undo all applied fixes, quit and run rollback', color: theme.colors.error });
-    } else if (fixedNotVerified) {
-      list.push({ text: 'Fixed but not verified — navigate to a ✔ issue and press ', highlight: 'v' });
-      list.push({ text: 'Verification checks blast radius before marking safe', });
-      list.push({ text: 'After verifying, press ', highlight: 'q to exit' });
-    } else if (unfixedCount > 0) {
-      list.push({ text: 'Press ', highlight: 'a', });
-      list.push({ text: 'Press ', highlight: 'd', });
-      list.push({ text: 'Press ', highlight: 'A to fix all ' + String(unfixedCount) + ' fixable issues at once' });
-      list.push({ text: '/ to filter by filename, message, or severity' });
-      list.push({ text: 'j / k or ↑ / ↓ to navigate · g / G to jump first/last' });
-    }
-
-    // Always include navigation reminder when list is getting long
-    if (list.length === 0) {
-      list.push({ text: 'No fixable issues — press ', highlight: 'q to exit' });
-    }
-
-    return list;
+    return tips; // empty = only show keybindings row
   }, [fixedIds, verifiedFiles, issues]);
 
-  // Advance hint index on interval, reset when hints change
+  // Cycle through tips; index 0 = keybindings, 1+ = tip[i-1]
+  const totalFrames = footerLines.length + 1; // +1 for keybindings frame
+  useEffect(() => { setHintIdx(0); }, [footerLines]);
   useEffect(() => {
-    setHintIdx(0);
-  }, [hints]);
-
-  useEffect(() => {
-    if (hints.length <= 1) return;
-    const t = setInterval(() => setHintIdx((i) => (i + 1) % hints.length), 3500);
+    if (totalFrames <= 1) return;
+    const t = setInterval(() => setHintIdx((i) => (i + 1) % totalFrames), 3500);
     return () => clearInterval(t);
-  }, [hints.length]);
-
-  const currentHint = hints[hintIdx % hints.length];
+  }, [totalFrames]);
 
   // ── Filtered list ──────────────────────────────────────────────────────
   const filtered = useMemo(() => {
@@ -571,36 +548,33 @@ export function IssueBrowser({
 
       <Text color={theme.colors.border}>{border}</Text>
 
-      {/* ── Rotating next-step hint ────────────────────────────────────── */}
-      {!isWorking && !filterMode && currentHint && (
-        <Box paddingLeft={2}>
-          <Text dimColor>{'  → '}</Text>
-          <Text color={currentHint.color ?? theme.colors.textDim}>{currentHint.text}</Text>
-          {currentHint.highlight && (
-            <Text color={theme.colors.brand}>{currentHint.highlight}</Text>
-          )}
-          {hints.length > 1 && (
-            <Text dimColor>{'  '}{hintIdx + 1}{'/'}{hints.length}</Text>
-          )}
-        </Box>
-      )}
-
-      {/* ── Footer ────────────────────────────────────────────────────── */}
-      <Box paddingLeft={1}>
+      {/* ── Footer — single line, cycles between keybindings and a tip ── */}
+      <Box paddingLeft={2}>
         {isWorking ? (
-          <Text color={theme.colors.warning}>{workingLabel}… please wait</Text>
+          <Text color={theme.colors.warning}>{workingLabel}…</Text>
         ) : filterMode ? (
-          <Text dimColor>{'Type to filter · Enter/Esc to confirm'}</Text>
-        ) : (
+          <Text dimColor>{'type to filter  ·  Enter/Esc confirm'}</Text>
+        ) : hintIdx === 0 || footerLines.length === 0 ? (
           <Text dimColor>
-            {'↑↓ nav · '}
+            {'↑↓ · '}
             <Text color={theme.colors.brand}>{'a'}</Text>{' fix · '}
-            <Text color={theme.colors.brand}>{'A'}</Text>{' fix all · '}
-            <Text color={theme.colors.brand}>{'d'}</Text>{' dry-run · '}
+            <Text color={theme.colors.brand}>{'A'}</Text>{' all · '}
+            <Text color={theme.colors.brand}>{'d'}</Text>{' diff · '}
             <Text color={theme.colors.brand}>{'v'}</Text>{' verify · '}
             <Text color={theme.colors.brand}>{'/'}</Text>{' filter · '}
             <Text color={theme.colors.brand}>{'q'}</Text>{' quit'}
           </Text>
+        ) : (
+          (() => {
+            const tip = footerLines[(hintIdx - 1) % footerLines.length]!;
+            const isGood = tip.startsWith('✔');
+            const isBad  = tip.startsWith('✘');
+            return (
+              <Text color={isGood ? theme.colors.success : isBad ? theme.colors.error : theme.colors.brand}>
+                {tip}
+              </Text>
+            );
+          })()
         )}
       </Box>
     </Box>
