@@ -8,8 +8,6 @@ import { atomicWrite } from '../verification/atomic-writer.js';
 import type {
   WorkSession,
   WorkSessionAnalysis,
-  WorkSessionFix,
-  WorkSessionVerify,
 } from './types.js';
 
 export class WorkSessionManager {

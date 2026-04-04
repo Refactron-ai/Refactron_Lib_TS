@@ -85,8 +85,6 @@ export function IssueBrowser({
   const [diffLines, setDiffLines] = useState<string[] | null>(null);
   const [isWorking, setIsWorking] = useState(false);
   const [workingLabel, setWorkingLabel] = useState('');
-  const [hintIdx, setHintIdx] = useState(0);
-
   // ── Auto-dismiss status after 3s ──────────────────────────────────────
   useEffect(() => {
     if (!status) return;
@@ -98,59 +96,6 @@ export function IssueBrowser({
   const pushStatus = useCallback((text: string, color: string = theme.colors.textDim) => {
     setStatus({ text, color, id: ++statusSeq });
   }, []);
-
-  // ── Rotating hints — rebuild when state changes, cycle every 3.5s ─────
-  const hints = useMemo(() => {
-    const hasAnyFixed = fixedIds.size > 0;
-    const fixedNotVerified = [...fixedIds].some((id) => {
-      const issue = issues.find((i) => i.id === id);
-      return issue && !verifiedFiles.has(issue.file);
-    });
-    const hasBlocked = [...verifiedFiles.values()].some((v) => !v);
-    const allVerifiedSafe = hasAnyFixed && !fixedNotVerified && !hasBlocked;
-    const unfixedCount = issues.filter((i) => i.fixable && !fixedIds.has(i.id)).length;
-
-    const list: Array<{ text: string; color?: string; highlight?: string }> = [];
-
-    if (allVerifiedSafe) {
-      list.push({ text: '✔ All fixed issues verified safe — press ', highlight: 'q', color: theme.colors.success });
-      list.push({ text: 'Changes are written to disk. Press ', highlight: 'q to exit', color: theme.colors.success });
-    } else if (hasBlocked) {
-      list.push({ text: '✘ Blocked issues found — press ', highlight: 'q', color: theme.colors.error });
-      list.push({ text: 'Run ', highlight: 'rollback', color: theme.colors.error });
-      list.push({ text: 'To undo all applied fixes, quit and run rollback', color: theme.colors.error });
-    } else if (fixedNotVerified) {
-      list.push({ text: 'Fixed but not verified — navigate to a ✔ issue and press ', highlight: 'v' });
-      list.push({ text: 'Verification checks blast radius before marking safe', });
-      list.push({ text: 'After verifying, press ', highlight: 'q to exit' });
-    } else if (unfixedCount > 0) {
-      list.push({ text: 'Press ', highlight: 'a', });
-      list.push({ text: 'Press ', highlight: 'd', });
-      list.push({ text: 'Press ', highlight: 'A to fix all ' + String(unfixedCount) + ' fixable issues at once' });
-      list.push({ text: '/ to filter by filename, message, or severity' });
-      list.push({ text: 'j / k or ↑ / ↓ to navigate · g / G to jump first/last' });
-    }
-
-    // Always include navigation reminder when list is getting long
-    if (list.length === 0) {
-      list.push({ text: 'No fixable issues — press ', highlight: 'q to exit' });
-    }
-
-    return list;
-  }, [fixedIds, verifiedFiles, issues]);
-
-  // Advance hint index on interval, reset when hints change
-  useEffect(() => {
-    setHintIdx(0);
-  }, [hints]);
-
-  useEffect(() => {
-    if (hints.length <= 1) return;
-    const t = setInterval(() => setHintIdx((i) => (i + 1) % hints.length), 3500);
-    return () => clearInterval(t);
-  }, [hints.length]);
-
-  const currentHint = hints[hintIdx % hints.length];
 
   // ── Filtered list ──────────────────────────────────────────────────────
   const filtered = useMemo(() => {

@@ -2,7 +2,7 @@
 // WorkSession — full context for one analyze→autofix→verify lifecycle.
 // Persisted to .refactron/work-sessions/{id}.json so sessions survive
 // across REPL restarts and can be listed / resumed.
-import type { CodeIssue, Severity, FixQueueItem, VerificationResult } from '../core/models.js';
+import type { CodeIssue, Severity, FixQueueItem } from '../core/models.js';
 
 export type WorkSessionPhase =
   | 'analyzed'  // analyze complete, issues available

@@ -45,9 +45,6 @@ export function REPL({ ctx, version, email, plan }: REPLProps): React.ReactEleme
   const [lastProgressTime, setLastProgressTime] = useState<number>(Date.now());
   const [history, setHistory] = useState<string[]>([]);
 
-  const [issueCount] = useState<number | undefined>(undefined);
-  const [criticalCount] = useState<number | undefined>(undefined);
-  const [sessionState] = useState<string | undefined>(undefined);
   const [browserActive, setBrowserActive] = useState(false);
 
   const lineIdRef = useRef(0);

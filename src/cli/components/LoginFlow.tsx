@@ -10,7 +10,6 @@ import { theme } from '../../ui/theme.js';
 import {
   runLoginFlow,
   validateApiKey,
-  needsApiKey,
   saveCredentials,
 } from '../../auth/index.js';
 import type { RefactronCredentials } from '../../auth/index.js';
@@ -47,7 +46,7 @@ export function LoginFlow({
   onAuthenticated,
   onExit,
   version,
-  adapterName = 'auto',
+  adapterName: _adapterName = 'auto',
 }: LoginFlowProps): React.ReactElement {
   const { exit } = useApp();
   const [state, setState] = useState<LoginState>('prompt');
