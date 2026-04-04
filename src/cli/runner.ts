@@ -1,10 +1,11 @@
 // src/cli/runner.ts
 // Command execution engine — runs a parsed command, streams output lines via onLine()
 import path from 'path';
+import fs from 'fs/promises';
 import type { ILanguageAdapter } from '../adapters/interface.js';
 import type { RefactronConfig } from '../core/config.js';
 import type { AnalysisResult, PipelineSession, Severity } from '../core/models.js';
-import { AnalysisEngine } from '../analysis/engine.js';
+import { VerificationEngine } from '../verification/engine.js';
 import { Orchestrator } from '../core/orchestrator.js';
 import { SessionStore } from '../pipeline/store.js';
 import { theme } from '../ui/theme.js';
@@ -33,6 +34,8 @@ export interface CommandContext {
   adapter: ILanguageAdapter;
   config: RefactronConfig;
   projectRoot: string;
+  // Persists across REPL commands — set by analyze, reused by autofix/verify
+  lastAnalysis?: AnalysisResult;
 }
 
 export interface ParsedCommand {
@@ -257,20 +260,35 @@ export async function executeCommand(
   }
 
   if (command === 'analyze') {
-    onLine(`  Scanning ${absTarget} ...`, theme.colors.textDim);
-    const engine = new AnalysisEngine(ctx.adapter, ctx.config);
-    const result = await engine.analyze(absTarget);
+    onLine(`  Scanning ${absTarget} …`, theme.colors.textDim);
+    const orchestrator = new Orchestrator(ctx.adapter, ctx.config, ctx.projectRoot);
+    const { analysis } = await orchestrator.analyze(absTarget);
     if (signal.aborted) return {};
-    formatAnalysis(result, onLine);
+    ctx.lastAnalysis = analysis; // persist for autofix / verify
+    formatAnalysis(analysis, onLine);
+    onLine(`  ${theme.symbols.pass}  Analysis saved — run autofix or verify to continue.`, theme.colors.textDim);
     return {};
   }
 
   if (command === 'autofix') {
     const dryRun = flags['dry-run'] === true;
     const verify = flags['verify'] === true;
-    onLine(`  ${dryRun ? 'Previewing' : 'Fixing'} ${absTarget} ...`, theme.colors.textDim);
     const orchestrator = new Orchestrator(ctx.adapter, ctx.config, ctx.projectRoot);
-    const session = await orchestrator.autofix(absTarget, { dryRun, verify });
+
+    let session: PipelineSession;
+    if (ctx.lastAnalysis && ctx.lastAnalysis.target === absTarget) {
+      // Reuse prior analysis — skip re-scan
+      const fixable = ctx.lastAnalysis.issues.filter((i) => i.fixable).length;
+      onLine(`  ${dryRun ? 'Previewing' : 'Fixing'} ${fixable} fixable issue(s) from last analysis …`, theme.colors.textDim);
+      session = await orchestrator.autofixFromAnalysis(ctx.lastAnalysis, { dryRun, verify });
+    } else {
+      // Fresh analysis + fix
+      onLine(`  Analyzing ${absTarget} …`, theme.colors.textDim);
+      const result = await orchestrator.autofix(absTarget, { dryRun, verify });
+      ctx.lastAnalysis = result.analysis; // update cache
+      session = result.session;
+    }
+
     if (signal.aborted) return {};
     formatSession(session, onLine);
     return {};
@@ -287,6 +305,64 @@ export async function executeCommand(
     onLine(`  Target   ${session.target}`, theme.colors.textDim);
     onLine(`  Issues   ${session.totalIssues}  |  Files ${session.totalFiles}`, theme.colors.text);
     formatSession(session, onLine);
+    return {};
+  }
+
+  if (command === 'verify') {
+    if (!ctx.lastAnalysis) {
+      onLine('', undefined);
+      onLine(`  ${theme.symbols.fail}  No analysis in session. Run: analyze <target> first.`, theme.colors.error);
+      onLine('', undefined);
+      return {};
+    }
+
+    // Filter to specific file if provided, else all analyzed files
+    const specificFile = target !== '.' ? absTarget : null;
+    const issues = specificFile
+      ? ctx.lastAnalysis.issues.filter((i) => i.file === specificFile)
+      : ctx.lastAnalysis.issues;
+
+    const fixableFiles = [...new Set(issues.filter((i) => i.fixable).map((i) => i.file))];
+
+    if (fixableFiles.length === 0) {
+      onLine('  No fixable issues to verify in last analysis.', theme.colors.textDim);
+      return {};
+    }
+
+    const verEngine = new VerificationEngine(ctx.adapter);
+    onLine('', undefined);
+    onLine(`  Verifying ${fixableFiles.length} file(s) from last analysis …`, theme.colors.textDim);
+    onLine('', undefined);
+
+    let passed = 0;
+    let blocked = 0;
+    for (const file of fixableFiles) {
+      if (signal.aborted) return {};
+      const fileIssues = issues.filter((i) => i.file === file && i.fixable);
+      // Use highest blast radius among the file's issues
+      const maxBlast = fileIssues.reduce(
+        (max, i) => (i.blastRadius.score > max.score ? i.blastRadius : max),
+        fileIssues[0]!.blastRadius,
+      );
+      const currentCode = await fs.readFile(file, 'utf-8');
+      const result = await verEngine.verify(file, currentCode, maxBlast);
+      const rel = path.relative(ctx.projectRoot, file);
+      const confidence = `${Math.round(result.confidenceScore * 100)}%`;
+      if (result.safeToApply) {
+        onLine(`  ${theme.symbols.pass}  ${rel}  (confidence: ${confidence})`, theme.colors.success);
+        passed++;
+      } else {
+        onLine(`  ${theme.symbols.fail}  ${rel}  — ${result.blockingReason ?? 'blocked'}  (confidence: ${confidence})`, theme.colors.error);
+        blocked++;
+      }
+    }
+
+    onLine('', undefined);
+    onLine(
+      `  ${passed} passed  ${blocked} blocked  —  ${fixableFiles.length} file(s) checked`,
+      blocked > 0 ? theme.colors.error : theme.colors.success,
+    );
+    onLine('', undefined);
     return {};
   }
 

@@ -56,19 +56,38 @@ export class Orchestrator {
   async autofix(
     target: string,
     options: { dryRun?: boolean; verify?: boolean } = {},
+  ): Promise<{ session: PipelineSession; analysis: AnalysisResult }> {
+    const { analysis } = await this.analyze(target);
+    const session = await this._runFixes(analysis, options);
+    return { session, analysis };
+  }
+
+  // Skip re-analysis — use a previously computed AnalysisResult directly.
+  async autofixFromAnalysis(
+    analysis: AnalysisResult,
+    options: { dryRun?: boolean; verify?: boolean } = {},
   ): Promise<PipelineSession> {
-    const { session: initSession, analysis } = await this.analyze(target);
-    let session = this.sessionManager.transition(initSession, 'FIXING');
+    return this._runFixes(analysis, options);
+  }
+
+  private async _runFixes(
+    analysis: AnalysisResult,
+    options: { dryRun?: boolean; verify?: boolean } = {},
+  ): Promise<PipelineSession> {
+    const bySeverity: Record<Severity, number> = { critical: 0, high: 0, medium: 0, low: 0 };
+    for (const issue of analysis.issues) bySeverity[issue.severity]++;
+
+    let session = this.sessionManager.createSession(analysis.target, analysis.filesAnalyzed);
+    session = this.sessionManager.recordIssues(session, analysis.issues.length, bySeverity);
+    session = this.sessionManager.transition(session, 'FIXING');
     const queue = new FixQueue();
 
-    // Enqueue fixable issues
     for (const issue of analysis.issues) {
       if (this.autofixEngine.canFix(issue)) {
         queue.enqueue(issue, issue.fixerName ?? '');
       }
     }
 
-    // Process queue
     for (const queueItem of queue.getPending()) {
       const issue = analysis.issues.find((i) => i.id === queueItem.issueId);
       if (!issue) continue;
