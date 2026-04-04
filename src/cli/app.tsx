@@ -10,6 +10,7 @@ import { loadConfig, type RefactronConfig } from '../core/config.js';
 import { loadCredentials, isAuthenticated, needsApiKey } from '../auth/index.js';
 import type { RefactronCredentials } from '../auth/index.js';
 import type { ILanguageAdapter } from '../adapters/interface.js';
+import { WorkSessionManager } from '../session/manager.js';
 import { glob } from 'glob';
 import { createRequire } from 'module';
 
@@ -39,6 +40,7 @@ interface AppRootProps {
   version: string;
   projectRoot: string;
   initialCreds: RefactronCredentials | null;
+  sessions: WorkSessionManager;
 }
 
 function AppRoot({
@@ -47,11 +49,10 @@ function AppRoot({
   version,
   projectRoot,
   initialCreds,
+  sessions,
 }: AppRootProps): React.ReactElement {
   const [creds, setCreds] = useState<RefactronCredentials | null>(initialCreds);
   const authenticated = isAuthenticated(creds);
-  // Pro/enterprise users who completed OAuth but haven't set their API key
-  // yet must go through the key step before accessing the REPL.
   const apiKeyMissing = authenticated && needsApiKey(creds?.plan) && !creds?.api_key;
 
   if (!authenticated || apiKeyMissing) {
@@ -67,7 +68,7 @@ function AppRoot({
 
   return (
     <REPL
-      ctx={{ adapter, config, projectRoot }}
+      ctx={{ adapter, config, projectRoot, sessions }}
       version={version}
       email={creds?.email}
       plan={creds?.plan}
@@ -113,6 +114,7 @@ export async function run(_argv: string[]): Promise<void> {
   const pkg = require('../../package.json') as { version: string };
 
   const initialCreds = await loadCredentials();
+  const sessions = new WorkSessionManager(projectRoot);
 
   // Enter alternate screen BEFORE render() — zero flash, clean viewport.
   enterAltScreen();
@@ -134,6 +136,7 @@ export async function run(_argv: string[]): Promise<void> {
       version={pkg.version}
       projectRoot={projectRoot}
       initialCreds={initialCreds}
+      sessions={sessions}
     />,
     { exitOnCtrlC: false },
   );
