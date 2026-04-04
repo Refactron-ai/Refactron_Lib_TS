@@ -38,12 +38,10 @@ export function BlastRadiusGraph({
           {blastRadius.affectedFiles.length}
         </Text>
         <Text color={theme.colors.textDim}>
-          Affected functions:{' '}
-          {blastRadius.affectedFunctions.length}
+          Affected functions: {blastRadius.affectedFunctions.length}
         </Text>
         <Text color={theme.colors.textDim}>
-          Test files at risk:{' '}
-          {blastRadius.affectedTestFiles.length}
+          Test files at risk: {blastRadius.affectedTestFiles.length}
         </Text>
       </Box>
       {blastRadius.affectedFiles.slice(0, 5).map((f, i) => (

@@ -7,12 +7,7 @@ export class InMemoryCallGraph implements CallGraph {
   // publicFunctions[file] = list of exported function names
   private publicFunctions = new Map<string, string[]>();
 
-  addCall(
-    calledFile: string,
-    calledFn: string,
-    callerFile: string,
-    callerFn: string,
-  ): void {
+  addCall(calledFile: string, calledFn: string, callerFile: string, callerFn: string): void {
     const key = `${calledFile}::${calledFn}`;
     if (!this.callers.has(key)) this.callers.set(key, new Set());
     this.callers.get(key)!.add(`${callerFile}::${callerFn}`);

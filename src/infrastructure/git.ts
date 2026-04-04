@@ -39,10 +39,7 @@ function parseGitLog(output: string): GitCommit[] {
     });
 }
 
-export async function findCoChangePairs(
-  filePath: string,
-  commits: GitCommit[],
-): Promise<string[]> {
+export async function findCoChangePairs(filePath: string, commits: GitCommit[]): Promise<string[]> {
   const coChanges = new Map<string, number>();
   const absPath = path.resolve(filePath);
 
@@ -65,7 +62,5 @@ export async function findCoChangePairs(
   }
 
   const threshold = Math.max(1, commits.length * 0.5);
-  return [...coChanges.entries()]
-    .filter(([, count]) => count >= threshold)
-    .map(([file]) => file);
+  return [...coChanges.entries()].filter(([, count]) => count >= threshold).map(([file]) => file);
 }

@@ -34,10 +34,7 @@ for dirpath, _, files in os.walk(root):
       const importedMod = line.slice(0, pipeIdx);
       const importingFile = line.slice(pipeIdx + 1);
       if (importedMod && importingFile) {
-        const possiblePath = path.join(
-          projectRoot,
-          importedMod.replace(/\./g, '/') + '.py',
-        );
+        const possiblePath = path.join(projectRoot, importedMod.replace(/\./g, '/') + '.py');
         graph.addEdge(possiblePath, importingFile);
       }
     }

@@ -20,11 +20,13 @@ export function ProgressBar({
   const filled = Math.round(pct * width);
   const empty = width - filled;
   const bar = theme.symbols.bar.repeat(filled) + theme.symbols.barEmpty.repeat(empty);
-  const pctStr = Math.round(pct * 100).toString().padStart(3, ' ');
+  const pctStr = Math.round(pct * 100)
+    .toString()
+    .padStart(3, ' ');
 
   return (
     <Box>
-      {label && <Text color={theme.colors.textDim}>{label}  </Text>}
+      {label && <Text color={theme.colors.textDim}>{label} </Text>}
       <Text color={theme.colors.accent}>{bar}</Text>
       <Text color={theme.colors.textDim}>
         {'  '}

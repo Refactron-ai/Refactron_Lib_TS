@@ -103,11 +103,7 @@ export class Orchestrator {
         queue.updateStatus(queueItem.issueId, 'APPLIED', {
           diff: this.adapter.generateDiff(originalCode, transform.transformedCode),
         });
-        session = this.sessionManager.recordFix(
-          session,
-          { ...queueItem, status: 'APPLIED' },
-          true,
-        );
+        session = this.sessionManager.recordFix(session, { ...queueItem, status: 'APPLIED' }, true);
       }
     }
 

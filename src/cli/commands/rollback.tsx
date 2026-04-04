@@ -35,11 +35,9 @@ export function RollbackCommand({ rollback }: RollbackCommandProps): React.React
   return (
     <Box flexDirection="column">
       <Text color={theme.colors.success} bold>
-        {theme.symbols.pass}  Rollback complete
+        {theme.symbols.pass} Rollback complete
       </Text>
-      <Text color={theme.colors.textDim}>
-        Files restored: {result?.filesRestored ?? 0}
-      </Text>
+      <Text color={theme.colors.textDim}>Files restored: {result?.filesRestored ?? 0}</Text>
     </Box>
   );
 }

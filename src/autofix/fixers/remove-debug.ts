@@ -9,6 +9,10 @@ export class RemoveDebugFixer extends BaseFixer {
   async fix(_filePath: string, code: string, issue: CodeIssue): Promise<TransformResult> {
     const lines = code.split('\n');
     lines.splice(issue.line - 1, 1);
-    return { transformedCode: lines.join('\n'), description: 'Remove debug statement', riskLevel: 'low' };
+    return {
+      transformedCode: lines.join('\n'),
+      description: 'Remove debug statement',
+      riskLevel: 'low',
+    };
   }
 }

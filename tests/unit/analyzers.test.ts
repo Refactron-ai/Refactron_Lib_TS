@@ -9,7 +9,11 @@ const cfg = { enabled: true, threshold: 5 };
 describe('SecurityAnalyzer', () => {
   it('detects SQL injection', async () => {
     const a = new SecurityAnalyzer();
-    const result = await a.analyze('views.py', `cursor.execute(f"SELECT * WHERE id={user_id}")`, cfg);
+    const result = await a.analyze(
+      'views.py',
+      `cursor.execute(f"SELECT * WHERE id={user_id}")`,
+      cfg,
+    );
     expect(result.issues).toHaveLength(1);
     expect(result.issues[0]?.type).toBe('sql-injection');
     expect(result.issues[0]?.severity).toBe('critical');

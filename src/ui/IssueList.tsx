@@ -80,9 +80,7 @@ export function IssueList({ issues, onFix }: IssueListProps): React.ReactElement
                   {issue.blastRadius.score}) — {issue.blastRadius.affectedFiles.length} files
                   affected
                 </Text>
-                <Text color={theme.colors.textDim}>
-                  [space=collapse · f=fix · q=quit]
-                </Text>
+                <Text color={theme.colors.textDim}>[space=collapse · f=fix · q=quit]</Text>
               </Box>
             )}
           </Box>

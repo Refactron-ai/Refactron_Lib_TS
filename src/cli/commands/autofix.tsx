@@ -60,10 +60,10 @@ export function AutofixCommand({
         {dryRun ? 'Dry Run Complete' : 'Autofix Complete'}
       </Text>
       <Text color={theme.colors.success}>
-        {theme.symbols.pass}  Applied: {session.appliedFixes.length}
+        {theme.symbols.pass} Applied: {session.appliedFixes.length}
       </Text>
       <Text color={theme.colors.error}>
-        {theme.symbols.fail}  Blocked: {session.blockedFixes.length}
+        {theme.symbols.fail} Blocked: {session.blockedFixes.length}
       </Text>
       {session.blockedFixes.length > 0 && (
         <Box flexDirection="column" marginTop={1}>

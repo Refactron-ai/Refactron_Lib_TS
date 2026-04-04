@@ -11,6 +11,10 @@ export class DocstringsFixer extends BaseFixer {
     const fnLine = lines[issue.line - 1] ?? '';
     const indent = fnLine.match(/^(\s*)/)?.[1] ?? '';
     lines.splice(issue.line, 0, `${indent}    """TODO: Add docstring."""`);
-    return { transformedCode: lines.join('\n'), description: 'Add placeholder docstring', riskLevel: 'low' };
+    return {
+      transformedCode: lines.join('\n'),
+      description: 'Add placeholder docstring',
+      riskLevel: 'low',
+    };
   }
 }

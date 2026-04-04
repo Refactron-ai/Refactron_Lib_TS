@@ -7,6 +7,10 @@ export class FixIndentationFixer extends BaseFixer {
   readonly supportedIssueTypes = ['mixed-indentation'];
 
   async fix(_filePath: string, code: string, _issue: CodeIssue): Promise<TransformResult> {
-    return { transformedCode: code.replace(/\t/g, '    '), description: 'Convert tabs to 4-space indentation', riskLevel: 'low' };
+    return {
+      transformedCode: code.replace(/\t/g, '    '),
+      description: 'Convert tabs to 4-space indentation',
+      riskLevel: 'low',
+    };
   }
 }

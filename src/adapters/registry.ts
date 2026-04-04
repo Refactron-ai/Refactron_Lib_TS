@@ -5,10 +5,7 @@ import { PythonAdapter } from './python/index.js';
 import { TypeScriptAdapter } from './typescript/index.js';
 
 export class AdapterRegistry {
-  private adapters: ILanguageAdapter[] = [
-    new PythonAdapter(),
-    new TypeScriptAdapter(),
-  ];
+  private adapters: ILanguageAdapter[] = [new PythonAdapter(), new TypeScriptAdapter()];
 
   async detectAdapters(projectRoot: string): Promise<ILanguageAdapter[]> {
     const detected: ILanguageAdapter[] = [];

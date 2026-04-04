@@ -26,11 +26,7 @@ export class TypeScriptAdapter implements ILanguageAdapter {
     return [];
   }
 
-  async transform(
-    _file: string,
-    code: string,
-    issue: CodeIssue,
-  ): Promise<TransformResult> {
+  async transform(_file: string, code: string, issue: CodeIssue): Promise<TransformResult> {
     if (issue.fixerName === 'trailing-whitespace') {
       return {
         transformedCode: code.replace(/[ \t]+$/gm, ''),
@@ -58,8 +54,7 @@ export class TypeScriptAdapter implements ILanguageAdapter {
         ts.ScriptKind.TS,
       );
       // parseDiagnostics is internal; use getChildren to trigger parse
-      const diagnostics = (sf as unknown as { parseDiagnostics?: unknown[] })
-        .parseDiagnostics;
+      const diagnostics = (sf as unknown as { parseDiagnostics?: unknown[] }).parseDiagnostics;
       if (Array.isArray(diagnostics) && diagnostics.length > 0) {
         return {
           passed: false,

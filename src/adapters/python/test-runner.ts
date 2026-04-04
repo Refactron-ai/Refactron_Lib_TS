@@ -3,10 +3,7 @@ import { execa } from 'execa';
 import type { CheckResult } from '../../core/models.js';
 import path from 'path';
 
-export async function runPytestForFile(
-  filePath: string,
-  _code: string,
-): Promise<CheckResult> {
+export async function runPytestForFile(filePath: string, _code: string): Promise<CheckResult> {
   const start = Date.now();
   const dir = path.dirname(filePath);
 

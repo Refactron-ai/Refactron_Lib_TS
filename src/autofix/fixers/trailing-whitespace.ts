@@ -7,6 +7,10 @@ export class TrailingWhitespaceFixer extends BaseFixer {
   readonly supportedIssueTypes = ['trailing-whitespace'];
 
   async fix(_filePath: string, code: string, _issue: CodeIssue): Promise<TransformResult> {
-    return { transformedCode: code.replace(/[ \t]+$/gm, ''), description: 'Remove trailing whitespace', riskLevel: 'low' };
+    return {
+      transformedCode: code.replace(/[ \t]+$/gm, ''),
+      description: 'Remove trailing whitespace',
+      riskLevel: 'low',
+    };
   }
 }

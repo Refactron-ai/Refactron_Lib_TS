@@ -12,6 +12,10 @@ export class SimplifyBooleanFixer extends BaseFixer {
     lines[issue.line - 1] = line
       .replace(/(\w+)\s*==\s*True\b/g, '$1')
       .replace(/(\w+)\s*==\s*False\b/g, 'not $1');
-    return { transformedCode: lines.join('\n'), description: 'Simplify boolean comparison', riskLevel: 'low' };
+    return {
+      transformedCode: lines.join('\n'),
+      description: 'Simplify boolean comparison',
+      riskLevel: 'low',
+    };
   }
 }

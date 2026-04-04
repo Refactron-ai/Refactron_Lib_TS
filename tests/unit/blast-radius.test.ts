@@ -6,10 +6,7 @@ import { InMemoryCallGraph } from '../../src/analysis/call-graph.js';
 
 describe('BlastRadiusAnalyzer', () => {
   it('returns trivial blast for isolated file', () => {
-    const analyzer = new BlastRadiusAnalyzer(
-      new InMemoryCallGraph(),
-      new InMemoryImportGraph(),
-    );
+    const analyzer = new BlastRadiusAnalyzer(new InMemoryCallGraph(), new InMemoryImportGraph());
     const blast = analyzer.compute('isolated.py');
     expect(blast.level).toBe('trivial');
     expect(blast.score).toBe(0);
@@ -55,7 +52,10 @@ describe('BlastRadiusAnalyzer', () => {
     const importGraph = new InMemoryImportGraph();
     for (let i = 0; i < 50; i++) importGraph.addEdge('core.py', `file${i}.py`);
     const callGraph = new InMemoryCallGraph();
-    callGraph.setPublicFunctions('core.py', Array.from({ length: 100 }, (_, i) => `fn${i}`));
+    callGraph.setPublicFunctions(
+      'core.py',
+      Array.from({ length: 100 }, (_, i) => `fn${i}`),
+    );
     const analyzer = new BlastRadiusAnalyzer(callGraph, importGraph);
     const blast = analyzer.compute('core.py');
     expect(blast.level).toBe('critical');

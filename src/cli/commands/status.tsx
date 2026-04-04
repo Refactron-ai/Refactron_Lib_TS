@@ -39,10 +39,10 @@ export function StatusCommand({ getStatus }: StatusCommandProps): React.ReactEle
         Session {session.sessionId}
       </Text>
       <Text color={theme.colors.text}>
-        State: {session.state}  |  Target: {session.target}
+        State: {session.state} | Target: {session.target}
       </Text>
       <Text color={theme.colors.text}>
-        Issues: {session.totalIssues}  |  Files: {session.totalFiles}
+        Issues: {session.totalIssues} | Files: {session.totalFiles}
       </Text>
       <Text color={theme.colors.success}>Applied: {session.appliedFixes.length}</Text>
       <Text color={theme.colors.error}>Blocked: {session.blockedFixes.length}</Text>

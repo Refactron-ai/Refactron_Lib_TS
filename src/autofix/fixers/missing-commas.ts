@@ -12,6 +12,10 @@ export class MissingCommasFixer extends BaseFixer {
     if (!line.trimEnd().endsWith(',')) {
       lines[issue.line - 1] = line.replace(/(\S)\s*$/, '$1,');
     }
-    return { transformedCode: lines.join('\n'), description: 'Add trailing comma', riskLevel: 'low' };
+    return {
+      transformedCode: lines.join('\n'),
+      description: 'Add trailing comma',
+      riskLevel: 'low',
+    };
   }
 }

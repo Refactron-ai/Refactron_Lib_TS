@@ -30,7 +30,7 @@ export function VerifyCommand({ filePath, verify }: VerifyCommandProps): React.R
   if (loading) {
     return (
       <Box>
-        <Text color={theme.colors.accent}>Verifying  </Text>
+        <Text color={theme.colors.accent}>Verifying </Text>
         <Text color={theme.colors.textDim}>{filePath}</Text>
       </Box>
     );

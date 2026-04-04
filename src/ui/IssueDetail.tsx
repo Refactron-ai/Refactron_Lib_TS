@@ -13,12 +13,7 @@ export function IssueDetail({ issue }: IssueDetailProps): React.ReactElement {
   const blastColor = theme.blastColors[issue.blastRadius.level];
 
   return (
-    <Box
-      flexDirection="column"
-      borderStyle="round"
-      borderColor={theme.colors.border}
-      padding={1}
-    >
+    <Box flexDirection="column" borderStyle="round" borderColor={theme.colors.border} padding={1}>
       <Text color={severityColor} bold>
         {issue.severity.toUpperCase()} — {issue.type}
       </Text>
@@ -33,8 +28,8 @@ export function IssueDetail({ issue }: IssueDetailProps): React.ReactElement {
       )}
       <Box marginTop={1} flexDirection="column">
         <Text color={blastColor} bold>
-          Blast Radius: {issue.blastRadius.level.toUpperCase()} (score:{' '}
-          {issue.blastRadius.score}/100)
+          Blast Radius: {issue.blastRadius.level.toUpperCase()} (score: {issue.blastRadius.score}
+          /100)
         </Text>
         <Text color={theme.colors.textDim}>
           {issue.blastRadius.affectedFiles.length} files ·{' '}

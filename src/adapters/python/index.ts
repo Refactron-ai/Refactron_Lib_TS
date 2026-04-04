@@ -6,11 +6,7 @@ import path from 'path';
 import { randomBytes } from 'crypto';
 import type { ILanguageAdapter, ImportGraph, CallGraph, TransformResult } from '../interface.js';
 import type { CodeIssue, CheckResult } from '../../core/models.js';
-import {
-  buildPythonImportGraph,
-  buildPythonCallGraph,
-  analyzePythonFiles,
-} from './analyzer.js';
+import { buildPythonImportGraph, buildPythonCallGraph, analyzePythonFiles } from './analyzer.js';
 import { transformPythonCode } from './fixer.js';
 import { runPytestForFile } from './test-runner.js';
 import { generateUnifiedDiff } from '../../infrastructure/diff.js';
@@ -40,11 +36,9 @@ export class PythonAdapter implements ILanguageAdapter {
   async verifySyntax(_filePath: string, code: string): Promise<CheckResult> {
     const start = Date.now();
     try {
-      await execa(
-        'python3',
-        ['-c', `import ast; ast.parse(${JSON.stringify(code)})`],
-        { timeout: 10_000 },
-      );
+      await execa('python3', ['-c', `import ast; ast.parse(${JSON.stringify(code)})`], {
+        timeout: 10_000,
+      });
       return { passed: true, durationMs: Date.now() - start };
     } catch (err) {
       const error = err as { stderr?: string };
@@ -75,7 +69,11 @@ export class PythonAdapter implements ILanguageAdapter {
         blockingReason: (error.stderr ?? 'Import check failed').slice(0, 300),
       };
     } finally {
-      try { fs.unlinkSync(tmpPath); } catch { /* ignore */ }
+      try {
+        fs.unlinkSync(tmpPath);
+      } catch {
+        /* ignore */
+      }
     }
   }
 

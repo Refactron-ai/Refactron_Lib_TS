@@ -53,8 +53,7 @@ export class VerificationEngine {
   }
 
   private selectChecks(blast: BlastRadius): Check[] {
-    const timeout =
-      blast.level === 'critical' ? this.criticalTimeoutMs : this.standardTimeoutMs;
+    const timeout = blast.level === 'critical' ? this.criticalTimeoutMs : this.standardTimeoutMs;
     const testGate = new TestGateCheck(this.adapter, timeout);
 
     if (blast.level === 'trivial') {

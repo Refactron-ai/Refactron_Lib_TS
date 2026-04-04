@@ -14,10 +14,7 @@ export class DeadCodeAnalyzer extends BaseAnalyzer {
       const line = lines[i] ?? '';
       if (/^\s*(return|raise|break|continue)\b/.test(line)) {
         const next = lines[i + 1] ?? '';
-        if (
-          next.trim() &&
-          !/^\s*(#|\/\/|def |class |else:|elif |except|finally)/.test(next)
-        ) {
+        if (next.trim() && !/^\s*(#|\/\/|def |class |else:|elif |except|finally)/.test(next)) {
           issues.push({
             id: this.makeIssueId(filePath, i + 2, 'unreachable-code'),
             file: filePath,

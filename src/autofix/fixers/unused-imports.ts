@@ -12,8 +12,14 @@ export class UnusedImportsFixer extends BaseFixer {
     const lines = code.split('\n');
     const filtered = lines.filter((line, i) => {
       if (i !== issue.line - 1) return true;
-      return !new RegExp(`^(?:import\\s+${importName}|from\\s+\\S+\\s+import\\s+${importName})\\s*$`).test(line);
+      return !new RegExp(
+        `^(?:import\\s+${importName}|from\\s+\\S+\\s+import\\s+${importName})\\s*$`,
+      ).test(line);
     });
-    return { transformedCode: filtered.join('\n'), description: `Remove unused import '${importName}'`, riskLevel: 'low' };
+    return {
+      transformedCode: filtered.join('\n'),
+      description: `Remove unused import '${importName}'`,
+      riskLevel: 'low',
+    };
   }
 }

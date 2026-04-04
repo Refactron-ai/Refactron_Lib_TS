@@ -37,7 +37,7 @@ export function AnalyzeCommand({
   if (loading) {
     return (
       <Box>
-        <Text color={theme.colors.accent}>Scanning  </Text>
+        <Text color={theme.colors.accent}>Scanning </Text>
         <Text color={theme.colors.textDim}>{target}</Text>
       </Box>
     );
@@ -58,16 +58,10 @@ export function AnalyzeCommand({
   return (
     <Box flexDirection="column">
       <Text color={theme.colors.textDim}>
-        Analyzed  {result.filesAnalyzed} files in {result.durationMs}ms
+        Analyzed {result.filesAnalyzed} files in {result.durationMs}ms
       </Text>
       <IssueList issues={result.issues} />
-      <StatusBar
-        critical={critical}
-        high={high}
-        medium={medium}
-        low={low}
-        fixable={fixable}
-      />
+      <StatusBar critical={critical} high={high} medium={medium} low={low} fixable={fixable} />
       <Text color={theme.colors.textDim}>Run: refactron autofix {target} --verify</Text>
     </Box>
   );

@@ -2,8 +2,7 @@
 import type { VerificationResult } from '../core/models.js';
 
 export function buildPassedResult(checksRun: string[], durationMs: number): VerificationResult {
-  const confidenceScore =
-    checksRun.length >= 3 ? 0.97 : checksRun.length === 2 ? 0.85 : 0.70;
+  const confidenceScore = checksRun.length >= 3 ? 0.97 : checksRun.length === 2 ? 0.85 : 0.7;
   return {
     safeToApply: true,
     passed: true,

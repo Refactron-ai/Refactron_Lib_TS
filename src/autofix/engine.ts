@@ -39,11 +39,7 @@ export class AutoFixEngine {
     return this.fixers.some((f) => f.canFix(issue));
   }
 
-  async fix(
-    filePath: string,
-    code: string,
-    issue: CodeIssue,
-  ): Promise<TransformResult | null> {
+  async fix(filePath: string, code: string, issue: CodeIssue): Promise<TransformResult | null> {
     const fixer = this.fixers.find((f) => f.canFix(issue));
     if (!fixer) return null;
     return fixer.fix(filePath, code, issue);

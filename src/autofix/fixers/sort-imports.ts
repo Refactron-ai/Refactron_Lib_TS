@@ -10,12 +10,20 @@ export class SortImportsFixer extends BaseFixer {
     const lines = code.split('\n');
     const importLines: { line: string; idx: number }[] = [];
     for (let i = 0; i < lines.length; i++) {
-      if (/^import\s|^from\s/.test(lines[i] ?? '')) importLines.push({ line: lines[i] ?? '', idx: i });
+      if (/^import\s|^from\s/.test(lines[i] ?? ''))
+        importLines.push({ line: lines[i] ?? '', idx: i });
     }
-    if (importLines.length <= 1) return { transformedCode: code, description: 'Already sorted', riskLevel: 'low' };
+    if (importLines.length <= 1)
+      return { transformedCode: code, description: 'Already sorted', riskLevel: 'low' };
     const sorted = [...importLines].sort((a, b) => a.line.localeCompare(b.line));
     const newLines = [...lines];
-    importLines.forEach(({ idx }, i) => { newLines[idx] = sorted[i]?.line ?? ''; });
-    return { transformedCode: newLines.join('\n'), description: 'Sort imports alphabetically', riskLevel: 'low' };
+    importLines.forEach(({ idx }, i) => {
+      newLines[idx] = sorted[i]?.line ?? '';
+    });
+    return {
+      transformedCode: newLines.join('\n'),
+      description: 'Sort imports alphabetically',
+      riskLevel: 'low',
+    };
   }
 }

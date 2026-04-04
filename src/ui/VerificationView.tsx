@@ -13,7 +13,7 @@ export function VerificationView({ result, filePath }: VerificationViewProps): R
   return (
     <Box flexDirection="column" padding={1}>
       <Text color={theme.colors.text} bold>
-        Verifying  {filePath}
+        Verifying {filePath}
       </Text>
       <Text color={theme.colors.border}>{'──────────────────────────────────────'}</Text>
       {result.checksRun.map((check) => {
@@ -21,7 +21,8 @@ export function VerificationView({ result, filePath }: VerificationViewProps): R
         return (
           <Box key={check}>
             <Text color={passed ? theme.colors.success : theme.colors.error}>
-              {passed ? theme.symbols.pass : theme.symbols.fail}{'  '}
+              {passed ? theme.symbols.pass : theme.symbols.fail}
+              {'  '}
               {check.padEnd(20)}
             </Text>
           </Box>
@@ -29,7 +30,7 @@ export function VerificationView({ result, filePath }: VerificationViewProps): R
       })}
       <Box marginTop={1} flexDirection="column">
         <Text color={theme.colors.textDim}>
-          Confidence  {Math.round(result.confidenceScore * 100)}%
+          Confidence {Math.round(result.confidenceScore * 100)}%
         </Text>
         <Text color={result.safeToApply ? theme.colors.success : theme.colors.error} bold>
           {result.safeToApply
