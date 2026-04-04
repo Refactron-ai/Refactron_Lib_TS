@@ -1,6 +1,5 @@
 // src/auth/device-auth.ts
 // OAuth 2.0 Device Authorization Grant — API calls, polling loop.
-// Same pattern as GitHub CLI / AWS CLI / VS Code.
 import { spawnSync } from 'child_process';
 import { saveCredentials } from './credentials.js';
 import type { RefactronCredentials } from './credentials.js';
@@ -13,8 +12,8 @@ export interface DeviceCodeResponse {
   device_code: string;
   user_code: string;
   verification_uri: string;
-  expires_in: number; // seconds
-  interval: number; // seconds between polls
+  expires_in: number;
+  interval: number;
 }
 
 export interface TokenResponse {
@@ -32,6 +31,17 @@ export interface PollError {
   error_description?: string;
 }
 
+export interface ApiKeyValidationResult {
+  ok: boolean;
+  message: string;
+}
+
+/** Returns true when the plan requires an API key (pro or enterprise). */
+export function needsApiKey(plan: string | null | undefined): boolean {
+  const p = (plan ?? '').toLowerCase();
+  return p === 'pro' || p === 'enterprise';
+}
+
 /** Step 1 — Request a device code from the server */
 export async function requestDeviceCode(): Promise<DeviceCodeResponse> {
   const res = await fetch(`${API_BASE_URL}/oauth/device`, {
@@ -39,22 +49,20 @@ export async function requestDeviceCode(): Promise<DeviceCodeResponse> {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ client_id: CLIENT_ID }),
   });
-
   if (!res.ok) {
     throw new Error(`Device auth request failed: ${res.status} ${res.statusText}`);
   }
-
   return (await res.json()) as DeviceCodeResponse;
 }
 
-/** Open the verification URL in the default browser (silent failure — user can open manually) */
+/** Open the verification URL in the default browser (silent failure) */
 export function openBrowser(url: string): void {
   const platform = process.platform;
   const cmd = platform === 'darwin' ? 'open' : platform === 'win32' ? 'start' : 'xdg-open';
   spawnSync(cmd, [url], { stdio: 'ignore' });
 }
 
-/** Step 2 — Poll for token until approved, expired, or deadline reached */
+/** Step 2 — Poll for token until approved, expired, or deadline */
 export async function pollForToken(
   deviceCode: string,
   expiresInSeconds: number,
@@ -82,55 +90,70 @@ export async function pollForToken(
     const data = (await res.json()) as TokenResponse | PollError;
 
     if ('error' in data) {
-      if (data.error === 'authorization_pending') {
-        onWaiting?.();
-        continue;
-      }
-      if (data.error === 'slow_down') {
-        interval += 5;
-        onWaiting?.();
-        continue;
-      }
+      if (data.error === 'authorization_pending') { onWaiting?.(); continue; }
+      if (data.error === 'slow_down') { interval += 5; onWaiting?.(); continue; }
       if (data.error === 'expired_token') {
         throw new Error('Device code expired. Run `refactron login` again.');
       }
-      if (data.error === 'access_denied') {
-        throw new Error('Login cancelled.');
-      }
+      if (data.error === 'access_denied') throw new Error('Login cancelled.');
       throw new Error(data.error_description ?? data.error);
     }
 
     return data;
   }
-
-  throw new Error('Login timed out (15 minutes). Run `refactron login` to try again.');
+  throw new Error('Login timed out. Run `refactron login` to try again.');
 }
 
-/** Validate API key for pro/enterprise plans */
-export async function validateApiKey(accessToken: string, apiKey: string): Promise<boolean> {
-  const res = await fetch(`${API_BASE_URL}/api-keys/validate`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${accessToken}`,
-    },
-    body: JSON.stringify({ api_key: apiKey }),
-  });
-  return res.ok;
+/**
+ * Validate an API key against the server.
+ * GET /api/auth/verify-key — Authorization: Bearer <api_key>
+ * Returns {ok, message} — never throws.
+ */
+export async function validateApiKey(apiKey: string): Promise<ApiKeyValidationResult> {
+  if (!apiKey.trim()) {
+    return { ok: false, message: 'API key cannot be empty.' };
+  }
+  try {
+    const res = await fetch(`${API_BASE_URL}/api/auth/verify-key`, {
+      method: 'GET',
+      headers: { Authorization: `Bearer ${apiKey}` },
+      signal: AbortSignal.timeout(10_000),
+    });
+    if (res.ok) return { ok: true, message: 'Verified.' };
+    if (res.status === 401 || res.status === 403) return { ok: false, message: 'Invalid API key.' };
+    if (res.status === 404) return { ok: false, message: 'Verification endpoint not found (404).' };
+    if (res.status >= 500) return { ok: false, message: `Server error (${res.status}). Try again later.` };
+    return { ok: false, message: `Unexpected response: ${res.status}.` };
+  } catch (err) {
+    if (err instanceof Error) {
+      if (err.name === 'TimeoutError') return { ok: false, message: 'Request timed out. Check your network.' };
+      if (err.name === 'AbortError') return { ok: false, message: 'Request was aborted.' };
+    }
+    return { ok: false, message: `Network error: ${String(err)}` };
+  }
 }
 
-/** Full login flow — returns saved credentials */
+/**
+ * Full login flow.
+ * - Runs OAuth device flow.
+ * - For free plans: saves credentials immediately.
+ * - For pro/enterprise: returns creds WITHOUT saving (api_key=null).
+ *   Caller must call validateApiKey → set creds.api_key → saveCredentials.
+ * Returns { creds, requiresApiKey }.
+ */
 export async function runLoginFlow(
   noBrowser = false,
   onStatus?: (msg: string) => void,
-): Promise<RefactronCredentials> {
+): Promise<{ creds: RefactronCredentials; requiresApiKey: boolean }> {
   onStatus?.('Requesting device code…');
 
   let deviceResp: DeviceCodeResponse;
   try {
     deviceResp = await requestDeviceCode();
   } catch (err) {
-    throw new Error(`Cannot reach Refactron API. Check your internet connection.\n${String(err)}`);
+    throw new Error(
+      `Cannot reach Refactron API. Check your internet connection.\n${String(err)}`,
+    );
   }
 
   const loginUrl = `${APP_LOGIN_URL}?code=${deviceResp.user_code}`;
@@ -141,7 +164,7 @@ export async function runLoginFlow(
     openBrowser(loginUrl);
     onStatus?.('Browser opened. Waiting for approval…');
   } else {
-    onStatus?.('Open the URL above in your browser to approve.');
+    onStatus?.('Open the URL above in your browser.');
   }
 
   let pollCount = 0;
@@ -149,16 +172,10 @@ export async function runLoginFlow(
     deviceResp.device_code,
     deviceResp.expires_in,
     deviceResp.interval,
-    () => {
-      pollCount++;
-      if (pollCount % 6 === 0) {
-        onStatus?.('Still waiting for browser approval…');
-      }
-    },
+    () => { if (++pollCount % 6 === 0) onStatus?.('Still waiting…'); },
   );
 
   const expiresAt = new Date(Date.now() + token.expires_in * 1000).toISOString();
-
   const creds: RefactronCredentials = {
     api_base_url: API_BASE_URL,
     access_token: token.access_token,
@@ -169,8 +186,14 @@ export async function runLoginFlow(
     api_key: null,
   };
 
-  await saveCredentials(creds);
-  onStatus?.(`Logged in as ${token.user.email} (${token.user.plan} plan)`);
+  const requiresApiKey = needsApiKey(token.user.plan);
 
-  return creds;
+  if (!requiresApiKey) {
+    // Free plan — save immediately, we're done.
+    await saveCredentials(creds);
+    onStatus?.(`Logged in as ${token.user.email} (${token.user.plan})`);
+  }
+  // Pro/enterprise: caller handles key prompt + save.
+
+  return { creds, requiresApiKey };
 }

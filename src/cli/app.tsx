@@ -7,7 +7,7 @@ import { REPL } from './REPL.js';
 import { LoginFlow } from './components/LoginFlow.js';
 import { AdapterRegistry } from '../adapters/registry.js';
 import { loadConfig, type RefactronConfig } from '../core/config.js';
-import { loadCredentials, isAuthenticated } from '../auth/index.js';
+import { loadCredentials, isAuthenticated, needsApiKey } from '../auth/index.js';
 import type { RefactronCredentials } from '../auth/index.js';
 import type { ILanguageAdapter } from '../adapters/interface.js';
 import { glob } from 'glob';
@@ -50,8 +50,11 @@ function AppRoot({
 }: AppRootProps): React.ReactElement {
   const [creds, setCreds] = useState<RefactronCredentials | null>(initialCreds);
   const authenticated = isAuthenticated(creds);
+  // Pro/enterprise users who completed OAuth but haven't set their API key
+  // yet must go through the key step before accessing the REPL.
+  const apiKeyMissing = authenticated && needsApiKey(creds?.plan) && !creds?.api_key;
 
-  if (!authenticated) {
+  if (!authenticated || apiKeyMissing) {
     return (
       <LoginFlow
         version={version}

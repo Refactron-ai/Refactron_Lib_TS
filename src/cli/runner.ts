@@ -162,10 +162,17 @@ export async function executeCommand(
     const noBrowser = flags['no-browser'] === true;
     onLine('', undefined);
     try {
-      await runLoginFlow(noBrowser, (msg) => onLine(`  ${msg}`, theme.colors.textDim));
-      const creds = await loadCredentials();
-      if (creds) {
-        onLine('', undefined);
+      const { creds, requiresApiKey } = await runLoginFlow(
+        noBrowser,
+        (msg) => onLine(`  ${msg}`, theme.colors.textDim),
+      );
+      onLine('', undefined);
+      if (requiresApiKey) {
+        onLine(
+          `  ${theme.symbols.pass}  OAuth complete. Run  refactron  to set your API key.`,
+          theme.colors.warning,
+        );
+      } else {
         onLine(
           `  ${theme.symbols.pass}  Logged in as ${creds.email ?? 'unknown'} (${creds.plan ?? 'free'} plan)`,
           theme.colors.success,

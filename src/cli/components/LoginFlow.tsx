@@ -1,18 +1,29 @@
 // src/cli/components/LoginFlow.tsx
-// First-run / unauthenticated startup screen.
-// Matches Claude Code's ConsoleOAuthFlow style:
-//   - BannerLogo at top (mascot + product info)
-//   - Clean inline text, no box-drawing borders
-//   - Spinner while waiting for browser approval
-//   - Prominent URL + code display during OAuth poll
+// Auth flow state machine:
+//   prompt → running → [api-key → verifying] → success
+//                    ↘ denied / error
+//
+// api-key step only shown for pro/enterprise plans — masked input.
 import React, { useState, useCallback, useEffect } from 'react';
 import { Box, Text, useInput, useApp } from 'ink';
 import { theme } from '../../ui/theme.js';
-import { runLoginFlow } from '../../auth/index.js';
+import {
+  runLoginFlow,
+  validateApiKey,
+  needsApiKey,
+  saveCredentials,
+} from '../../auth/index.js';
 import type { RefactronCredentials } from '../../auth/index.js';
 import { Banner } from './Banner.js';
 
-type LoginState = 'prompt' | 'running' | 'success' | 'denied' | 'error';
+type LoginState =
+  | 'prompt'
+  | 'running'    // OAuth device flow polling
+  | 'api-key'    // pro/enterprise: waiting for user to paste key
+  | 'verifying'  // checking the pasted key against server
+  | 'success'
+  | 'denied'
+  | 'error';
 
 interface LoginFlowProps {
   onAuthenticated: (creds: RefactronCredentials) => void;
@@ -21,7 +32,6 @@ interface LoginFlowProps {
   adapterName?: string;
 }
 
-// Spinner frames for the "waiting for approval" animation
 const SPIN = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
 
 function useSpinner(active: boolean): string {
@@ -42,30 +52,45 @@ export function LoginFlow({
 }: LoginFlowProps): React.ReactElement {
   const { exit } = useApp();
   const [state, setState] = useState<LoginState>('prompt');
+
+  // OAuth state
   const [statusMsg, setStatusMsg] = useState('');
   const [code, setCode] = useState('');
   const [url, setUrl] = useState('');
+
+  // API key state
+  const [pendingCreds, setPendingCreds] = useState<RefactronCredentials | null>(null);
+  const [apiKeyInput, setApiKeyInput] = useState(''); // raw (hidden from display)
+  const [apiKeyError, setApiKeyError] = useState('');
+
+  // Shared
   const [errorMsg, setErrorMsg] = useState('');
   const [successEmail, setSuccessEmail] = useState('');
-  const spinner = useSpinner(state === 'running');
 
+  const spinner = useSpinner(state === 'running' || state === 'verifying');
+
+  // ── OAuth status callback ──────────────────────────────────────────────
   const appendStatus = useCallback((msg: string) => {
-    if (msg.startsWith('Visit: ')) {
-      setUrl(msg.replace('Visit: ', '').trim());
-    } else if (msg.startsWith('Code:  ')) {
-      setCode(msg.replace('Code:  ', '').trim());
-    } else {
-      setStatusMsg(msg);
-    }
+    if (msg.startsWith('Visit: ')) setUrl(msg.replace('Visit: ', '').trim());
+    else if (msg.startsWith('Code:  ')) setCode(msg.replace('Code:  ', '').trim());
+    else setStatusMsg(msg);
   }, []);
 
+  // ── Start OAuth ────────────────────────────────────────────────────────
   const startLogin = useCallback(() => {
     setState('running');
     runLoginFlow(false, appendStatus)
-      .then((creds) => {
-        setSuccessEmail(creds.email ?? '');
-        setState('success');
-        setTimeout(() => onAuthenticated(creds), 600);
+      .then(({ creds, requiresApiKey }) => {
+        if (requiresApiKey) {
+          // pro/enterprise — hold creds in state, go to key step
+          setPendingCreds(creds);
+          setState('api-key');
+        } else {
+          // free plan — done
+          setSuccessEmail(creds.email ?? '');
+          setState('success');
+          setTimeout(() => onAuthenticated(creds), 600);
+        }
       })
       .catch((err: unknown) => {
         setErrorMsg(String(err));
@@ -73,50 +98,101 @@ export function LoginFlow({
       });
   }, [appendStatus, onAuthenticated]);
 
-  useInput(
-    (inputChar, key) => {
-      if (key.ctrl && inputChar === 'c') {
-        onExit();
-        exit();
+  // ── Verify API key ─────────────────────────────────────────────────────
+  const submitApiKey = useCallback(
+    (rawKey: string) => {
+      const key = rawKey.trim();
+      if (!key) {
+        setApiKeyError('API key cannot be empty. Paste the key and press Enter.');
         return;
       }
-      if (state !== 'prompt') return;
-      const ch = inputChar.toLowerCase();
-      if (ch === 'y') {
-        startLogin();
-      } else if (ch === 'n' || key.escape) {
-        setState('denied');
-        setTimeout(() => { onExit(); exit(); }, 300);
+      if (!pendingCreds) return;
+
+      setState('verifying');
+      setApiKeyError('');
+
+      validateApiKey(key)
+        .then(async (result) => {
+          if (result.ok) {
+            const finalCreds: RefactronCredentials = { ...pendingCreds, api_key: key };
+            await saveCredentials(finalCreds);
+            setSuccessEmail(finalCreds.email ?? '');
+            setState('success');
+            setTimeout(() => onAuthenticated(finalCreds), 600);
+          } else {
+            setApiKeyError(result.message);
+            setApiKeyInput('');
+            setState('api-key'); // let user retry
+          }
+        })
+        .catch((err: unknown) => {
+          setErrorMsg(String(err));
+          setState('error');
+        });
+    },
+    [pendingCreds, onAuthenticated],
+  );
+
+  // ── Global keys ────────────────────────────────────────────────────────
+  useInput(
+    (inputChar, key) => {
+      // Ctrl+C always exits
+      if (key.ctrl && inputChar === 'c') { onExit(); exit(); return; }
+
+      // ── prompt state ──────────────────────────────────────────────────
+      if (state === 'prompt') {
+        const ch = inputChar.toLowerCase();
+        if (ch === 'y') { startLogin(); return; }
+        if (ch === 'n' || key.escape) {
+          setState('denied');
+          setTimeout(() => { onExit(); exit(); }, 300);
+        }
+        return;
+      }
+
+      // ── api-key state: masked text input ──────────────────────────────
+      if (state === 'api-key') {
+        if (key.return) {
+          submitApiKey(apiKeyInput);
+          return;
+        }
+        if (key.backspace || key.delete) {
+          setApiKeyInput((v) => v.slice(0, -1));
+          return;
+        }
+        if (key.escape) {
+          // Abort — nothing was saved
+          setState('denied');
+          setTimeout(() => { onExit(); exit(); }, 300);
+          return;
+        }
+        // Reject control/meta combos
+        if (key.ctrl || key.meta) return;
+        if (inputChar && inputChar.length > 0) {
+          setApiKeyInput((v) => v + inputChar);
+        }
       }
     },
     { isActive: process.stdin.isTTY === true },
   );
 
+  const maskedKey = '•'.repeat(apiKeyInput.length);
+
   return (
     <Box flexDirection="column">
-      {/* ── Startup banner ───────────────────────────────────────── */}
       <Banner version={version} adapterName={adapterName} />
 
-      {/* ── Auth section ─────────────────────────────────────────── */}
-      <Box flexDirection="column" paddingLeft={2} gap={0}>
+      <Box flexDirection="column" paddingLeft={2} gap={1}>
 
-        {/* ── prompt: ask to log in ──────────────────────────────── */}
+        {/* ── prompt ──────────────────────────────────────────────────── */}
         {state === 'prompt' && (
           <Box flexDirection="column" gap={1}>
-            <Text color={theme.colors.accent} bold>
-              Welcome to Refactron!
-            </Text>
-
+            <Text color={theme.colors.accent} bold>Welcome to Refactron!</Text>
             <Box flexDirection="column">
               <Text dimColor>Sign in to start refactoring safely.</Text>
-              <Text dimColor>
-                Refactron uses OAuth 2.0 — no password needed.
-              </Text>
-              <Text dimColor>
-                Your browser will open to approve access.
-              </Text>
+              <Text dimColor>Refactron uses OAuth 2.0 — no password needed.</Text>
+              <Text dimColor>Your browser will open to approve access.</Text>
             </Box>
-
             <Box gap={1}>
               <Text color={theme.colors.accent} bold>Log in to continue?</Text>
               <Text dimColor>[y / n]</Text>
@@ -125,7 +201,7 @@ export function LoginFlow({
           </Box>
         )}
 
-        {/* ── running: show spinner + URL + code ────────────────── */}
+        {/* ── running: OAuth polling ───────────────────────────────────── */}
         {state === 'running' && (
           <Box flexDirection="column" gap={1}>
             {!code ? (
@@ -136,31 +212,73 @@ export function LoginFlow({
             ) : (
               <>
                 <Box flexDirection="column">
-                  <Text dimColor>Browser didn&apos;t open? Visit this URL:</Text>
+                  <Text dimColor>Browser didn&apos;t open? Visit:</Text>
                   <Box paddingLeft={2}>
                     <Text color={theme.colors.accent}>{url}</Text>
                   </Box>
                 </Box>
-
                 <Box flexDirection="column">
                   <Text dimColor>Verification code:</Text>
                   <Box paddingLeft={2}>
                     <Text color={theme.colors.accent} bold>{code}</Text>
                   </Box>
                 </Box>
-
                 <Box gap={1}>
                   <Text color={theme.colors.accent}>{spinner}</Text>
-                  <Text dimColor>
-                    {statusMsg !== '' ? statusMsg : 'Waiting for browser approval…'}
-                  </Text>
+                  <Text dimColor>{statusMsg !== '' ? statusMsg : 'Waiting for browser approval…'}</Text>
                 </Box>
               </>
             )}
           </Box>
         )}
 
-        {/* ── success ───────────────────────────────────────────── */}
+        {/* ── api-key: masked input ────────────────────────────────────── */}
+        {(state === 'api-key' || state === 'verifying') && (
+          <Box flexDirection="column" gap={1}>
+            <Box flexDirection="column">
+              <Text color={theme.colors.accent} bold>API key required</Text>
+              <Text dimColor>
+                Your{' '}
+                <Text color={theme.colors.accent}>
+                  {(pendingCreds?.plan ?? 'pro').toUpperCase()}
+                </Text>
+                {' '}plan requires an API key.
+              </Text>
+              <Text dimColor>
+                Generate one in the Refactron web app and paste it below.
+              </Text>
+            </Box>
+
+            {/* Masked input row */}
+            <Box gap={1}>
+              <Text dimColor>API key:</Text>
+              <Text color={theme.colors.text}>{maskedKey}</Text>
+              {state === 'api-key' && (
+                <Text color={theme.colors.accent}>█</Text>
+              )}
+            </Box>
+
+            {state === 'verifying' && (
+              <Box gap={1}>
+                <Text color={theme.colors.accent}>{spinner}</Text>
+                <Text dimColor>Verifying…</Text>
+              </Box>
+            )}
+
+            {apiKeyError !== '' && state === 'api-key' && (
+              <Box gap={1}>
+                <Text color={theme.colors.error}>{theme.symbols.fail}</Text>
+                <Text color={theme.colors.error}>{apiKeyError}</Text>
+              </Box>
+            )}
+
+            {state === 'api-key' && (
+              <Text dimColor>Press Enter to verify · Esc to cancel</Text>
+            )}
+          </Box>
+        )}
+
+        {/* ── success ─────────────────────────────────────────────────── */}
         {state === 'success' && (
           <Box flexDirection="column">
             <Box gap={1}>
@@ -175,12 +293,12 @@ export function LoginFlow({
           </Box>
         )}
 
-        {/* ── denied ────────────────────────────────────────────── */}
+        {/* ── denied ──────────────────────────────────────────────────── */}
         {state === 'denied' && (
           <Text dimColor>Cancelled. Goodbye.</Text>
         )}
 
-        {/* ── error ─────────────────────────────────────────────── */}
+        {/* ── error ───────────────────────────────────────────────────── */}
         {state === 'error' && (
           <Box flexDirection="column" gap={1}>
             <Box gap={1}>
