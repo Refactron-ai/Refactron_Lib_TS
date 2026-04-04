@@ -10,10 +10,10 @@ export type MascotPose = 'default' | 'arms-up' | 'look-left' | 'look-right';
 
 // Each pose: 3 rows as plain strings (rendered in accent color, no bg)
 const POSES: Record<MascotPose, [string, string, string]> = {
-  'default':    [' ▐▛███▜▌ ', '▝▜█████▛▘', '  ▘▘ ▝▝  '],
-  'look-left':  [' ▐▟███▟▌ ', '▝▜█████▛▘', '  ▘▘ ▝▝  '],
-  'look-right': [' ▐▙███▙▌ ', '▝▜█████▛▘', '  ▘▘ ▝▝  '],
-  'arms-up':    ['▗▟▛███▜▙▖', ' ▜█████▛ ', '  ▘▘ ▝▝  '],
+  'default':    ['▗▄████▄▖', '▐▌ ▄▄ ▐▌', ' ▝▘  ▝▘ '],
+  'look-left':  ['▗▄████▄▖', '▐▌▄▄  ▐▌', ' ▝▘  ▝▘ '],
+  'look-right': ['▗▄████▄▖', '▐▌  ▄▄▐▌', ' ▝▘  ▝▘ '],
+  'arms-up':    ['▗▄████▄▖', '▟▌ ▄▄ ▐▙', ' ▝▘  ▝▘ '],
 };
 
 interface MascotProps {

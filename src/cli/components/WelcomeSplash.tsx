@@ -22,14 +22,14 @@ const ART_ROWS_PLAIN = [
   '                                  \u2591\u2593\u2593\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2593\u2591             ',
 ];
 
-// Mascot rows (rendered in brand color)
-const MASCOT_ROW_0 = '      \u2590\u258b\u2588\u2588\u2588\u258c\u258c ';   // " ▐▛███▜▌ " padded
-const MASCOT_ROW_1 = '      \u259d\u259c\u2588\u2588\u2588\u2588\u2588\u258b\u2518';  // "▝▜█████▛▘"
-const MASCOT_ROW_2 = '        \u2598\u2598 \u259d\u259d  ';  // "  ▘▘ ▝▝  "
+// Mascot rows (rendered in brand color)  — "Refactron Bot" design
+const MASCOT_ROW_0 = '      \u2597\u2584\u2588\u2588\u2588\u2588\u2584\u2596 ';  // "▗▄████▄▖" padded
+const MASCOT_ROW_1 = '      \u2590\u258c \u2584\u2584 \u2590\u258c';           // "▐▌ ▄▄ ▐▌"
+const MASCOT_ROW_2 = '       \u259d\u2518  \u259d\u2518  ';                   // " ▝▘  ▝▘ "
 
-// Bottom separator: mascot feet embedded in ellipsis dots
+// Bottom separator: mascot body embedded in ellipsis dots
 const BOT_SEP =
-  '\u2026\u2026\u2026 \u2590\u258b\u2588\u2588\u2588\u258c\u258c \u2026\u2026\u2026\u2026\u2026\u2026\u2026\u2026\u2026\u2026\u2026\u2026\u2026\u2026\u2026\u2026\u2026\u2026\u2026\u2026\u2591\u2026\u2026\u2026\u2026\u2026\u2026\u2026\u2026\u2026\u2026\u2591\u2026\u2026\u2026\u2026\u2026\u2026\u2026\u2026\u2026\u2026';
+  '\u2026\u2026\u2026 \u2597\u2584\u2588\u2588\u2588\u2588\u2584\u2596 \u2026\u2026\u2026\u2026\u2026\u2026\u2026\u2026\u2026\u2026\u2026\u2026\u2026\u2026\u2026\u2026\u2026\u2026\u2026\u2026\u2591\u2026\u2026\u2026\u2026\u2026\u2026\u2026\u2026\u2026\u2026\u2591\u2026\u2026\u2026\u2026\u2026\u2026\u2026\u2026\u2026\u2026';
 
 interface WelcomeSplashProps {
   version: string;

@@ -3,9 +3,9 @@
 // Mascot (9 cols) on the left, version/adapter/cwd text on the right — no box borders.
 //
 // Renders:
-//   ▐▛███▜▌   Refactron  v0.1.0
-//   ▝▜█████▛▘  Python · FREE
-//     ▘▘ ▝▝    ~/my-project
+//   ▗▄████▄▖  Refactron  v0.1.0
+//   ▐▌ ▄▄ ▐▌  Python · FREE
+//    ▝▘  ▝▘   ~/my-project
 import React from 'react';
 import { Box, Text, useStdout } from 'ink';
 import { theme } from '../../ui/theme.js';
