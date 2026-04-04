@@ -75,6 +75,21 @@ function AppRoot({
   );
 }
 
+/** Enter alternate screen + hide cursor. No-op when not a TTY (pipes, CI). */
+function enterAltScreen(): void {
+  if (!process.stdout.isTTY) return;
+  process.stdout.write('\x1b[?1049h'); // enter alternate screen buffer
+  process.stdout.write('\x1b[H\x1b[2J'); // move to top-left, clear screen
+  process.stdout.write('\x1b[?25l'); // hide cursor
+}
+
+/** Leave alternate screen + restore cursor. Safe to call multiple times. */
+function leaveAltScreen(): void {
+  if (!process.stdout.isTTY) return;
+  process.stdout.write('\x1b[?25h'); // show cursor
+  process.stdout.write('\x1b[?1049l'); // leave alternate screen (restores previous content)
+}
+
 export async function run(_argv: string[]): Promise<void> {
   const projectRoot = process.cwd();
   const config = await loadConfig(projectRoot);
@@ -93,6 +108,19 @@ export async function run(_argv: string[]): Promise<void> {
 
   const initialCreds = await loadCredentials();
 
+  // Enter alternate screen BEFORE render() — zero flash, clean viewport.
+  enterAltScreen();
+
+  // Guarantee screen restoration on any exit path.
+  const restoreOnce = (() => {
+    let done = false;
+    return () => { if (!done) { done = true; leaveAltScreen(); } };
+  })();
+
+  process.on('exit', restoreOnce);
+  process.on('SIGINT', () => { restoreOnce(); process.exit(0); });
+  process.on('SIGTERM', () => { restoreOnce(); process.exit(0); });
+
   const { waitUntilExit } = render(
     <AppRoot
       adapter={adapter}
@@ -105,4 +133,5 @@ export async function run(_argv: string[]): Promise<void> {
   );
 
   await waitUntilExit();
+  restoreOnce();
 }
