@@ -207,7 +207,6 @@ export function LoginFlow({
           <Box flexDirection="column" gap={1}>
             <Box flexDirection="column">
               <Text dimColor>Sign in to start refactoring safely.</Text>
-              <Text dimColor>Refactron uses OAuth 2.0 — no password needed.</Text>
               <Text dimColor>Your browser will open to approve access.</Text>
             </Box>
             <Box gap={1}>
