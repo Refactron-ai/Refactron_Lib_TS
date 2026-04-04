@@ -7,19 +7,15 @@
 import React, { useState, useCallback, useEffect } from 'react';
 import { Box, Text, useInput, useApp } from 'ink';
 import { theme } from '../../ui/theme.js';
-import {
-  runLoginFlow,
-  validateApiKey,
-  saveCredentials,
-} from '../../auth/index.js';
+import { runLoginFlow, validateApiKey, saveCredentials } from '../../auth/index.js';
 import type { RefactronCredentials } from '../../auth/index.js';
 import { WelcomeSplash } from './WelcomeSplash.js';
 
 type LoginState =
   | 'prompt'
-  | 'running'    // OAuth device flow polling
-  | 'api-key'    // pro/enterprise: waiting for user to paste key
-  | 'verifying'  // checking the pasted key against server
+  | 'running' // OAuth device flow polling
+  | 'api-key' // pro/enterprise: waiting for user to paste key
+  | 'verifying' // checking the pasted key against server
   | 'success'
   | 'denied'
   | 'error';
@@ -140,14 +136,20 @@ export function LoginFlow({
       process.stdout.write(`\x1b]52;c;${b64}\x07`);
       setUrlCopied(true);
       setTimeout(() => setUrlCopied(false), 2000);
-    } catch { /* clipboard not supported in this terminal */ }
+    } catch {
+      /* clipboard not supported in this terminal */
+    }
   }, [url]);
 
   // ── Global keys ────────────────────────────────────────────────────────
   useInput(
     (inputChar, key) => {
       // Ctrl+C always exits
-      if (key.ctrl && inputChar === 'c') { onExit(); exit(); return; }
+      if (key.ctrl && inputChar === 'c') {
+        onExit();
+        exit();
+        return;
+      }
 
       // ── running state: C to copy URL ──────────────────────────────────
       if (state === 'running' && inputChar.toLowerCase() === 'c' && url) {
@@ -158,10 +160,16 @@ export function LoginFlow({
       // ── prompt state ──────────────────────────────────────────────────
       if (state === 'prompt') {
         // Enter or 'y' → login (Enter = default yes)
-        if (key.return || inputChar.toLowerCase() === 'y') { startLogin(); return; }
+        if (key.return || inputChar.toLowerCase() === 'y') {
+          startLogin();
+          return;
+        }
         if (inputChar.toLowerCase() === 'n' || key.escape) {
           setState('denied');
-          setTimeout(() => { onExit(); exit(); }, 300);
+          setTimeout(() => {
+            onExit();
+            exit();
+          }, 300);
         }
         return;
       }
@@ -179,7 +187,10 @@ export function LoginFlow({
         if (key.escape) {
           // Abort — nothing was saved
           setState('denied');
-          setTimeout(() => { onExit(); exit(); }, 300);
+          setTimeout(() => {
+            onExit();
+            exit();
+          }, 300);
           return;
         }
         // Reject control/meta combos
@@ -200,7 +211,6 @@ export function LoginFlow({
       <WelcomeSplash version={version} />
 
       <Box flexDirection="column" paddingLeft={2} gap={1}>
-
         {/* ── prompt ──────────────────────────────────────────────────── */}
         {state === 'prompt' && (
           <Box flexDirection="column" gap={1}>
@@ -209,9 +219,13 @@ export function LoginFlow({
               <Text dimColor>Your browser will open to approve access.</Text>
             </Box>
             <Box gap={1}>
-              <Text color={theme.colors.brand} bold>Log in to continue?</Text>
+              <Text color={theme.colors.brand} bold>
+                Log in to continue?
+              </Text>
               <Text dimColor>[</Text>
-              <Text color={theme.colors.brand} bold>Y</Text>
+              <Text color={theme.colors.brand} bold>
+                Y
+              </Text>
               <Text dimColor>/ n]</Text>
               <Text color={theme.colors.brand}>█</Text>
             </Box>
@@ -237,21 +251,23 @@ export function LoginFlow({
                   </Box>
                   {url && (
                     <Box paddingLeft={2}>
-                      <Text dimColor>
-                        {urlCopied ? '✔ Copied!' : 'Press C to copy URL'}
-                      </Text>
+                      <Text dimColor>{urlCopied ? '✔ Copied!' : 'Press C to copy URL'}</Text>
                     </Box>
                   )}
                 </Box>
                 <Box flexDirection="column">
                   <Text dimColor>Verification code:</Text>
                   <Box paddingLeft={2}>
-                    <Text color={theme.colors.brand} bold>{code}</Text>
+                    <Text color={theme.colors.brand} bold>
+                      {code}
+                    </Text>
                   </Box>
                 </Box>
                 <Box gap={1}>
                   <Text color={theme.colors.brand}>{spinner}</Text>
-                  <Text dimColor>{statusMsg !== '' ? statusMsg : 'Waiting for browser approval…'}</Text>
+                  <Text dimColor>
+                    {statusMsg !== '' ? statusMsg : 'Waiting for browser approval…'}
+                  </Text>
                 </Box>
               </>
             )}
@@ -262,26 +278,24 @@ export function LoginFlow({
         {(state === 'api-key' || state === 'verifying') && (
           <Box flexDirection="column" gap={1}>
             <Box flexDirection="column">
-              <Text color={theme.colors.brand} bold>API key required</Text>
+              <Text color={theme.colors.brand} bold>
+                API key required
+              </Text>
               <Text dimColor>
                 Your{' '}
                 <Text color={theme.colors.brand}>
                   {(pendingCreds?.plan ?? 'pro').toUpperCase()}
-                </Text>
-                {' '}plan requires an API key.
+                </Text>{' '}
+                plan requires an API key.
               </Text>
-              <Text dimColor>
-                Generate one in the Refactron web app and paste it below.
-              </Text>
+              <Text dimColor>Generate one in the Refactron web app and paste it below.</Text>
             </Box>
 
             {/* Masked input row */}
             <Box gap={1}>
               <Text dimColor>API key:</Text>
               <Text color={theme.colors.text}>{maskedKey}</Text>
-              {state === 'api-key' && (
-                <Text color={theme.colors.brand}>█</Text>
-              )}
+              {state === 'api-key' && <Text color={theme.colors.brand}>█</Text>}
             </Box>
 
             {state === 'verifying' && (
@@ -298,9 +312,7 @@ export function LoginFlow({
               </Box>
             )}
 
-            {state === 'api-key' && (
-              <Text dimColor>Press Enter to verify · Esc to cancel</Text>
-            )}
+            {state === 'api-key' && <Text dimColor>Press Enter to verify · Esc to cancel</Text>}
           </Box>
         )}
 
@@ -308,7 +320,9 @@ export function LoginFlow({
         {state === 'success' && (
           <Box flexDirection="column">
             <Box gap={1}>
-              <Text color={theme.colors.success} bold>{theme.symbols.pass}</Text>
+              <Text color={theme.colors.success} bold>
+                {theme.symbols.pass}
+              </Text>
               <Text color={theme.colors.success} bold>
                 Authenticated{successEmail !== '' ? ` as ${successEmail}` : ''}
               </Text>
@@ -320,24 +334,25 @@ export function LoginFlow({
         )}
 
         {/* ── denied ──────────────────────────────────────────────────── */}
-        {state === 'denied' && (
-          <Text dimColor>Cancelled. Goodbye.</Text>
-        )}
+        {state === 'denied' && <Text dimColor>Cancelled. Goodbye.</Text>}
 
         {/* ── error ───────────────────────────────────────────────────── */}
         {state === 'error' && (
           <Box flexDirection="column" gap={1}>
             <Box gap={1}>
-              <Text color={theme.colors.error} bold>{theme.symbols.fail}</Text>
-              <Text color={theme.colors.error} bold>Login failed</Text>
+              <Text color={theme.colors.error} bold>
+                {theme.symbols.fail}
+              </Text>
+              <Text color={theme.colors.error} bold>
+                Login failed
+              </Text>
             </Box>
             <Box paddingLeft={2} flexDirection="column">
               <Text dimColor>{errorMsg}</Text>
-              <Text dimColor>Run  refactron login  to try again.</Text>
+              <Text dimColor>Run refactron login to try again.</Text>
             </Box>
           </Box>
         )}
-
       </Box>
     </Box>
   );

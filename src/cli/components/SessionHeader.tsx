@@ -54,7 +54,10 @@ export function SessionHeader({
         <Text>
           <Text bold>{'Refactron'}</Text>
           {'  '}
-          <Text dimColor>{'v'}{version}</Text>
+          <Text dimColor>
+            {'v'}
+            {version}
+          </Text>
         </Text>
         {/* Row 2: adapter · plan */}
         <Text dimColor>{subtitle}</Text>

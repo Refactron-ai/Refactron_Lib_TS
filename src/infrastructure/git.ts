@@ -52,11 +52,10 @@ export async function findCoChangePairs(filePath: string, commits: GitCommit[]):
 
   // Batch: one git call for all commits instead of one per commit
   const hashes = commits.map((c) => c.hash);
-  const result = spawnSync(
-    'git',
-    ['diff-tree', '--no-commit-id', '-r', '--name-only', '--stdin'],
-    { encoding: 'utf8', input: hashes.join('\n') + '\n' },
-  );
+  const result = spawnSync('git', ['diff-tree', '--no-commit-id', '-r', '--name-only', '--stdin'], {
+    encoding: 'utf8',
+    input: hashes.join('\n') + '\n',
+  });
 
   if (result.status === 0 && result.stdout) {
     // diff-tree --stdin separates commits with the hash line followed by changed files
@@ -78,7 +77,8 @@ export async function findCoChangePairs(filePath: string, commits: GitCommit[]):
     }
   } else {
     // Fallback: individual calls (older git versions)
-    for (const commit of commits.slice(0, 20)) { // cap at 20 to avoid timeout
+    for (const commit of commits.slice(0, 20)) {
+      // cap at 20 to avoid timeout
       const r = spawnSync(
         'git',
         ['diff-tree', '--no-commit-id', '-r', '--name-only', commit.hash],

@@ -90,8 +90,15 @@ export async function pollForToken(
     const data = (await res.json()) as TokenResponse | PollError;
 
     if ('error' in data) {
-      if (data.error === 'authorization_pending') { onWaiting?.(); continue; }
-      if (data.error === 'slow_down') { interval += 5; onWaiting?.(); continue; }
+      if (data.error === 'authorization_pending') {
+        onWaiting?.();
+        continue;
+      }
+      if (data.error === 'slow_down') {
+        interval += 5;
+        onWaiting?.();
+        continue;
+      }
       if (data.error === 'expired_token') {
         throw new Error('Device code expired. Run `refactron login` again.');
       }
@@ -122,11 +129,13 @@ export async function validateApiKey(apiKey: string): Promise<ApiKeyValidationRe
     if (res.ok) return { ok: true, message: 'Verified.' };
     if (res.status === 401 || res.status === 403) return { ok: false, message: 'Invalid API key.' };
     if (res.status === 404) return { ok: false, message: 'Verification endpoint not found (404).' };
-    if (res.status >= 500) return { ok: false, message: `Server error (${res.status}). Try again later.` };
+    if (res.status >= 500)
+      return { ok: false, message: `Server error (${res.status}). Try again later.` };
     return { ok: false, message: `Unexpected response: ${res.status}.` };
   } catch (err) {
     if (err instanceof Error) {
-      if (err.name === 'TimeoutError') return { ok: false, message: 'Request timed out. Check your network.' };
+      if (err.name === 'TimeoutError')
+        return { ok: false, message: 'Request timed out. Check your network.' };
       if (err.name === 'AbortError') return { ok: false, message: 'Request was aborted.' };
     }
     return { ok: false, message: `Network error: ${String(err)}` };
@@ -151,9 +160,7 @@ export async function runLoginFlow(
   try {
     deviceResp = await requestDeviceCode();
   } catch (err) {
-    throw new Error(
-      `Cannot reach Refactron API. Check your internet connection.\n${String(err)}`,
-    );
+    throw new Error(`Cannot reach Refactron API. Check your internet connection.\n${String(err)}`);
   }
 
   const loginUrl = `${APP_LOGIN_URL}?code=${deviceResp.user_code}`;
@@ -172,7 +179,9 @@ export async function runLoginFlow(
     deviceResp.device_code,
     deviceResp.expires_in,
     deviceResp.interval,
-    () => { if (++pollCount % 6 === 0) onStatus?.('Still waiting…'); },
+    () => {
+      if (++pollCount % 6 === 0) onStatus?.('Still waiting…');
+    },
   );
 
   const expiresAt = new Date(Date.now() + token.expires_in * 1000).toISOString();

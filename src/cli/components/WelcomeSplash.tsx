@@ -23,9 +23,9 @@ const ART_ROWS_PLAIN = [
 ];
 
 // Mascot rows (rendered in brand color)  — "Refactron Bot" design
-const MASCOT_ROW_0 = '      \u2597\u2584\u2588\u2588\u2588\u2588\u2584\u2596 ';  // "▗▄████▄▖" padded
-const MASCOT_ROW_1 = '      \u2590\u258c \u2584\u2584 \u2590\u258c';           // "▐▌ ▄▄ ▐▌"
-const MASCOT_ROW_2 = '       \u259d\u2518  \u259d\u2518  ';                   // " ▝▘  ▝▘ "
+const MASCOT_ROW_0 = '      \u2597\u2584\u2588\u2588\u2588\u2588\u2584\u2596 '; // "▗▄████▄▖" padded
+const MASCOT_ROW_1 = '      \u2590\u258c \u2584\u2584 \u2590\u258c'; // "▐▌ ▄▄ ▐▌"
+const MASCOT_ROW_2 = '       \u259d\u2518  \u259d\u2518  '; // " ▝▘  ▝▘ "
 
 // Bottom separator: mascot body embedded in ellipsis dots
 const BOT_SEP =
@@ -42,7 +42,10 @@ export function WelcomeSplash({ version }: WelcomeSplashProps): React.ReactEleme
       <Text>
         <Text color={theme.colors.brand}>{'Welcome to Refactron'}</Text>
         {'  '}
-        <Text dimColor>{'v'}{version}</Text>
+        <Text dimColor>
+          {'v'}
+          {version}
+        </Text>
       </Text>
 
       {/* Top separator */}

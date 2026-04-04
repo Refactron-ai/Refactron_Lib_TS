@@ -13,10 +13,10 @@ import { theme } from '../../ui/theme.js';
 const BASE_FRAMES = theme.symbols.spinner; // set by platform in theme.ts
 const SHIMMER_HALF = 3;
 const SHIMMER_COLORS = [
-  theme.colors.brand,        // far
+  theme.colors.brand, // far
   theme.colors.brandShimmer, // mid
-  '#cce4ff',                 // near
-  '#ffffff',                 // peak
+  '#cce4ff', // near
+  '#ffffff', // peak
   '#cce4ff',
   theme.colors.brandShimmer,
   theme.colors.brand,
@@ -63,7 +63,11 @@ const SpinnerAnimationRow = memo(function SpinnerAnimationRow({
     return (
       <Box>
         <Text color={theme.colors.brand}>{visible ? theme.symbols.spinnerDot : ' '}</Text>
-        <Text dimColor>{' '}{verb}{'…'}</Text>
+        <Text dimColor>
+          {' '}
+          {verb}
+          {'…'}
+        </Text>
       </Box>
     );
   }
@@ -75,9 +79,7 @@ const SpinnerAnimationRow = memo(function SpinnerAnimationRow({
   // Stall: 0 → no ramp, 1 → full error red (after 6s)
   const stallIntensity = Math.min(stallMs / 6000, 1);
   const spinnerColor =
-    stallIntensity > 0.5
-      ? theme.colors.error
-      : lerpColor(BRAND_RGB, ERROR_RED, stallIntensity);
+    stallIntensity > 0.5 ? theme.colors.error : lerpColor(BRAND_RGB, ERROR_RED, stallIntensity);
 
   const spinnerChar = BASE_FRAMES[frame] ?? '·';
 
@@ -105,10 +107,10 @@ const SpinnerAnimationRow = memo(function SpinnerAnimationRow({
 // ── Hints shown while running ───────────────────────────────────────────────
 const HINTS = [
   "use 'd' in the browser to preview a diff before applying",
-  "press Ctrl+C to cancel the current operation",
+  'press Ctrl+C to cancel the current operation',
   "run 'session list' to see all previous sessions",
   "use 'A' in the issue browser to fix all issues at once",
-  "after analyzing, the issue browser opens automatically",
+  'after analyzing, the issue browser opens automatically',
   "use '/' in the browser to filter by file, message or severity",
   "run 'rollback' to undo the last autofix",
   "use 'j'/'k' or ↑/↓ to navigate issues in the browser",
@@ -163,11 +165,7 @@ export function SpinnerWithVerb({
       {/* Top border — mirrors PromptInput's visual boundary */}
       <Text color={theme.colors.border}>{'─'.repeat(columns)}</Text>
       <Box paddingLeft={2}>
-        <SpinnerAnimationRow
-          verb={verb}
-          stallMs={stallMs}
-          reducedMotion={reducedMotion}
-        />
+        <SpinnerAnimationRow verb={verb} stallMs={stallMs} reducedMotion={reducedMotion} />
       </Box>
       <Box paddingLeft={2} height={1}>
         <Text dimColor>{'hint: '}</Text>

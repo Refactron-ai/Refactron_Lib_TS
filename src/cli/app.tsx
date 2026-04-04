@@ -80,7 +80,7 @@ function AppRoot({
 function enterAltScreen(): void {
   if (!process.stdout.isTTY) return;
   process.stdout.write('\x1b[H\x1b[2J'); // move to top-left, clear screen
-  process.stdout.write('\x1b[?25l');     // hide cursor
+  process.stdout.write('\x1b[?25l'); // hide cursor
 }
 
 /** Restore cursor. Safe to call multiple times. */
@@ -114,12 +114,23 @@ export async function run(_argv: string[]): Promise<void> {
   // Guarantee screen restoration on any exit path.
   const restoreOnce = (() => {
     let done = false;
-    return () => { if (!done) { done = true; leaveAltScreen(); } };
+    return () => {
+      if (!done) {
+        done = true;
+        leaveAltScreen();
+      }
+    };
   })();
 
   process.on('exit', restoreOnce);
-  process.on('SIGINT', () => { restoreOnce(); process.exit(0); });
-  process.on('SIGTERM', () => { restoreOnce(); process.exit(0); });
+  process.on('SIGINT', () => {
+    restoreOnce();
+    process.exit(0);
+  });
+  process.on('SIGTERM', () => {
+    restoreOnce();
+    process.exit(0);
+  });
 
   const { waitUntilExit } = render(
     <AppRoot

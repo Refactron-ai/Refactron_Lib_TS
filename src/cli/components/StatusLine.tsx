@@ -38,7 +38,10 @@ export function StatusLine({
         {SEP}
         <Text dimColor>{adapterName}</Text>
         {SEP}
-        <Text dimColor>{'v'}{version}</Text>
+        <Text dimColor>
+          {'v'}
+          {version}
+        </Text>
 
         {issueCount != null && (
           <>
@@ -67,7 +70,8 @@ export function StatusLine({
           <>
             {SEP}
             <Text color={contextPct > 80 ? theme.colors.warning : theme.colors.textDim}>
-              {contextPct}{'% ctx'}
+              {contextPct}
+              {'% ctx'}
             </Text>
           </>
         )}

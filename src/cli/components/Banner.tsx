@@ -31,9 +31,7 @@ export function Banner({ version, adapterName, email, plan }: BannerProps): Reac
   const mascot = getMascotRows('default');
   const cwd = truncateCwd(process.cwd(), 45);
   const subtitle =
-    plan != null && plan !== ''
-      ? `${adapterName} · ${plan.toUpperCase()}`
-      : adapterName;
+    plan != null && plan !== '' ? `${adapterName} · ${plan.toUpperCase()}` : adapterName;
 
   return (
     <Box flexDirection="column" paddingBottom={1}>
@@ -50,17 +48,18 @@ export function Banner({ version, adapterName, email, plan }: BannerProps): Reac
         {/* Info column */}
         <Box flexDirection="column">
           <Box gap={1}>
-            <Text color={theme.colors.brand} bold>Refactron</Text>
+            <Text color={theme.colors.brand} bold>
+              Refactron
+            </Text>
             <Text dimColor>v{version}</Text>
           </Box>
           <Text dimColor>{subtitle}</Text>
-          {email != null && email !== ''
-            ? <Text dimColor>{email}</Text>
-            : <Text dimColor>{cwd}</Text>
-          }
-          {email != null && email !== '' && (
+          {email != null && email !== '' ? (
+            <Text dimColor>{email}</Text>
+          ) : (
             <Text dimColor>{cwd}</Text>
           )}
+          {email != null && email !== '' && <Text dimColor>{cwd}</Text>}
         </Box>
       </Box>
 

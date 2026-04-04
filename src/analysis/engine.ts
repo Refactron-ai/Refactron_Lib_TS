@@ -123,9 +123,7 @@ export class AnalysisEngine {
 
     const exts = this.adapter.extensions.map((e) => e.replace(/^\./, ''));
     // Use brace expansion only when >1 extension — {single} can behave unexpectedly
-    const pattern = exts.length === 1
-      ? `**/*.${exts[0]}`
-      : `**/*.{${exts.join(',')}}`;
+    const pattern = exts.length === 1 ? `**/*.${exts[0]}` : `**/*.{${exts.join(',')}}`;
 
     const files = await glob(pattern, {
       cwd: target,

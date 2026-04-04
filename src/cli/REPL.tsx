@@ -31,7 +31,7 @@ const OUTPUT_CIRCLE = process.platform === 'darwin' ? '\u23FA' : '\u25CF';
 // ❯ is U+276F — matches the prompt cursor char exactly
 function userBlock(cmd: string, lineId: () => number): MessageLine[] {
   return [
-    { id: lineId(), text: '', color: undefined },           // blank line before turn
+    { id: lineId(), text: '', color: undefined }, // blank line before turn
     { id: lineId(), text: `  \u276F ${cmd}`, color: theme.colors.brand },
   ];
 }
@@ -56,7 +56,9 @@ export function REPL({ ctx, version, email, plan }: REPLProps): React.ReactEleme
   useEffect(() => {
     if (!ctrlCPending) return;
     ctrlCTimerRef.current = setTimeout(() => setCtrlCPending(false), 800);
-    return () => { if (ctrlCTimerRef.current) clearTimeout(ctrlCTimerRef.current); };
+    return () => {
+      if (ctrlCTimerRef.current) clearTimeout(ctrlCTimerRef.current);
+    };
   }, [ctrlCPending]);
 
   const nextId = useCallback(() => lineIdRef.current++, []);
@@ -184,10 +186,12 @@ export function REPL({ ctx, version, email, plan }: REPLProps): React.ReactEleme
       {/* ── Output history — rendered in live tree so header stays fixed ───── */}
       {lines.map((line) =>
         line.color !== undefined ? (
-          <Text key={line.id} color={line.color}>{line.text}</Text>
+          <Text key={line.id} color={line.color}>
+            {line.text}
+          </Text>
         ) : (
           <Text key={line.id}>{line.text}</Text>
-        )
+        ),
       )}
 
       {/* Empty state — disappears after first command */}
@@ -195,11 +199,19 @@ export function REPL({ ctx, version, email, plan }: REPLProps): React.ReactEleme
         <Box paddingLeft={2} paddingBottom={1} flexDirection="column">
           <Box gap={1}>
             <Text color={theme.colors.brand}>{OUTPUT_CIRCLE}</Text>
-            <Text dimColor>{'Type '}<Text color={theme.colors.brand}>help</Text>{' to see available commands.'}</Text>
+            <Text dimColor>
+              {'Type '}
+              <Text color={theme.colors.brand}>help</Text>
+              {' to see available commands.'}
+            </Text>
           </Box>
           <Box gap={1}>
             <Text color={theme.colors.brand}>{OUTPUT_CIRCLE}</Text>
-            <Text dimColor>{'Try: '}<Text color={theme.colors.text}>{'analyze .'}</Text>{' to scan this project.'}</Text>
+            <Text dimColor>
+              {'Try: '}
+              <Text color={theme.colors.text}>{'analyze .'}</Text>
+              {' to scan this project.'}
+            </Text>
           </Box>
         </Box>
       )}
@@ -252,7 +264,6 @@ export function REPL({ ctx, version, email, plan }: REPLProps): React.ReactEleme
           <Text color={theme.colors.textDim}> again to exit</Text>
         </Box>
       )}
-
     </Box>
   );
 }

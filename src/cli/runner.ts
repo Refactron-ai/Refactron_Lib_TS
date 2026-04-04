@@ -19,8 +19,18 @@ import {
 
 // Commands that never require auth
 const AUTH_EXEMPT = new Set([
-  'login', 'logout', 'auth', 'help', '?',
-  'clear', 'exit', 'quit', 'q', 'session', 'issues', '',
+  'login',
+  'logout',
+  'auth',
+  'help',
+  '?',
+  'clear',
+  'exit',
+  'quit',
+  'q',
+  'session',
+  'issues',
+  '',
 ]);
 
 export interface CommandContext {
@@ -69,7 +79,11 @@ function severityColor(s: Severity): string {
 
 function blastBadge(level: string): string {
   const map: Record<string, string> = {
-    trivial: 'trivial', low: 'low', medium: 'med', high: 'HIGH', critical: 'CRIT',
+    trivial: 'trivial',
+    low: 'low',
+    medium: 'med',
+    high: 'HIGH',
+    critical: 'CRIT',
   };
   return map[level] ?? level;
 }
@@ -79,7 +93,10 @@ function formatAnalysis(
   onLine: (line: string, color?: string) => void,
 ): void {
   const bySeverity: Record<Severity, typeof result.issues> = {
-    critical: [], high: [], medium: [], low: [],
+    critical: [],
+    high: [],
+    medium: [],
+    low: [],
   };
   for (const issue of result.issues) bySeverity[issue.severity].push(issue);
 
@@ -102,7 +119,12 @@ function formatAnalysis(
 
   onLine('', undefined);
   const fixable = result.issues.filter((i) => i.fixable).length;
-  const { critical: c, high: h, medium: m, low: l } = {
+  const {
+    critical: c,
+    high: h,
+    medium: m,
+    low: l,
+  } = {
     critical: bySeverity.critical.length,
     high: bySeverity.high.length,
     medium: bySeverity.medium.length,
@@ -125,14 +147,23 @@ function printSessionCard(
   onLine(`  Session  ${session.id}`, theme.colors.brand);
   onLine(`  Target   ${rel}`, theme.colors.text);
   onLine(`  Phase    ${session.phase}`, theme.colors.textDim);
-  onLine(`  Issues   ${session.analysis.totalIssues}  (${session.analysis.fixableCount} fixable)`, theme.colors.text);
+  onLine(
+    `  Issues   ${session.analysis.totalIssues}  (${session.analysis.fixableCount} fixable)`,
+    theme.colors.text,
+  );
   onLine(`  Files    ${session.analysis.filesAnalyzed}  scanned`, theme.colors.textDim);
   onLine(`  Created  ${age}`, theme.colors.textDim);
   if (session.fix) {
-    onLine(`  Fix      ${session.fix.appliedCount} applied  ${session.fix.blockedCount} blocked${session.fix.dryRun ? '  [dry-run]' : ''}`, theme.colors.text);
+    onLine(
+      `  Fix      ${session.fix.appliedCount} applied  ${session.fix.blockedCount} blocked${session.fix.dryRun ? '  [dry-run]' : ''}`,
+      theme.colors.text,
+    );
   }
   if (session.verify) {
-    onLine(`  Verify   ${session.verify.passed} passed  ${session.verify.blocked} blocked`, theme.colors.text);
+    onLine(
+      `  Verify   ${session.verify.passed} passed  ${session.verify.blocked} blocked`,
+      theme.colors.text,
+    );
   }
   onLine('', undefined);
 }
@@ -159,15 +190,20 @@ export async function executeCommand(
     const noBrowser = flags['no-browser'] === true;
     onLine('', undefined);
     try {
-      const { creds, requiresApiKey } = await runLoginFlow(
-        noBrowser,
-        (msg) => onLine(`  ${msg}`, theme.colors.textDim),
+      const { creds, requiresApiKey } = await runLoginFlow(noBrowser, (msg) =>
+        onLine(`  ${msg}`, theme.colors.textDim),
       );
       onLine('', undefined);
       if (requiresApiKey) {
-        onLine(`  ${theme.symbols.pass}  OAuth complete. Run  refactron  to set your API key.`, theme.colors.warning);
+        onLine(
+          `  ${theme.symbols.pass}  OAuth complete. Run  refactron  to set your API key.`,
+          theme.colors.warning,
+        );
       } else {
-        onLine(`  ${theme.symbols.pass}  Logged in as ${creds.email ?? 'unknown'} (${creds.plan ?? 'free'} plan)`, theme.colors.success);
+        onLine(
+          `  ${theme.symbols.pass}  Logged in as ${creds.email ?? 'unknown'} (${creds.plan ?? 'free'} plan)`,
+          theme.colors.success,
+        );
       }
     } catch (err) {
       onLine(`  ${theme.symbols.fail}  ${String(err)}`, theme.colors.error);
@@ -196,7 +232,10 @@ export async function executeCommand(
       onLine('  ┌─────────────────────────────────┐', theme.colors.border);
       onLine(`  │  Status    Active               │`, theme.colors.success);
       onLine(`  │  User      ${(creds.email ?? 'unknown').padEnd(21)}│`, theme.colors.text);
-      onLine(`  │  Plan      ${(creds.plan?.toUpperCase() ?? 'FREE').padEnd(21)}│`, theme.colors.text);
+      onLine(
+        `  │  Plan      ${(creds.plan?.toUpperCase() ?? 'FREE').padEnd(21)}│`,
+        theme.colors.text,
+      );
       onLine(`  │  API URL   ${creds.api_base_url.slice(8, 30).padEnd(21)}│`, theme.colors.textDim);
       onLine(`  │  Expires   ${expiresAt.slice(0, 20).padEnd(21)}│`, theme.colors.textDim);
       onLine('  └─────────────────────────────────┘', theme.colors.border);
@@ -225,7 +264,10 @@ export async function executeCommand(
     onLine('  Commands:', theme.colors.accent);
     onLine('  analyze  [target]              scan files, create a session', theme.colors.text);
     onLine('  issues                         open interactive issue browser', theme.colors.text);
-    onLine('  autofix  [--dry-run] [--verify] fix all fixable issues in session', theme.colors.text);
+    onLine(
+      '  autofix  [--dry-run] [--verify] fix all fixable issues in session',
+      theme.colors.text,
+    );
     onLine('  verify   [file]                verify files in active session', theme.colors.text);
     onLine('  status                         show active session details', theme.colors.text);
     onLine('  session list                   list all saved sessions', theme.colors.text);
@@ -247,7 +289,10 @@ export async function executeCommand(
     const active = ctx.sessions.getActive();
     if (!active) {
       onLine('', undefined);
-      onLine(`  ${theme.symbols.fail}  No active session. Run: analyze <target> first.`, theme.colors.error);
+      onLine(
+        `  ${theme.symbols.fail}  No active session. Run: analyze <target> first.`,
+        theme.colors.error,
+      );
       onLine('', undefined);
       return {};
     }
@@ -283,7 +328,10 @@ export async function executeCommand(
 
     formatAnalysis(analysis, onLine);
     onLine('', undefined);
-    onLine(`  ${theme.symbols.pass}  Session ${session.id}  —  ${analysis.issues.length} issues found. Opening browser…`, theme.colors.textDim);
+    onLine(
+      `  ${theme.symbols.pass}  Session ${session.id}  —  ${analysis.issues.length} issues found. Opening browser…`,
+      theme.colors.textDim,
+    );
     onLine('', undefined);
     return { openBrowser: true };
   }
@@ -294,7 +342,10 @@ export async function executeCommand(
     const active = ctx.sessions.getActive();
     if (!active) {
       onLine('', undefined);
-      onLine(`  ${theme.symbols.fail}  No active session. Run: analyze <target> first.`, theme.colors.error);
+      onLine(
+        `  ${theme.symbols.fail}  No active session. Run: analyze <target> first.`,
+        theme.colors.error,
+      );
       onLine('', undefined);
       return {};
     }
@@ -304,7 +355,10 @@ export async function executeCommand(
     const fixable = active.analysis.issues.filter((i) => i.fixable).length;
 
     onLine('', undefined);
-    onLine(`  ${dryRun ? 'Previewing' : 'Fixing'} ${fixable} fixable issue(s) from session ${active.id} …`, theme.colors.textDim);
+    onLine(
+      `  ${dryRun ? 'Previewing' : 'Fixing'} ${fixable} fixable issue(s) from session ${active.id} …`,
+      theme.colors.textDim,
+    );
 
     // Reconstruct AnalysisResult from session
     const analysisResult: AnalysisResult = {
@@ -342,7 +396,10 @@ export async function executeCommand(
       session.blockedFixes.length > 0 ? theme.colors.error : theme.colors.textDim,
     );
     for (const fix of session.blockedFixes) {
-      onLine(`    ${theme.symbols.fail} ${fix.filePath}:${fix.lineNumber} — ${fix.message}`, theme.colors.textDim);
+      onLine(
+        `    ${theme.symbols.fail} ${fix.filePath}:${fix.lineNumber} — ${fix.message}`,
+        theme.colors.textDim,
+      );
     }
     onLine(`  State:    ${session.state}`, theme.colors.textDim);
     onLine('', undefined);
@@ -355,7 +412,10 @@ export async function executeCommand(
     const active = ctx.sessions.getActive();
     if (!active) {
       onLine('', undefined);
-      onLine(`  ${theme.symbols.fail}  No active session. Run: analyze <target> first.`, theme.colors.error);
+      onLine(
+        `  ${theme.symbols.fail}  No active session. Run: analyze <target> first.`,
+        theme.colors.error,
+      );
       onLine('', undefined);
       return {};
     }
@@ -373,7 +433,10 @@ export async function executeCommand(
 
     const verEngine = new VerificationEngine(ctx.adapter);
     onLine('', undefined);
-    onLine(`  Verifying ${fixableFiles.length} file(s) from session ${active.id} …`, theme.colors.textDim);
+    onLine(
+      `  Verifying ${fixableFiles.length} file(s) from session ${active.id} …`,
+      theme.colors.textDim,
+    );
     onLine('', undefined);
 
     let passed = 0;
@@ -401,17 +464,29 @@ export async function executeCommand(
       });
 
       if (result.safeToApply) {
-        onLine(`  ${theme.symbols.pass}  ${rel}  (confidence: ${confidence})`, theme.colors.success);
+        onLine(
+          `  ${theme.symbols.pass}  ${rel}  (confidence: ${confidence})`,
+          theme.colors.success,
+        );
         passed++;
       } else {
-        onLine(`  ${theme.symbols.fail}  ${rel}  — ${result.blockingReason ?? 'blocked'}  (confidence: ${confidence})`, theme.colors.error);
+        onLine(
+          `  ${theme.symbols.fail}  ${rel}  — ${result.blockingReason ?? 'blocked'}  (confidence: ${confidence})`,
+          theme.colors.error,
+        );
         blocked++;
       }
     }
 
     const updated = ctx.sessions.updateActive({
       phase: 'verified',
-      verify: { filesChecked: fixableFiles.length, passed, blocked, entries, timestamp: new Date().toISOString() },
+      verify: {
+        filesChecked: fixableFiles.length,
+        passed,
+        blocked,
+        entries,
+        timestamp: new Date().toISOString(),
+      },
     });
     if (updated) await ctx.sessions.save(updated);
 
@@ -495,7 +570,10 @@ export async function executeCommand(
     }
     for (const fix of active.fix.appliedFixes) {
       if (fix.diff) {
-        onLine(`  ${path.relative(ctx.projectRoot, fix.filePath)}:${fix.lineNumber}`, theme.colors.accent);
+        onLine(
+          `  ${path.relative(ctx.projectRoot, fix.filePath)}:${fix.lineNumber}`,
+          theme.colors.accent,
+        );
         onLine(fix.diff, undefined);
       }
     }

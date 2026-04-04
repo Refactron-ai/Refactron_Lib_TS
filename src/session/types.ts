@@ -5,9 +5,9 @@
 import type { CodeIssue, Severity, FixQueueItem } from '../core/models.js';
 
 export type WorkSessionPhase =
-  | 'analyzed'  // analyze complete, issues available
-  | 'fixing'    // autofix in progress
-  | 'fixed'     // autofix complete
+  | 'analyzed' // analyze complete, issues available
+  | 'fixing' // autofix in progress
+  | 'fixed' // autofix complete
   | 'verified'; // verify complete
 
 export interface WorkSessionAnalysis {
@@ -17,7 +17,7 @@ export interface WorkSessionAnalysis {
   totalIssues: number;
   fixableCount: number;
   issuesBySeverity: Record<Severity, number>;
-  issues: CodeIssue[];   // full list — key: enables autofix/verify without re-scan
+  issues: CodeIssue[]; // full list — key: enables autofix/verify without re-scan
   durationMs: number;
   timestamp: string;
 }

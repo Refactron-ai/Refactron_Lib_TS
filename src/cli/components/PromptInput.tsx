@@ -11,23 +11,23 @@ import { Box, Text, useInput, useStdout } from 'ink';
 import { theme } from '../../ui/theme.js';
 
 interface SlashCommand {
-  name: string;      // without leading slash
+  name: string; // without leading slash
   description: string;
 }
 
 const SLASH_COMMANDS: SlashCommand[] = [
-  { name: 'analyze',  description: 'Scan files for issues' },
-  { name: 'autofix',  description: 'Fix issues with verification' },
-  { name: 'verify',   description: 'Verify a file is safe to change' },
-  { name: 'status',   description: 'Show last session summary' },
-  { name: 'diff',     description: 'Show fix diff' },
+  { name: 'analyze', description: 'Scan files for issues' },
+  { name: 'autofix', description: 'Fix issues with verification' },
+  { name: 'verify', description: 'Verify a file is safe to change' },
+  { name: 'status', description: 'Show last session summary' },
+  { name: 'diff', description: 'Show fix diff' },
   { name: 'rollback', description: 'Restore from last backup' },
-  { name: 'login',    description: 'Authenticate with Refactron' },
-  { name: 'logout',   description: 'Remove stored credentials' },
-  { name: 'auth',     description: 'Show auth status' },
-  { name: 'clear',    description: 'Clear the screen' },
-  { name: 'exit',     description: 'Quit Refactron' },
-  { name: 'help',     description: 'Show all commands' },
+  { name: 'login', description: 'Authenticate with Refactron' },
+  { name: 'logout', description: 'Remove stored credentials' },
+  { name: 'auth', description: 'Show auth status' },
+  { name: 'clear', description: 'Clear the screen' },
+  { name: 'exit', description: 'Quit Refactron' },
+  { name: 'help', description: 'Show all commands' },
 ];
 
 // Names for typeahead ghost (bare, no slash)
@@ -66,9 +66,13 @@ export function PromptInput({
     ? SLASH_COMMANDS.filter((c) => c.name.startsWith(slashQuery))
     : [];
 
-  const searchMatch = searching && searchQuery.length > 0
-    ? history.slice().reverse().find((h) => h.includes(searchQuery)) ?? ''
-    : '';
+  const searchMatch =
+    searching && searchQuery.length > 0
+      ? (history
+          .slice()
+          .reverse()
+          .find((h) => h.includes(searchQuery)) ?? '')
+      : '';
 
   const acceptSearch = useCallback(() => {
     if (searchMatch) setValue(searchMatch);
@@ -99,8 +103,15 @@ export function PromptInput({
 
       // ── While searching ────────────────────────────────────────────────
       if (searching) {
-        if (key.return) { acceptSearch(); return; }
-        if (key.escape) { setSearching(false); setSearchQuery(''); return; }
+        if (key.return) {
+          acceptSearch();
+          return;
+        }
+        if (key.escape) {
+          setSearching(false);
+          setSearchQuery('');
+          return;
+        }
         if (key.backspace || key.delete) {
           setSearchQuery((q) => q.slice(0, -1));
           return;
@@ -176,7 +187,11 @@ export function PromptInput({
 
       if (key.downArrow) {
         if (isSlashMode) return; // handled above
-        if (historyIdx <= 0) { setHistoryIdx(-1); setValue(savedDraft); return; }
+        if (historyIdx <= 0) {
+          setHistoryIdx(-1);
+          setValue(savedDraft);
+          return;
+        }
         const idx = historyIdx - 1;
         setHistoryIdx(idx);
         setValue(history[history.length - 1 - idx] ?? '');
@@ -184,7 +199,10 @@ export function PromptInput({
       }
 
       // Tab: accept ghost completion (not in slash mode — handled above)
-      if (key.tab && ghost) { setValue(ghost); return; }
+      if (key.tab && ghost) {
+        setValue(ghost);
+        return;
+      }
 
       if (key.ctrl || key.meta) return;
       if (key.leftArrow || key.rightArrow) return;
@@ -210,16 +228,16 @@ export function PromptInput({
           <Text dimColor>(reverse-i-search):</Text>
           <Text color={theme.colors.brand}>{searchQuery}</Text>
           <Text color={theme.colors.brand}>█</Text>
-          {searchMatch !== '' && (
-            <Text dimColor>  → {searchMatch}</Text>
-          )}
+          {searchMatch !== '' && <Text dimColor> → {searchMatch}</Text>}
         </Box>
       )}
 
       {/* Main input row */}
       {!searching && (
         <Box paddingLeft={2}>
-          <Text color={theme.colors.brand} bold>{'❯ '}</Text>
+          <Text color={theme.colors.brand} bold>
+            {'❯ '}
+          </Text>
           {value.length === 0 ? (
             <>
               <Text color={theme.colors.brand}>{'█'}</Text>

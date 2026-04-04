@@ -5,10 +5,7 @@ import fs from 'fs/promises';
 import path from 'path';
 import { randomBytes } from 'crypto';
 import { atomicWrite } from '../verification/atomic-writer.js';
-import type {
-  WorkSession,
-  WorkSessionAnalysis,
-} from './types.js';
+import type { WorkSession, WorkSessionAnalysis } from './types.js';
 
 export class WorkSessionManager {
   private sessionsDir: string;
@@ -45,7 +42,9 @@ export class WorkSessionManager {
     this.activeSession = null;
   }
 
-  updateActive(updates: Partial<Pick<WorkSession, 'phase' | 'fix' | 'verify'>>): WorkSession | null {
+  updateActive(
+    updates: Partial<Pick<WorkSession, 'phase' | 'fix' | 'verify'>>,
+  ): WorkSession | null {
     if (!this.activeSession) return null;
     this.activeSession = {
       ...this.activeSession,
