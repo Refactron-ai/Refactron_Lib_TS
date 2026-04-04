@@ -204,34 +204,6 @@ export function PromptInput({
       {/* Top border */}
       <Text color={theme.colors.border}>{'─'.repeat(columns)}</Text>
 
-      {/* Slash command picker — shown above the input row */}
-      {isSlashMode && slashMatches.length > 0 && (
-        <Box flexDirection="column" paddingLeft={2} paddingBottom={1}>
-          {slashMatches.map((cmd, i) => {
-            const selected = i === Math.min(slashIdx, slashMatches.length - 1);
-            return (
-              <Box key={cmd.name} gap={2}>
-                <Text color={selected ? theme.colors.brand : theme.colors.text} bold={selected}>
-                  {'/' + cmd.name.padEnd(10)}
-                </Text>
-                {selected ? (
-                  <Text color={theme.colors.text}>{cmd.description}</Text>
-                ) : (
-                  <Text dimColor>{cmd.description}</Text>
-                )}
-              </Box>
-            );
-          })}
-        </Box>
-      )}
-
-      {/* No match for slash query */}
-      {isSlashMode && slashMatches.length === 0 && (
-        <Box paddingLeft={2} paddingBottom={1}>
-          <Text dimColor>No matching command</Text>
-        </Box>
-      )}
-
       {/* History search mode */}
       {searching && (
         <Box paddingLeft={2} gap={1}>
@@ -263,6 +235,34 @@ export function PromptInput({
               <Text color={theme.colors.brand}>{'█'}</Text>
             </>
           )}
+        </Box>
+      )}
+
+      {/* Slash command picker — shown below the input row */}
+      {isSlashMode && slashMatches.length > 0 && (
+        <Box flexDirection="column" paddingLeft={2} paddingTop={1}>
+          {slashMatches.map((cmd, i) => {
+            const selected = i === Math.min(slashIdx, slashMatches.length - 1);
+            return (
+              <Box key={cmd.name} gap={2}>
+                <Text color={selected ? theme.colors.brand : theme.colors.text} bold={selected}>
+                  {'/' + cmd.name.padEnd(10)}
+                </Text>
+                {selected ? (
+                  <Text color={theme.colors.text}>{cmd.description}</Text>
+                ) : (
+                  <Text dimColor>{cmd.description}</Text>
+                )}
+              </Box>
+            );
+          })}
+        </Box>
+      )}
+
+      {/* No match for slash query */}
+      {isSlashMode && slashMatches.length === 0 && (
+        <Box paddingLeft={2} paddingTop={1}>
+          <Text dimColor>No matching command</Text>
         </Box>
       )}
 
