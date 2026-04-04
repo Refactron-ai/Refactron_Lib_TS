@@ -6,7 +6,7 @@
 //   - Ctrl+R history search (reverse-i-search)
 //   - Footer hint bar: contextual 1-row hint below input
 import React, { useState, useCallback } from 'react';
-import { Box, Text, useInput } from 'ink';
+import { Box, Text, useInput, useStdout } from 'ink';
 import { theme } from '../../ui/theme.js';
 
 const KNOWN_COMMANDS = [
@@ -27,6 +27,9 @@ export function PromptInput({
   isRunning = false,
   history,
 }: PromptInputProps): React.ReactElement {
+  const { stdout } = useStdout();
+  const columns = stdout?.columns ?? 80;
+
   const [value, setValue] = useState('');
   const [historyIdx, setHistoryIdx] = useState(-1);
   const [savedDraft, setSavedDraft] = useState('');
@@ -132,6 +135,9 @@ export function PromptInput({
   // ── Render ─────────────────────────────────────────────────────────────
   return (
     <Box flexDirection="column">
+      {/* Top border — full-width rule separating output from input (YRC-style visual boundary) */}
+      <Text color={theme.colors.border}>{'─'.repeat(columns)}</Text>
+
       {/* History search mode */}
       {searching && (
         <Box paddingLeft={2} gap={1}>

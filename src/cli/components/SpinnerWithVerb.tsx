@@ -6,7 +6,7 @@
 //   - Reduced-motion: single ● dot with 1s blink
 //   - SpinnerAnimationRow wrapped in memo — owns 80ms interval
 import React, { useState, useEffect, memo } from 'react';
-import { Box, Text } from 'ink';
+import { Box, Text, useStdout } from 'ink';
 import { theme } from '../../ui/theme.js';
 
 // ── Frames (YRC SpinnerGlyph pattern) ──────────────────────────────────────
@@ -116,6 +116,8 @@ export function SpinnerWithVerb({
   lastProgressTime,
   reducedMotion = false,
 }: SpinnerWithVerbProps): React.ReactElement | null {
+  const { stdout } = useStdout();
+  const columns = stdout?.columns ?? 80;
   const [now, setNow] = useState(() => Date.now());
 
   useEffect(() => {
@@ -129,12 +131,16 @@ export function SpinnerWithVerb({
   const stallMs = lastProgressTime != null ? Math.max(0, now - lastProgressTime) : 0;
 
   return (
-    <Box paddingLeft={2}>
-      <SpinnerAnimationRow
-        verb={verb}
-        stallMs={stallMs}
-        reducedMotion={reducedMotion}
-      />
+    <Box flexDirection="column">
+      {/* Top border — mirrors PromptInput's visual boundary */}
+      <Text color={theme.colors.border}>{'─'.repeat(columns)}</Text>
+      <Box paddingLeft={2}>
+        <SpinnerAnimationRow
+          verb={verb}
+          stallMs={stallMs}
+          reducedMotion={reducedMotion}
+        />
+      </Box>
     </Box>
   );
 }

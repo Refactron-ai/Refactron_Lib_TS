@@ -1,9 +1,9 @@
 // src/cli/REPL.tsx
 // Layout:
-//   Static [WelcomeSplash]  — printed once at top, scrolls up
+//   Static [SessionHeader]  — printed once at top, scrolls up
 //   Static [lines]          — session output, append-only
 //   EmptyState              — live, shown when lines is empty
-//   SpinnerWithVerb | PromptInput
+//   SpinnerWithVerb | PromptInput  (separated from output by a top border)
 //   StatusLine
 import React, { useState, useCallback, useRef } from 'react';
 import { Box, Static, Text, useApp, useInput } from 'ink';
@@ -27,17 +27,16 @@ interface REPLProps {
 // Stable single-item array — Static never re-renders it
 const SPLASH_ITEMS = [{ id: 'splash' }];
 
-// Build a styled "user turn" block: ╭─ you ─…╮ / │ → cmd │ / ╰───…╯
-function userBlock(cmd: string, lineId: () => number): MessageLine[] {
-  const inner = `  ${theme.symbols.arrow} ${cmd}`;
-  return [
-    { id: lineId(), text: inner, color: theme.colors.brand },
-  ];
-}
+// YRC BLACK_CIRCLE: ⏺ on macOS (U+23FA), ● elsewhere (U+25CF)
+const OUTPUT_CIRCLE = process.platform === 'darwin' ? '\u23FA' : '\u25CF';
 
-// Thin rule separator before assistant output
-function ruleLines(lineId: () => number): MessageLine[] {
-  return [{ id: lineId(), text: '  ' + '─'.repeat(54), color: theme.colors.border }];
+// User turn block: blank spacer + ❯ cmd (figures.pointer, YRC-style)
+// ❯ is U+276F — matches the prompt cursor char exactly
+function userBlock(cmd: string, lineId: () => number): MessageLine[] {
+  return [
+    { id: lineId(), text: '', color: undefined },           // blank line before turn
+    { id: lineId(), text: `  \u276F ${cmd}`, color: theme.colors.brand },
+  ];
 }
 
 export function REPL({ ctx, version, email, plan }: REPLProps): React.ReactElement {
@@ -97,8 +96,7 @@ export function REPL({ ctx, version, email, plan }: REPLProps): React.ReactEleme
       abortRef.current = controller;
       const buffer: MessageLine[] = [];
 
-      // Rule before output
-      buffer.push(...ruleLines(nextId));
+      let firstOutputSeen = false;
 
       let result: CommandResult = {};
       try {
@@ -106,7 +104,13 @@ export function REPL({ ctx, version, email, plan }: REPLProps): React.ReactEleme
           parsed,
           ctx,
           (text, color) => {
-            buffer.push({ id: nextId(), text, color });
+            if (!firstOutputSeen && text.trim() !== '') {
+              firstOutputSeen = true;
+              // Prefix the first meaningful line with the circle indicator
+              buffer.push({ id: nextId(), text: `  ${OUTPUT_CIRCLE} ${text.trimStart()}`, color });
+            } else {
+              buffer.push({ id: nextId(), text, color });
+            }
           },
           controller.signal,
         );
@@ -155,7 +159,7 @@ export function REPL({ ctx, version, email, plan }: REPLProps): React.ReactEleme
 
   return (
     <Box flexDirection="column">
-      {/* WelcomeSplash: Static single item — printed once at top */}
+      {/* SessionHeader: Static single item — printed once at top, scrolls up */}
       <Static items={SPLASH_ITEMS}>
         {() => (
           <SessionHeader
@@ -181,14 +185,20 @@ export function REPL({ ctx, version, email, plan }: REPLProps): React.ReactEleme
 
       {/* Empty state — live, disappears after first command */}
       {lines.length === 0 && !isRunning && (
-        <Box paddingLeft={2} paddingBottom={1}>
-          <Text dimColor>{'Type '}</Text>
-          <Text color={theme.colors.brand}>{'help'}</Text>
-          <Text dimColor>{' to see commands, or start typing below.'}</Text>
+        <Box paddingLeft={2} paddingBottom={1} flexDirection="column">
+          <Box gap={1}>
+            <Text color={theme.colors.brand}>{OUTPUT_CIRCLE}</Text>
+            <Text dimColor>{'Type '}<Text color={theme.colors.brand}>help</Text>{' to see available commands.'}</Text>
+          </Box>
+          <Box gap={1}>
+            <Text color={theme.colors.brand}>{OUTPUT_CIRCLE}</Text>
+            <Text dimColor>{'Try: '}<Text color={theme.colors.text}>{'analyze .'}</Text>{' to scan this project.'}</Text>
+          </Box>
         </Box>
       )}
 
       {/* Dynamic bottom: spinner while running, prompt when idle */}
+      {/* Input / spinner area — PromptInput owns the top border; spinner mirrors it */}
       {isRunning ? (
         <SpinnerWithVerb
           verb={runningCmd.split(' ')[0] ?? 'working'}
