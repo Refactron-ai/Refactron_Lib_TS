@@ -321,8 +321,12 @@ export function IssueBrowser({
         return;
       }
 
-      // Verify selected file
+      // Verify selected file — only if already fixed
       if (inputChar === 'v' && selected) {
+        if (!fixedIds.has(selected.id)) {
+          pushStatus('  Fix this issue first before verifying.', theme.colors.warning);
+          return;
+        }
         void verifyFile(selected);
         return;
       }
@@ -512,6 +516,72 @@ export function IssueBrowser({
       )}
 
       <Text color={theme.colors.border}>{border}</Text>
+
+      {/* ── Next-step hint — contextual based on session state ────────── */}
+      {!isWorking && !filterMode && (() => {
+        const hasAnyFixed = fixedCount > 0;
+        const fixedNotVerified = [...fixedIds].some(
+          (id) => {
+            const issue = issues.find((i) => i.id === id);
+            return issue && !verifiedFiles.has(issue.file);
+          },
+        );
+        const hasBlocked = [...verifiedFiles.values()].some((v) => !v);
+        const allVerifiedSafe =
+          hasAnyFixed &&
+          !fixedNotVerified &&
+          !hasBlocked;
+
+        if (allVerifiedSafe) {
+          return (
+            <Box paddingLeft={2} paddingBottom={0}>
+              <Text color={theme.colors.success}>{'  ✔ '}</Text>
+              <Text color={theme.colors.success}>{'All fixed issues verified safe. '}</Text>
+              <Text dimColor>{'Press '}</Text>
+              <Text color={theme.colors.brand}>{'q'}</Text>
+              <Text dimColor>{' to exit — changes are already written to disk.'}</Text>
+            </Box>
+          );
+        }
+        if (hasBlocked) {
+          return (
+            <Box paddingLeft={2} paddingBottom={0}>
+              <Text color={theme.colors.error}>{'  ✘ '}</Text>
+              <Text color={theme.colors.error}>{'Blocked issues found. '}</Text>
+              <Text dimColor>{'Press '}</Text>
+              <Text color={theme.colors.brand}>{'q'}</Text>
+              <Text dimColor>{' then run '}</Text>
+              <Text color={theme.colors.brand}>{'rollback'}</Text>
+              <Text dimColor>{' to undo unsafe changes.'}</Text>
+            </Box>
+          );
+        }
+        if (fixedNotVerified) {
+          return (
+            <Box paddingLeft={2} paddingBottom={0}>
+              <Text dimColor>{'  → '}</Text>
+              <Text dimColor>{'Fixed issues not yet verified. Navigate to a fixed issue and press '}</Text>
+              <Text color={theme.colors.brand}>{'v'}</Text>
+              <Text dimColor>{' to verify.'}</Text>
+            </Box>
+          );
+        }
+        if (!hasAnyFixed && fixableTotal > 0) {
+          return (
+            <Box paddingLeft={2} paddingBottom={0}>
+              <Text dimColor>{'  → '}</Text>
+              <Text dimColor>{'Press '}</Text>
+              <Text color={theme.colors.brand}>{'a'}</Text>
+              <Text dimColor>{' to fix selected · '}</Text>
+              <Text color={theme.colors.brand}>{'A'}</Text>
+              <Text dimColor>{' to fix all · '}</Text>
+              <Text color={theme.colors.brand}>{'d'}</Text>
+              <Text dimColor>{' to preview diff before fixing.'}</Text>
+            </Box>
+          );
+        }
+        return null;
+      })()}
 
       {/* ── Footer ────────────────────────────────────────────────────── */}
       <Box paddingLeft={1}>
