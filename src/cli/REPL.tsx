@@ -1,14 +1,15 @@
 // src/cli/REPL.tsx
-// Claude Code-style REPL layout:
-//   BannerLogo  — live component with animated mascot, always visible at top
-//   Static      — completed output (scrolls naturally as session grows)
-//   SpinnerWithVerb | PromptInput  — dynamic bottom section
-//   StatusLine  — always at the very bottom
+// Layout:
+//   Static [banner]     — printed once at top, scrolls up naturally
+//   Static [lines]      — session output, append-only
+//   SpinnerWithVerb     — shown while running
+//   PromptInput         — shown when idle
+//   StatusLine          — always at bottom
 import React, { useState, useCallback, useRef } from 'react';
 import { Box, Static, Text, useApp, useInput } from 'ink';
 import { theme } from '../ui/theme.js';
 import { parseInput, executeCommand, type CommandContext } from './runner.js';
-import { BannerLogo } from './components/BannerLogo.js';
+import { Banner } from './components/Banner.js';
 import { SpinnerWithVerb } from './components/SpinnerWithVerb.js';
 import { StatusLine } from './components/StatusLine.js';
 import { PromptInput } from './components/PromptInput.js';
@@ -23,10 +24,13 @@ interface REPLProps {
   plan?: string | null | undefined;
 }
 
+// Stable single-item array for the banner Static — defined outside component
+// so it never changes reference and Static never re-renders it.
+const BANNER_ITEMS = [{ id: 'banner' }];
+
 export function REPL({ ctx, version, email, plan }: REPLProps): React.ReactElement {
   const { exit } = useApp();
 
-  // Lines start empty — BannerLogo handles the startup display as a live component
   const [lines, setLines] = useState<MessageLine[]>([]);
   const [isRunning, setIsRunning] = useState(false);
   const [runningCmd, setRunningCmd] = useState('');
@@ -124,7 +128,6 @@ export function REPL({ ctx, version, email, plan }: REPLProps): React.ReactEleme
         }
         return;
       }
-
       if (key.ctrl && inputChar === 'c') {
         appendLines([{ id: lineIdRef.current++, text: '  Goodbye.', color: theme.colors.textDim }]);
         setTimeout(() => exit(), 80);
@@ -136,21 +139,26 @@ export function REPL({ ctx, version, email, plan }: REPLProps): React.ReactEleme
   return (
     <Box flexDirection="column">
       {/*
-        BannerLogo: live component — mascot animates on click.
-        Renders once at startup; scrolls off naturally as session output grows.
-        Mirrors Claude Code's CondensedLogo position in the REPL tree.
+        Banner: single-item Static — Ink prints this once and never touches it
+        again. It appears at the very top of the output, above all session lines.
+        Using Static here (not a live component) ensures it stays at the top
+        as subsequent Static items push it upward naturally.
       */}
-      <BannerLogo
-        version={version}
-        adapterName={ctx.adapter.displayName}
-        email={email}
-        plan={plan}
-      />
+      <Static items={BANNER_ITEMS}>
+        {() => (
+          <Banner
+            key="banner"
+            version={version}
+            adapterName={ctx.adapter.displayName}
+            email={email}
+            plan={plan}
+          />
+        )}
+      </Static>
 
       {/*
-        Static: Ink prints each item once and never re-renders it.
-        Output accumulates and scrolls naturally — the terminal's own
-        scrollback handles history. No viewport math needed.
+        Session output: each item printed once, scrolls up naturally.
+        No viewport math — the terminal handles scrollback.
       */}
       <Static items={lines}>
         {(line) =>

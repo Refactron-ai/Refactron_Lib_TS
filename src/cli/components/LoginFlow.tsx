@@ -10,7 +10,7 @@ import { Box, Text, useInput, useApp } from 'ink';
 import { theme } from '../../ui/theme.js';
 import { runLoginFlow } from '../../auth/index.js';
 import type { RefactronCredentials } from '../../auth/index.js';
-import { BannerLogo } from './BannerLogo.js';
+import { Banner } from './Banner.js';
 
 type LoginState = 'prompt' | 'running' | 'success' | 'denied' | 'error';
 
@@ -94,8 +94,8 @@ export function LoginFlow({
 
   return (
     <Box flexDirection="column">
-      {/* ── Startup banner — same as authenticated REPL ─────────── */}
-      <BannerLogo version={version} adapterName={adapterName} />
+      {/* ── Startup banner ───────────────────────────────────────── */}
+      <Banner version={version} adapterName={adapterName} />
 
       {/* ── Auth section ─────────────────────────────────────────── */}
       <Box flexDirection="column" paddingLeft={2} gap={0}>
