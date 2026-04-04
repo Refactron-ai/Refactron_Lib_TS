@@ -5,7 +5,7 @@
 //   EmptyState              — shown when lines is empty
 //   SpinnerWithVerb | PromptInput  (separated from output by a top border)
 //   StatusLine
-import React, { useState, useCallback, useRef } from 'react';
+import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { Box, Text, useApp, useInput } from 'ink';
 import { theme } from '../ui/theme.js';
 import { parseInput, executeCommand, type CommandContext, type CommandResult } from './runner.js';
@@ -51,6 +51,19 @@ export function REPL({ ctx, version, email, plan }: REPLProps): React.ReactEleme
 
   const lineIdRef = useRef(0);
   const abortRef = useRef<AbortController | null>(null);
+  const ctrlCTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [ctrlCPending, setCtrlCPending] = useState(false);
+
+  // Clear the pending state if the user waits too long
+  useEffect(() => {
+    if (!ctrlCPending) return;
+    ctrlCTimerRef.current = setTimeout(() => {
+      setCtrlCPending(false);
+    }, 2000);
+    return () => {
+      if (ctrlCTimerRef.current) clearTimeout(ctrlCTimerRef.current);
+    };
+  }, [ctrlCPending]);
 
   const nextId = useCallback(() => lineIdRef.current++, []);
 
@@ -146,8 +159,15 @@ export function REPL({ ctx, version, email, plan }: REPLProps): React.ReactEleme
         return;
       }
       if (key.ctrl && inputChar === 'c') {
-        appendLines([{ id: nextId(), text: '  Goodbye.', color: theme.colors.textDim }]);
-        setTimeout(() => exit(), 80);
+        if (ctrlCPending) {
+          // Second press — exit
+          appendLines([{ id: nextId(), text: '  Goodbye.', color: theme.colors.textDim }]);
+          setTimeout(() => exit(), 80);
+        } else {
+          // First press — warn
+          setCtrlCPending(true);
+          appendLines([{ id: nextId(), text: '  Press Ctrl+C again to exit.', color: theme.colors.textDim }]);
+        }
       }
     },
     { isActive: process.stdin.isTTY === true },
