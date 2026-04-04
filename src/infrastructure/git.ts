@@ -7,12 +7,17 @@ export interface GitCommit {
   date: Date;
 }
 
+const gitRepoCache = new Map<string, boolean>();
+
 export function isGitRepo(dir: string): boolean {
+  if (gitRepoCache.has(dir)) return gitRepoCache.get(dir)!;
   const result = spawnSync('git', ['rev-parse', '--git-dir'], {
     cwd: dir,
     encoding: 'utf8',
   });
-  return result.status === 0;
+  const isRepo = result.status === 0;
+  gitRepoCache.set(dir, isRepo);
+  return isRepo;
 }
 
 export function gitLogForFile(filePath: string, days: number): GitCommit[] {
@@ -40,22 +45,53 @@ function parseGitLog(output: string): GitCommit[] {
 }
 
 export async function findCoChangePairs(filePath: string, commits: GitCommit[]): Promise<string[]> {
+  if (commits.length === 0) return [];
+
   const coChanges = new Map<string, number>();
   const absPath = path.resolve(filePath);
 
-  for (const commit of commits) {
-    const result = spawnSync(
-      'git',
-      ['diff-tree', '--no-commit-id', '-r', '--name-only', commit.hash],
-      { encoding: 'utf8' },
-    );
-    const changedFiles = result.stdout.trim().split('\n').filter(Boolean);
-    const fileInCommit = changedFiles.some((f) => path.resolve(f) === absPath);
-    if (fileInCommit) {
-      for (const f of changedFiles) {
-        const resolved = path.resolve(f);
-        if (resolved !== absPath) {
-          coChanges.set(resolved, (coChanges.get(resolved) ?? 0) + 1);
+  // Batch: one git call for all commits instead of one per commit
+  const hashes = commits.map((c) => c.hash);
+  const result = spawnSync(
+    'git',
+    ['diff-tree', '--no-commit-id', '-r', '--name-only', '--stdin'],
+    { encoding: 'utf8', input: hashes.join('\n') + '\n' },
+  );
+
+  if (result.status === 0 && result.stdout) {
+    // diff-tree --stdin separates commits with the hash line followed by changed files
+    const lines = result.stdout.trim().split('\n').filter(Boolean);
+    // Parse: each group starts with a 40-char hash line, followed by file paths
+    let inCommitFiles: string[] = [];
+    for (const line of lines) {
+      if (/^[0-9a-f]{40}$/.test(line)) {
+        inCommitFiles = [];
+      } else {
+        inCommitFiles.push(line);
+        const resolved = path.resolve(line);
+        if (inCommitFiles.some((f) => path.resolve(f) === absPath)) {
+          if (resolved !== absPath) {
+            coChanges.set(resolved, (coChanges.get(resolved) ?? 0) + 1);
+          }
+        }
+      }
+    }
+  } else {
+    // Fallback: individual calls (older git versions)
+    for (const commit of commits.slice(0, 20)) { // cap at 20 to avoid timeout
+      const r = spawnSync(
+        'git',
+        ['diff-tree', '--no-commit-id', '-r', '--name-only', commit.hash],
+        { encoding: 'utf8' },
+      );
+      const changedFiles = r.stdout.trim().split('\n').filter(Boolean);
+      const fileInCommit = changedFiles.some((f) => path.resolve(f) === absPath);
+      if (fileInCommit) {
+        for (const f of changedFiles) {
+          const resolved = path.resolve(f);
+          if (resolved !== absPath) {
+            coChanges.set(resolved, (coChanges.get(resolved) ?? 0) + 1);
+          }
         }
       }
     }

@@ -36,10 +36,22 @@ export class AnalysisEngine {
     const start = Date.now();
     const files = await this.findFiles(target);
 
-    const importGraph = await this.adapter.buildImportGraph(target);
-    const callGraph = await this.adapter.buildCallGraph(files);
+    // Build graphs once upfront (not per-file)
+    const [importGraph, callGraph] = await Promise.all([
+      this.adapter.buildImportGraph(target),
+      this.adapter.buildCallGraph(files),
+    ]);
     const blastAnalyzer = new BlastRadiusAnalyzer(callGraph, importGraph);
+
+    // Build temporal profiles in one batch pass (one git call per file max)
     const temporalAnalyzer = new TemporalAnalyzer();
+    const temporalCache = new Map<string, Awaited<ReturnType<TemporalAnalyzer['profile']>>>();
+    await Promise.all(
+      files.map(async (f) => {
+        const t = await temporalAnalyzer.profile(f);
+        temporalCache.set(f, t);
+      }),
+    );
 
     const allIssues: CodeIssue[] = [];
     let filesSkipped = 0;
@@ -53,6 +65,9 @@ export class AnalysisEngine {
         continue;
       }
 
+      const blastRadius = blastAnalyzer.compute(filePath);
+      const temporal = temporalCache.get(filePath) ?? null;
+
       for (const analyzer of this.analyzers) {
         const analyzerKey = analyzer.name as keyof RefactronConfig['analyzers'];
         const analyzerCfg = this.config.analyzers[analyzerKey];
@@ -61,11 +76,9 @@ export class AnalysisEngine {
         const result = await analyzer.analyze(filePath, code, analyzerCfg as AnalyzerConfig);
 
         for (const partialIssue of result.issues) {
-          const blastRadius = blastAnalyzer.compute(filePath);
-          const temporal = await temporalAnalyzer.profile(filePath);
           allIssues.push({
             ...partialIssue,
-            blastRadius, // ALWAYS present
+            blastRadius,
             ...(temporal ? { temporal } : {}),
           });
         }
@@ -100,20 +113,26 @@ export class AnalysisEngine {
   }
 
   private async findFiles(target: string): Promise<string[]> {
+    // Single file
     try {
       const stat = await fs.stat(target);
       if (stat.isFile()) return [target];
     } catch {
-      return [];
+      return []; // target doesn't exist
     }
 
-    const extensions = this.adapter.extensions.map((e) => e.replace('.', '')).join(',');
-    const pattern = `**/*.{${extensions}}`;
+    const exts = this.adapter.extensions.map((e) => e.replace(/^\./, ''));
+    // Use brace expansion only when >1 extension — {single} can behave unexpectedly
+    const pattern = exts.length === 1
+      ? `**/*.${exts[0]}`
+      : `**/*.{${exts.join(',')}}`;
+
     const files = await glob(pattern, {
       cwd: target,
-      ignore: ['**/node_modules/**', '**/.git/**', '**/dist/**'],
+      ignore: ['**/node_modules/**', '**/.git/**', '**/dist/**', '**/.refactron/**'],
       absolute: true,
     });
-    return files;
+
+    return files.sort(); // stable order across runs
   }
 }
