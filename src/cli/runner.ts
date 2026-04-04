@@ -283,9 +283,9 @@ export async function executeCommand(
 
     formatAnalysis(analysis, onLine);
     onLine('', undefined);
-    onLine(`  ${theme.symbols.pass}  Session ${session.id} created  —  run autofix or verify to continue.`, theme.colors.textDim);
+    onLine(`  ${theme.symbols.pass}  Session ${session.id}  —  ${analysis.issues.length} issues found. Opening browser…`, theme.colors.textDim);
     onLine('', undefined);
-    return {};
+    return { openBrowser: true };
   }
 
   // ── autofix — operates on active session ─────────────────────────────────

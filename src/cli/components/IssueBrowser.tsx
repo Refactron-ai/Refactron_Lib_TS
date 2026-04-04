@@ -4,24 +4,27 @@
 // Layout:
 //   header bar  — session id, counts, filter hint
 //   ─ separator
-//   issue list  — paginated, ↑↓ navigation, selected row highlighted
+//   issue list  — paginated, ↑↓/j/k navigation, selected row highlighted
 //   ─ separator
 //   detail panel — message, suggestion, file, status / diff preview
 //   ─ separator
 //   footer hints — contextual keybindings
 //
 // Keys:
-//   ↑↓          navigate
-//   a           fix selected issue (writes file, stays in browser)
-//   d           dry-run selected issue (shows diff in detail panel)
-//   /           enter filter mode (type to filter by message or file)
-//   Esc         clear filter / exit filter mode
-//   q           exit browser
-import React, { useState, useCallback, useMemo } from 'react';
+//   ↑↓  /  j k    navigate
+//   a              fix selected issue (writes file, stays in browser)
+//   A              fix ALL fixable issues in one pass
+//   d              dry-run selected issue (shows diff in detail panel)
+//   v              verify selected file
+//   /              enter filter mode (type to filter by message or file)
+//   Esc            clear filter / exit filter mode / dismiss diff
+//   q              exit browser
+import React, { useState, useCallback, useMemo, useEffect } from 'react';
 import { Box, Text, useInput, useStdout } from 'ink';
 import fs from 'fs/promises';
 import { theme } from '../../ui/theme.js';
 import { AutoFixEngine } from '../../autofix/engine.js';
+import { VerificationEngine } from '../../verification/engine.js';
 import { BackupManager } from '../../infrastructure/backup.js';
 import { atomicWrite } from '../../verification/atomic-writer.js';
 import type { CodeIssue, Severity } from '../../core/models.js';
@@ -51,6 +54,14 @@ interface IssueBrowserProps {
   onExit: (fixedFiles: string[]) => void;
 }
 
+interface StatusEntry {
+  text: string;
+  color: string;
+  id: number;
+}
+
+let statusSeq = 0;
+
 export function IssueBrowser({
   issues,
   sessionId,
@@ -69,9 +80,23 @@ export function IssueBrowser({
   const [filterText, setFilterText] = useState('');
   const [fixedIds, setFixedIds] = useState<Set<string>>(new Set());
   const [fixedFiles, setFixedFiles] = useState<Set<string>>(new Set());
-  const [statusMsg, setStatusMsg] = useState('');
+  const [verifiedFiles, setVerifiedFiles] = useState<Map<string, boolean>>(new Map());
+  const [status, setStatus] = useState<StatusEntry | null>(null);
   const [diffLines, setDiffLines] = useState<string[] | null>(null);
-  const [isFixing, setIsFixing] = useState(false);
+  const [isWorking, setIsWorking] = useState(false);
+  const [workingLabel, setWorkingLabel] = useState('');
+
+  // ── Auto-dismiss status after 3s ──────────────────────────────────────
+  useEffect(() => {
+    if (!status) return;
+    const id = status.id;
+    const t = setTimeout(() => setStatus((s) => (s?.id === id ? null : s)), 3000);
+    return () => clearTimeout(t);
+  }, [status]);
+
+  const pushStatus = useCallback((text: string, color: string = theme.colors.textDim) => {
+    setStatus({ text, color, id: ++statusSeq });
+  }, []);
 
   // ── Filtered list ──────────────────────────────────────────────────────
   const filtered = useMemo(() => {
@@ -91,58 +116,139 @@ export function IssueBrowser({
 
   // Page: how many issue rows fit
   const HEADER_ROWS = 3; // header + sep + column labels
-  const DETAIL_ROWS = 5; // sep + 3 detail lines + sep
-  const FOOTER_ROWS = 1;
-  const pageSize = Math.max(3, rows - HEADER_ROWS - DETAIL_ROWS - FOOTER_ROWS);
-  const pageStart = Math.max(0, clampedIdx - Math.floor(pageSize / 2));
+  const DETAIL_ROWS = 6; // sep + 4 detail lines + sep
+  const FOOTER_ROWS = 2; // footer + status
+  const pageSize = Math.max(4, rows - HEADER_ROWS - DETAIL_ROWS - FOOTER_ROWS);
+  const pageStart = Math.max(0, Math.min(
+    clampedIdx - Math.floor(pageSize / 2),
+    Math.max(0, filtered.length - pageSize),
+  ));
   const pageEnd = Math.min(filtered.length, pageStart + pageSize);
   const pageIssues = filtered.slice(pageStart, pageEnd);
 
   // ── Fix a single issue ─────────────────────────────────────────────────
   const fixIssue = useCallback(
     async (issue: CodeIssue, dry: boolean) => {
-      if (isFixing) return;
+      if (isWorking) return;
       if (!issue.fixable) {
-        setStatusMsg('  Not auto-fixable.');
+        pushStatus('  Not auto-fixable.', theme.colors.warning);
         setDiffLines(null);
         return;
       }
-      setIsFixing(true);
+      setIsWorking(true);
+      setWorkingLabel(dry ? 'dry-run' : 'fixing');
       setDiffLines(null);
-      setStatusMsg('  Fixing…');
       try {
         const engine = new AutoFixEngine();
         const code = await fs.readFile(issue.file, 'utf-8');
         const transform = await engine.fix(issue.file, code, issue);
         if (!transform) {
-          setStatusMsg('  No transform produced.');
-          setIsFixing(false);
+          pushStatus('  No transform produced.', theme.colors.warning);
+          setIsWorking(false);
+          setWorkingLabel('');
           return;
         }
         if (dry) {
           const diff = adapter.generateDiff(code, transform.transformedCode);
-          setDiffLines(diff.split('\n').slice(0, 8)); // show first 8 diff lines
-          setStatusMsg('  Dry-run preview — nothing written.');
+          const lines = diff.split('\n');
+          setDiffLines(lines.slice(0, 12));
+          pushStatus('  Dry-run preview — nothing written.', theme.colors.textDim);
         } else {
           const backup = new BackupManager(projectRoot);
           await backup.backup(issue.file);
           await atomicWrite(issue.file, transform.transformedCode);
           setFixedIds((prev) => new Set([...prev, issue.id]));
           setFixedFiles((prev) => new Set([...prev, issue.file]));
-          setStatusMsg(`  ✔ Fixed ${issue.file.split('/').pop()}:${issue.line}`);
+          const name = issue.file.split('/').pop() ?? issue.file;
+          pushStatus(`  ✔ Fixed ${name}:${issue.line}`, theme.colors.success);
         }
       } catch (err) {
-        setStatusMsg(`  Error: ${String(err)}`);
+        pushStatus(`  Error: ${String(err)}`, theme.colors.error);
       }
-      setIsFixing(false);
+      setIsWorking(false);
+      setWorkingLabel('');
     },
-    [isFixing, adapter, projectRoot],
+    [isWorking, adapter, projectRoot, pushStatus],
+  );
+
+  // ── Fix ALL fixable issues in filtered list ────────────────────────────
+  const fixAll = useCallback(async () => {
+    if (isWorking) return;
+    const fixable = filtered.filter((i) => i.fixable && !fixedIds.has(i.id));
+    if (fixable.length === 0) {
+      pushStatus('  No unfixed fixable issues.', theme.colors.warning);
+      return;
+    }
+    setIsWorking(true);
+    setWorkingLabel(`fixing 0/${fixable.length}`);
+    setDiffLines(null);
+    const engine = new AutoFixEngine();
+    const backup = new BackupManager(projectRoot);
+    let applied = 0;
+    let failed = 0;
+    const newFixedIds = new Set(fixedIds);
+    const newFixedFiles = new Set(fixedFiles);
+    for (let i = 0; i < fixable.length; i++) {
+      const issue = fixable[i]!;
+      setWorkingLabel(`fixing ${i + 1}/${fixable.length}`);
+      try {
+        const code = await fs.readFile(issue.file, 'utf-8');
+        const transform = await engine.fix(issue.file, code, issue);
+        if (transform) {
+          await backup.backup(issue.file);
+          await atomicWrite(issue.file, transform.transformedCode);
+          newFixedIds.add(issue.id);
+          newFixedFiles.add(issue.file);
+          applied++;
+        }
+      } catch {
+        failed++;
+      }
+    }
+    setFixedIds(newFixedIds);
+    setFixedFiles(newFixedFiles);
+    pushStatus(
+      `  ✔ Fixed ${applied}/${fixable.length}${failed > 0 ? `  (${failed} failed)` : ''}`,
+      applied > 0 ? theme.colors.success : theme.colors.warning,
+    );
+    setIsWorking(false);
+    setWorkingLabel('');
+  }, [isWorking, filtered, fixedIds, fixedFiles, projectRoot, pushStatus]);
+
+  // ── Verify selected file ───────────────────────────────────────────────
+  const verifyFile = useCallback(
+    async (issue: CodeIssue) => {
+      if (isWorking) return;
+      setIsWorking(true);
+      setWorkingLabel('verifying');
+      setDiffLines(null);
+      try {
+        const verEngine = new VerificationEngine(adapter);
+        const code = await fs.readFile(issue.file, 'utf-8');
+        const maxBlast = filtered
+          .filter((i) => i.file === issue.file)
+          .reduce((max, i) => (i.blastRadius.score > max.score ? i.blastRadius : max), issue.blastRadius);
+        const result = await verEngine.verify(issue.file, code, maxBlast);
+        setVerifiedFiles((prev) => new Map([...prev, [issue.file, result.safeToApply]]));
+        const conf = `${Math.round(result.confidenceScore * 100)}%`;
+        if (result.safeToApply) {
+          pushStatus(`  ✔ Safe to apply  (confidence: ${conf})`, theme.colors.success);
+        } else {
+          pushStatus(`  ✘ Blocked — ${result.blockingReason ?? 'verification failed'}  (${conf})`, theme.colors.error);
+        }
+      } catch (err) {
+        pushStatus(`  Error: ${String(err)}`, theme.colors.error);
+      }
+      setIsWorking(false);
+      setWorkingLabel('');
+    },
+    [isWorking, adapter, filtered, pushStatus],
   );
 
   // ── Input ──────────────────────────────────────────────────────────────
   useInput(
     (inputChar, key) => {
-      if (isFixing) return;
+      if (isWorking) return;
 
       // Filter mode — typing
       if (filterMode) {
@@ -161,14 +267,38 @@ export function IssueBrowser({
         return;
       }
 
-      // Navigation
-      if (key.upArrow) {
+      // Navigation — arrows + vim j/k
+      if (key.upArrow || inputChar === 'k') {
         setSelectedIdx((i) => Math.max(0, i - 1));
         setDiffLines(null);
         return;
       }
-      if (key.downArrow) {
+      if (key.downArrow || inputChar === 'j') {
         setSelectedIdx((i) => Math.min(filtered.length - 1, i + 1));
+        setDiffLines(null);
+        return;
+      }
+
+      // Page up/down
+      if (key.pageUp) {
+        setSelectedIdx((i) => Math.max(0, i - pageSize));
+        setDiffLines(null);
+        return;
+      }
+      if (key.pageDown) {
+        setSelectedIdx((i) => Math.min(filtered.length - 1, i + pageSize));
+        setDiffLines(null);
+        return;
+      }
+
+      // Jump to first/last
+      if (inputChar === 'g') {
+        setSelectedIdx(0);
+        setDiffLines(null);
+        return;
+      }
+      if (inputChar === 'G') {
+        setSelectedIdx(Math.max(0, filtered.length - 1));
         setDiffLines(null);
         return;
       }
@@ -179,24 +309,35 @@ export function IssueBrowser({
         return;
       }
 
+      // Fix all
+      if (inputChar === 'A') {
+        void fixAll();
+        return;
+      }
+
       // Dry-run selected
       if (inputChar === 'd' && selected) {
         void fixIssue(selected, true);
         return;
       }
 
-      // Filter
-      if (inputChar === '/') {
-        setFilterMode(true);
-        setFilterText('');
+      // Verify selected file
+      if (inputChar === 'v' && selected) {
+        void verifyFile(selected);
         return;
       }
 
-      // Clear filter
+      // Dismiss diff / clear filter
       if (key.escape) {
+        if (diffLines) { setDiffLines(null); return; }
+        if (filterText) { setFilterText(''); return; }
+        return;
+      }
+
+      // Enter filter mode
+      if (inputChar === '/') {
+        setFilterMode(true);
         setFilterText('');
-        setFilterMode(false);
-        setDiffLines(null);
         return;
       }
 
@@ -211,32 +352,39 @@ export function IssueBrowser({
 
   // ── Render helpers ─────────────────────────────────────────────────────
   const border = '─'.repeat(columns);
-  const fixable = issues.filter((i) => i.fixable).length;
+  const fixableTotal = issues.filter((i) => i.fixable).length;
   const fixedCount = fixedIds.size;
+  const msgWidth = Math.max(20, columns - 44);
 
   return (
     <Box flexDirection="column">
       {/* ── Header ────────────────────────────────────────────────────── */}
       <Box>
         <Text color={theme.colors.brand} bold>{' Issues '}</Text>
-        <Text dimColor>session {sessionId} · {filtered.length}{filterText ? ` of ${issues.length}` : ''} issues · {fixable} fixable · {fixedCount} fixed</Text>
+        <Text dimColor>
+          {'session '}{sessionId}
+          {' · '}{filtered.length}{filterText ? ` of ${issues.length}` : ''}{' issues'}
+          {' · '}{fixableTotal}{' fixable'}
+          {fixedCount > 0 && <Text color={theme.colors.success}>{` · ${fixedCount} fixed`}</Text>}
+        </Text>
         <Text dimColor>{'  '}</Text>
-        {filterMode ? (
+        {isWorking ? (
+          <Text color={theme.colors.warning}>{workingLabel}…</Text>
+        ) : filterMode ? (
           <Text color={theme.colors.brand}>{'/ '}{filterText}<Text color={theme.colors.brand}>█</Text></Text>
         ) : filterText ? (
-          <Text dimColor>{'filter: '}<Text color={theme.colors.brand}>{filterText}</Text><Text dimColor>{'  Esc to clear'}</Text></Text>
+          <Text dimColor>{'filter: '}<Text color={theme.colors.brand}>{filterText}</Text><Text dimColor>{'  Esc clear'}</Text></Text>
         ) : (
-          <Text dimColor>{'/ to filter · q to quit'}</Text>
+          <Text dimColor>{'/ filter · q quit'}</Text>
         )}
       </Box>
       <Text color={theme.colors.border}>{border}</Text>
 
       {/* ── Column labels ─────────────────────────────────────────────── */}
       <Box paddingLeft={1}>
-        <Text dimColor>{'  #  '}</Text>
-        <Text dimColor>{'SEV  '}</Text>
-        <Text dimColor>{'MESSAGE'.padEnd(Math.max(20, columns - 40))}</Text>
-        <Text dimColor>{'FILE'}</Text>
+        <Text dimColor>{'  #   SEV  '}</Text>
+        <Text dimColor>{'MESSAGE'.padEnd(msgWidth + 2)}</Text>
+        <Text dimColor>{'FILE:LINE'}</Text>
       </Box>
 
       {/* ── Issue rows ────────────────────────────────────────────────── */}
@@ -249,11 +397,29 @@ export function IssueBrowser({
         const globalIdx = pageStart + i;
         const isSelected = globalIdx === clampedIdx;
         const isFixed = fixedIds.has(issue.id);
+        const verStatus = verifiedFiles.get(issue.file);
         const rel = issue.file.replace(projectRoot + '/', '').split('/').slice(-2).join('/');
-        const msgWidth = Math.max(20, columns - 42);
         const msg = issue.message.slice(0, msgWidth).padEnd(msgWidth);
-        const fixMark = isFixed ? '✔' : issue.fixable ? '·' : ' ';
-        const fixColor = isFixed ? theme.colors.success : issue.fixable ? theme.colors.brand : theme.colors.textDim;
+
+        // Fix/verify mark
+        let fixMark: string;
+        let fixColor: string;
+        if (isFixed) {
+          fixMark = '✔';
+          fixColor = theme.colors.success;
+        } else if (verStatus === false) {
+          fixMark = '✘';
+          fixColor = theme.colors.error;
+        } else if (verStatus === true) {
+          fixMark = '✓';
+          fixColor = theme.colors.success;
+        } else if (issue.fixable) {
+          fixMark = '·';
+          fixColor = theme.colors.brand;
+        } else {
+          fixMark = ' ';
+          fixColor = theme.colors.textDim;
+        }
 
         return (
           <Box key={issue.id}>
@@ -277,11 +443,12 @@ export function IssueBrowser({
         );
       })}
 
-      {/* Scroll indicator */}
+      {/* Scroll position indicator */}
       {filtered.length > pageSize && (
         <Box paddingLeft={2}>
           <Text dimColor>
-            {`  ${pageStart + 1}–${pageEnd} of ${filtered.length}`}
+            {'  '}{pageStart + 1}{'–'}{pageEnd}{' of '}{filtered.length}
+            {'  ↑↓/jk navigate · g/G jump · PgUp/PgDn page'}
           </Text>
         </Box>
       )}
@@ -292,11 +459,12 @@ export function IssueBrowser({
         <Box flexDirection="column" paddingLeft={2}>
           {diffLines ? (
             <>
+              <Text dimColor>{'Diff preview (Esc to dismiss):'}</Text>
               {diffLines.map((line, i) => {
                 const color = line.startsWith('+') ? theme.colors.diffAdded
                   : line.startsWith('-') ? theme.colors.diffRemoved
                   : theme.colors.textDim;
-                return <Text key={i} color={color}>{line}</Text>;
+                return <Text key={i} color={color}>{line || ' '}</Text>;
               })}
             </>
           ) : (
@@ -314,13 +482,20 @@ export function IssueBrowser({
               <Text>
                 <Text dimColor>{'File: '}</Text>
                 <Text dimColor>{selected.file.replace(projectRoot + '/', '')}:{selected.line}</Text>
-                <Text dimColor>{'  blast: '}{selected.blastRadius.level}</Text>
-                {selected.fixable && <Text color={theme.colors.success}>{' [fixable]'}</Text>}
+                <Text dimColor>{'  blast:'}{selected.blastRadius.level}</Text>
+                {selected.fixable ? (
+                  <Text color={theme.colors.success}>{' [fixable]'}</Text>
+                ) : (
+                  <Text dimColor>{' [manual]'}</Text>
+                )}
+                {fixedIds.has(selected.id) && <Text color={theme.colors.success}>{' ✔ fixed'}</Text>}
+                {verifiedFiles.has(selected.file) && (
+                  verifiedFiles.get(selected.file)
+                    ? <Text color={theme.colors.success}>{' ✓ safe'}</Text>
+                    : <Text color={theme.colors.error}>{' ✘ blocked'}</Text>
+                )}
               </Text>
             </>
-          )}
-          {statusMsg !== '' && (
-            <Text color={theme.colors.textDim}>{statusMsg}</Text>
           )}
         </Box>
       ) : (
@@ -328,25 +503,31 @@ export function IssueBrowser({
           <Text dimColor>No issue selected.</Text>
         </Box>
       )}
+
+      {/* Status message (auto-dismisses after 3s) */}
+      {status && (
+        <Box paddingLeft={2}>
+          <Text color={status.color}>{status.text}</Text>
+        </Box>
+      )}
+
       <Text color={theme.colors.border}>{border}</Text>
 
       {/* ── Footer ────────────────────────────────────────────────────── */}
       <Box paddingLeft={1}>
-        {filterMode ? (
+        {isWorking ? (
+          <Text color={theme.colors.warning}>{workingLabel}… please wait</Text>
+        ) : filterMode ? (
           <Text dimColor>{'Type to filter · Enter/Esc to confirm'}</Text>
         ) : (
           <Text dimColor>
-            {'↑↓ navigate · '}
-            <Text color={theme.colors.brand}>{'a'}</Text>
-            {' fix · '}
-            <Text color={theme.colors.brand}>{'d'}</Text>
-            {' dry-run · '}
-            <Text color={theme.colors.brand}>{'/'}</Text>
-            {' filter · '}
-            <Text color={theme.colors.brand}>{'Esc'}</Text>
-            {' clear · '}
-            <Text color={theme.colors.brand}>{'q'}</Text>
-            {' quit'}
+            {'↑↓ nav · '}
+            <Text color={theme.colors.brand}>{'a'}</Text>{' fix · '}
+            <Text color={theme.colors.brand}>{'A'}</Text>{' fix all · '}
+            <Text color={theme.colors.brand}>{'d'}</Text>{' dry-run · '}
+            <Text color={theme.colors.brand}>{'v'}</Text>{' verify · '}
+            <Text color={theme.colors.brand}>{'/'}</Text>{' filter · '}
+            <Text color={theme.colors.brand}>{'q'}</Text>{' quit'}
           </Text>
         )}
       </Box>
