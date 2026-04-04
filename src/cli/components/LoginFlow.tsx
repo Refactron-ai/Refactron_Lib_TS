@@ -14,7 +14,7 @@ import {
   saveCredentials,
 } from '../../auth/index.js';
 import type { RefactronCredentials } from '../../auth/index.js';
-import { Banner } from './Banner.js';
+import { WelcomeSplash } from './WelcomeSplash.js';
 
 type LoginState =
   | 'prompt'
@@ -57,6 +57,7 @@ export function LoginFlow({
   const [statusMsg, setStatusMsg] = useState('');
   const [code, setCode] = useState('');
   const [url, setUrl] = useState('');
+  const [urlCopied, setUrlCopied] = useState(false);
 
   // API key state
   const [pendingCreds, setPendingCreds] = useState<RefactronCredentials | null>(null);
@@ -133,11 +134,28 @@ export function LoginFlow({
     [pendingCreds, onAuthenticated],
   );
 
+  // ── Copy URL to clipboard via OSC 52 ──────────────────────────────────
+  const copyUrl = useCallback(() => {
+    if (!url) return;
+    try {
+      const b64 = Buffer.from(url).toString('base64');
+      process.stdout.write(`\x1b]52;c;${b64}\x07`);
+      setUrlCopied(true);
+      setTimeout(() => setUrlCopied(false), 2000);
+    } catch { /* clipboard not supported in this terminal */ }
+  }, [url]);
+
   // ── Global keys ────────────────────────────────────────────────────────
   useInput(
     (inputChar, key) => {
       // Ctrl+C always exits
       if (key.ctrl && inputChar === 'c') { onExit(); exit(); return; }
+
+      // ── running state: C to copy URL ──────────────────────────────────
+      if (state === 'running' && inputChar.toLowerCase() === 'c' && url) {
+        copyUrl();
+        return;
+      }
 
       // ── prompt state ──────────────────────────────────────────────────
       if (state === 'prompt') {
@@ -180,25 +198,25 @@ export function LoginFlow({
 
   return (
     <Box flexDirection="column">
-      <Banner version={version} adapterName={adapterName} />
+      {/* WelcomeSplash replaces the plain Banner — full-box style on login screen */}
+      <WelcomeSplash version={version} adapterName={adapterName} />
 
       <Box flexDirection="column" paddingLeft={2} gap={1}>
 
         {/* ── prompt ──────────────────────────────────────────────────── */}
         {state === 'prompt' && (
           <Box flexDirection="column" gap={1}>
-            <Text color={theme.colors.accent} bold>Welcome to Refactron!</Text>
             <Box flexDirection="column">
               <Text dimColor>Sign in to start refactoring safely.</Text>
               <Text dimColor>Refactron uses OAuth 2.0 — no password needed.</Text>
               <Text dimColor>Your browser will open to approve access.</Text>
             </Box>
             <Box gap={1}>
-              <Text color={theme.colors.accent} bold>Log in to continue?</Text>
+              <Text color={theme.colors.brand} bold>Log in to continue?</Text>
               <Text dimColor>[</Text>
-              <Text color={theme.colors.accent} bold>Y</Text>
+              <Text color={theme.colors.brand} bold>Y</Text>
               <Text dimColor>/ n]</Text>
-              <Text color={theme.colors.accent}>█</Text>
+              <Text color={theme.colors.brand}>█</Text>
             </Box>
             <Text dimColor>Press Enter to open browser</Text>
           </Box>
@@ -209,7 +227,7 @@ export function LoginFlow({
           <Box flexDirection="column" gap={1}>
             {!code ? (
               <Box gap={1}>
-                <Text color={theme.colors.accent}>{spinner}</Text>
+                <Text color={theme.colors.brand}>{spinner}</Text>
                 <Text dimColor>Opening browser…</Text>
               </Box>
             ) : (
@@ -217,17 +235,25 @@ export function LoginFlow({
                 <Box flexDirection="column">
                   <Text dimColor>Browser didn&apos;t open? Visit:</Text>
                   <Box paddingLeft={2}>
-                    <Text color={theme.colors.accent}>{url}</Text>
+                    {/* Underlined URL — ANSI \x1b[4m underline */}
+                    <Text color={theme.colors.brand}>{`\x1b[4m${url}\x1b[24m`}</Text>
                   </Box>
+                  {url && (
+                    <Box paddingLeft={2}>
+                      <Text dimColor>
+                        {urlCopied ? '✔ Copied!' : 'Press C to copy URL'}
+                      </Text>
+                    </Box>
+                  )}
                 </Box>
                 <Box flexDirection="column">
                   <Text dimColor>Verification code:</Text>
                   <Box paddingLeft={2}>
-                    <Text color={theme.colors.accent} bold>{code}</Text>
+                    <Text color={theme.colors.brand} bold>{code}</Text>
                   </Box>
                 </Box>
                 <Box gap={1}>
-                  <Text color={theme.colors.accent}>{spinner}</Text>
+                  <Text color={theme.colors.brand}>{spinner}</Text>
                   <Text dimColor>{statusMsg !== '' ? statusMsg : 'Waiting for browser approval…'}</Text>
                 </Box>
               </>
@@ -239,10 +265,10 @@ export function LoginFlow({
         {(state === 'api-key' || state === 'verifying') && (
           <Box flexDirection="column" gap={1}>
             <Box flexDirection="column">
-              <Text color={theme.colors.accent} bold>API key required</Text>
+              <Text color={theme.colors.brand} bold>API key required</Text>
               <Text dimColor>
                 Your{' '}
-                <Text color={theme.colors.accent}>
+                <Text color={theme.colors.brand}>
                   {(pendingCreds?.plan ?? 'pro').toUpperCase()}
                 </Text>
                 {' '}plan requires an API key.
@@ -257,13 +283,13 @@ export function LoginFlow({
               <Text dimColor>API key:</Text>
               <Text color={theme.colors.text}>{maskedKey}</Text>
               {state === 'api-key' && (
-                <Text color={theme.colors.accent}>█</Text>
+                <Text color={theme.colors.brand}>█</Text>
               )}
             </Box>
 
             {state === 'verifying' && (
               <Box gap={1}>
-                <Text color={theme.colors.accent}>{spinner}</Text>
+                <Text color={theme.colors.brand}>{spinner}</Text>
                 <Text dimColor>Verifying…</Text>
               </Box>
             )}

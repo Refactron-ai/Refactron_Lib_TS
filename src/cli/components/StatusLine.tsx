@@ -1,7 +1,7 @@
 // src/cli/components/StatusLine.tsx
-// Single-row status line below the prompt — matches Claude Code's StatusLine
-// style: no border box, plain dimmed text with · separators.
-// Shows: ◈ refactron · adapter · version · [issues] · [running] · time
+// Single dimColor row — YRC StatusLine equivalent.
+// ◈ refactron · adapter · version · [issues] · [state] · [running] · [ctx%] · time
+// No border box, wrap=truncate, paddingX for symmetric padding.
 import React from 'react';
 import { Box, Text } from 'ink';
 import { theme } from '../../ui/theme.js';
@@ -12,6 +12,7 @@ interface StatusLineProps {
   issueCount?: number | undefined;
   criticalCount?: number | undefined;
   sessionState?: string | undefined;
+  contextPct?: number | undefined;
   isRunning?: boolean | undefined;
 }
 
@@ -23,49 +24,57 @@ export function StatusLine({
   issueCount,
   criticalCount,
   sessionState,
+  contextPct,
   isRunning,
 }: StatusLineProps): React.ReactElement {
   const hasCritical = (criticalCount ?? 0) > 0;
   const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
   return (
-    <Box paddingLeft={1} paddingTop={0}>
-      {/* Diamond symbol — matches Claude Code's ◆ separator */}
-      <Text color={theme.colors.accent}>◈</Text>
-      <Text dimColor> refactron </Text>
-      {SEP}
-      <Text dimColor>{adapterName}</Text>
-      {SEP}
-      <Text dimColor>v{version}</Text>
+    <Box paddingX={1} height={1}>
+      <Text wrap="truncate">
+        <Text color={theme.colors.brand}>{'◈'}</Text>
+        <Text dimColor>{' refactron '}</Text>
+        {SEP}
+        <Text dimColor>{adapterName}</Text>
+        {SEP}
+        <Text dimColor>{'v'}{version}</Text>
 
-      {/* Issue summary — only shown after analysis */}
-      {issueCount != null && (
-        <>
-          {SEP}
-          <Text color={hasCritical ? theme.colors.critical : theme.colors.textDim}>
-            {hasCritical ? `${criticalCount ?? 0} critical` : `${issueCount} issues`}
-          </Text>
-        </>
-      )}
+        {issueCount != null && (
+          <>
+            {SEP}
+            <Text color={hasCritical ? theme.colors.critical : theme.colors.textDim}>
+              {hasCritical ? `${criticalCount ?? 0} critical` : `${issueCount} issues`}
+            </Text>
+          </>
+        )}
 
-      {/* Session state (ANALYZING / FIXING / FIXED) */}
-      {sessionState != null && sessionState !== '' && (
-        <>
-          {SEP}
-          <Text dimColor>{sessionState.toLowerCase()}</Text>
-        </>
-      )}
+        {sessionState != null && sessionState !== '' && (
+          <>
+            {SEP}
+            <Text dimColor>{sessionState.toLowerCase()}</Text>
+          </>
+        )}
 
-      {/* Running indicator */}
-      {isRunning === true && (
-        <>
-          {SEP}
-          <Text color={theme.colors.warning}>running…</Text>
-        </>
-      )}
+        {isRunning === true && (
+          <>
+            {SEP}
+            <Text color={theme.colors.warning}>{'running…'}</Text>
+          </>
+        )}
 
-      {SEP}
-      <Text dimColor>{time}</Text>
+        {contextPct != null && (
+          <>
+            {SEP}
+            <Text color={contextPct > 80 ? theme.colors.warning : theme.colors.textDim}>
+              {contextPct}{'% ctx'}
+            </Text>
+          </>
+        )}
+
+        {SEP}
+        <Text dimColor>{time}</Text>
+      </Text>
     </Box>
   );
 }

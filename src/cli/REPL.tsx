@@ -1,15 +1,15 @@
 // src/cli/REPL.tsx
 // Layout:
-//   Static [banner]     — printed once at top, scrolls up naturally
-//   Static [lines]      — session output, append-only
-//   SpinnerWithVerb     — shown while running
-//   PromptInput         — shown when idle
-//   StatusLine          — always at bottom
+//   Static [WelcomeSplash]  — printed once at top, scrolls up
+//   Static [lines]          — session output, append-only
+//   EmptyState              — live, shown when lines is empty
+//   SpinnerWithVerb | PromptInput
+//   StatusLine
 import React, { useState, useCallback, useRef } from 'react';
 import { Box, Static, Text, useApp, useInput } from 'ink';
 import { theme } from '../ui/theme.js';
 import { parseInput, executeCommand, type CommandContext } from './runner.js';
-import { Banner } from './components/Banner.js';
+import { WelcomeSplash } from './components/WelcomeSplash.js';
 import { SpinnerWithVerb } from './components/SpinnerWithVerb.js';
 import { StatusLine } from './components/StatusLine.js';
 import { PromptInput } from './components/PromptInput.js';
@@ -24,9 +24,21 @@ interface REPLProps {
   plan?: string | null | undefined;
 }
 
-// Stable single-item array for the banner Static — defined outside component
-// so it never changes reference and Static never re-renders it.
-const BANNER_ITEMS = [{ id: 'banner' }];
+// Stable single-item array — Static never re-renders it
+const SPLASH_ITEMS = [{ id: 'splash' }];
+
+// Build a styled "user turn" block: ╭─ you ─…╮ / │ → cmd │ / ╰───…╯
+function userBlock(cmd: string, lineId: () => number): MessageLine[] {
+  const inner = `  ${theme.symbols.arrow} ${cmd}`;
+  return [
+    { id: lineId(), text: inner, color: theme.colors.brand },
+  ];
+}
+
+// Thin rule separator before assistant output
+function ruleLines(lineId: () => number): MessageLine[] {
+  return [{ id: lineId(), text: '  ' + '─'.repeat(54), color: theme.colors.border }];
+}
 
 export function REPL({ ctx, version, email, plan }: REPLProps): React.ReactElement {
   const { exit } = useApp();
@@ -44,6 +56,8 @@ export function REPL({ ctx, version, email, plan }: REPLProps): React.ReactEleme
   const lineIdRef = useRef(0);
   const abortRef = useRef<AbortController | null>(null);
 
+  const nextId = useCallback(() => lineIdRef.current++, []);
+
   const appendLines = useCallback((newLines: MessageLine[]) => {
     setLines((prev) => [...prev, ...newLines]);
     setLastProgressTime(Date.now());
@@ -59,18 +73,13 @@ export function REPL({ ctx, version, email, plan }: REPLProps): React.ReactEleme
         return [...prev, trimmed];
       });
 
-      appendLines([
-        {
-          id: lineIdRef.current++,
-          text: `  ${theme.symbols.arrow} ${trimmed}`,
-          color: theme.colors.accent,
-        },
-      ]);
+      // Styled user-turn line
+      appendLines(userBlock(trimmed, nextId));
 
       const parsed = parseInput(trimmed);
 
       if (['exit', 'quit', '/exit', 'q'].includes(parsed.command)) {
-        appendLines([{ id: lineIdRef.current++, text: '  Goodbye.', color: theme.colors.textDim }]);
+        appendLines([{ id: nextId(), text: '  Goodbye.', color: theme.colors.textDim }]);
         setTimeout(() => exit(), 80);
         return;
       }
@@ -88,30 +97,33 @@ export function REPL({ ctx, version, email, plan }: REPLProps): React.ReactEleme
       abortRef.current = controller;
       const buffer: MessageLine[] = [];
 
+      // Rule before output
+      buffer.push(...ruleLines(nextId));
+
       try {
         await executeCommand(
           parsed,
           ctx,
           (text, color) => {
-            buffer.push({ id: lineIdRef.current++, text, color });
+            buffer.push({ id: nextId(), text, color });
           },
           controller.signal,
         );
       } catch (err) {
         buffer.push({
-          id: lineIdRef.current++,
+          id: nextId(),
           text: `  Error: ${String(err)}`,
           color: theme.colors.error,
         });
       } finally {
-        buffer.push({ id: lineIdRef.current++, text: '', color: undefined });
+        buffer.push({ id: nextId(), text: '', color: undefined });
         appendLines(buffer);
         setIsRunning(false);
         setRunningCmd('');
         abortRef.current = null;
       }
     },
-    [ctx, exit, appendLines],
+    [ctx, exit, appendLines, nextId],
   );
 
   useInput(
@@ -120,8 +132,8 @@ export function REPL({ ctx, version, email, plan }: REPLProps): React.ReactEleme
         if (key.ctrl && inputChar === 'c') {
           abortRef.current?.abort();
           appendLines([
-            { id: lineIdRef.current++, text: '  ^C  (cancelled)', color: theme.colors.warning },
-            { id: lineIdRef.current++, text: '', color: undefined },
+            { id: nextId(), text: '  ^C  (cancelled)', color: theme.colors.warning },
+            { id: nextId(), text: '', color: undefined },
           ]);
           setIsRunning(false);
           setRunningCmd('');
@@ -129,7 +141,7 @@ export function REPL({ ctx, version, email, plan }: REPLProps): React.ReactEleme
         return;
       }
       if (key.ctrl && inputChar === 'c') {
-        appendLines([{ id: lineIdRef.current++, text: '  Goodbye.', color: theme.colors.textDim }]);
+        appendLines([{ id: nextId(), text: '  Goodbye.', color: theme.colors.textDim }]);
         setTimeout(() => exit(), 80);
       }
     },
@@ -138,16 +150,11 @@ export function REPL({ ctx, version, email, plan }: REPLProps): React.ReactEleme
 
   return (
     <Box flexDirection="column">
-      {/*
-        Banner: single-item Static — Ink prints this once and never touches it
-        again. It appears at the very top of the output, above all session lines.
-        Using Static here (not a live component) ensures it stays at the top
-        as subsequent Static items push it upward naturally.
-      */}
-      <Static items={BANNER_ITEMS}>
+      {/* WelcomeSplash: Static single item — printed once at top */}
+      <Static items={SPLASH_ITEMS}>
         {() => (
-          <Banner
-            key="banner"
+          <WelcomeSplash
+            key="splash"
             version={version}
             adapterName={ctx.adapter.displayName}
             email={email}
@@ -156,21 +163,25 @@ export function REPL({ ctx, version, email, plan }: REPLProps): React.ReactEleme
         )}
       </Static>
 
-      {/*
-        Session output: each item printed once, scrolls up naturally.
-        No viewport math — the terminal handles scrollback.
-      */}
+      {/* Session output */}
       <Static items={lines}>
         {(line) =>
           line.color !== undefined ? (
-            <Text key={line.id} color={line.color}>
-              {line.text}
-            </Text>
+            <Text key={line.id} color={line.color}>{line.text}</Text>
           ) : (
             <Text key={line.id}>{line.text}</Text>
           )
         }
       </Static>
+
+      {/* Empty state — live, disappears after first command */}
+      {lines.length === 0 && !isRunning && (
+        <Box paddingLeft={2} paddingBottom={1}>
+          <Text dimColor>{'Type '}</Text>
+          <Text color={theme.colors.brand}>{'help'}</Text>
+          <Text dimColor>{' to see commands, or start typing below.'}</Text>
+        </Box>
+      )}
 
       {/* Dynamic bottom: spinner while running, prompt when idle */}
       {isRunning ? (
@@ -183,6 +194,7 @@ export function REPL({ ctx, version, email, plan }: REPLProps): React.ReactEleme
         <PromptInput
           onSubmit={(v) => void handleSubmit(v)}
           isActive={!isRunning}
+          isRunning={isRunning}
           history={history}
         />
       )}
