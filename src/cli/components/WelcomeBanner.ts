@@ -2,7 +2,7 @@
 // Returns the initial MessageLine[] shown in the REPL on startup.
 // Shown as the first lines in the message history — never re-rendered.
 import { theme } from '../../ui/theme.js';
-import type { MessageLine } from './VirtualMessageList.js';
+import type { MessageLine } from '../types.js';
 
 const W = 58; // inner width of the banner box
 

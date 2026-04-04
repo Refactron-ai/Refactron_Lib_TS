@@ -1,20 +1,17 @@
 // src/cli/REPL.tsx
-// Persistent REPL session — Claude Code-style architecture.
-//   FullscreenLayout  → alternate screen, fixed viewport height
-//   VirtualMessageList → viewport culling, sticky scroll
-//   SpinnerWithVerb   → isolated 50ms animation, shimmer sweep, stalled ramp
-//   StatusLine        → always-visible bottom bar
-//   PromptInput       → history + typeahead + ghost text
+// Standard-Ink REPL: Static for completed output (scrolls naturally),
+// dynamic bottom section for spinner / prompt / status line.
 import React, { useState, useCallback, useRef } from 'react';
-import { useApp, useInput, useStdout } from 'ink';
+import { Box, Static, Text, useApp, useInput } from 'ink';
 import { theme } from '../ui/theme.js';
 import { parseInput, executeCommand, type CommandContext } from './runner.js';
-import { FullscreenLayout } from './components/FullscreenLayout.js';
-import { VirtualMessageList, type MessageLine } from './components/VirtualMessageList.js';
 import { SpinnerWithVerb } from './components/SpinnerWithVerb.js';
 import { StatusLine } from './components/StatusLine.js';
 import { PromptInput } from './components/PromptInput.js';
 import { createWelcomeBanner } from './components/WelcomeBanner.js';
+import type { MessageLine } from './types.js';
+
+export type { MessageLine };
 
 interface REPLProps {
   ctx: CommandContext;
@@ -23,14 +20,8 @@ interface REPLProps {
   plan?: string | null | undefined;
 }
 
-// Reserved rows at bottom: spinner row + prompt row + status line
-const CHROME_ROWS = 3;
-
 export function REPL({ ctx, version, email, plan }: REPLProps): React.ReactElement {
   const { exit } = useApp();
-  const { stdout } = useStdout();
-
-  const viewportHeight = Math.max(4, (stdout.rows ?? 24) - CHROME_ROWS);
 
   const [lines, setLines] = useState<MessageLine[]>(() =>
     createWelcomeBanner(version, email, plan, ctx.adapter.displayName),
@@ -39,10 +30,9 @@ export function REPL({ ctx, version, email, plan }: REPLProps): React.ReactEleme
   const [isRunning, setIsRunning] = useState(false);
   const [runningCmd, setRunningCmd] = useState('');
   const [lastProgressTime, setLastProgressTime] = useState<number>(Date.now());
-  const [scrollOffset, setScrollOffset] = useState(0); // 0 = sticky bottom
   const [history, setHistory] = useState<string[]>([]);
 
-  // Issue counts for status line (updated on analyze result)
+  // Issue counts for status line (updated by analyze command)
   const [issueCount] = useState<number | undefined>(undefined);
   const [criticalCount] = useState<number | undefined>(undefined);
   const [sessionState] = useState<string | undefined>(undefined);
@@ -53,8 +43,6 @@ export function REPL({ ctx, version, email, plan }: REPLProps): React.ReactEleme
   const appendLines = useCallback((newLines: MessageLine[]) => {
     setLines((prev) => [...prev, ...newLines]);
     setLastProgressTime(Date.now());
-    // Reset scroll to bottom on new output (sticky scroll)
-    setScrollOffset(0);
   }, []);
 
   const handleSubmit = useCallback(
@@ -79,18 +67,17 @@ export function REPL({ ctx, version, email, plan }: REPLProps): React.ReactEleme
 
       const parsed = parseInput(trimmed);
 
-      // Exit commands
+      // Exit
       if (['exit', 'quit', '/exit', 'q'].includes(parsed.command)) {
         appendLines([{ id: lineIdRef.current++, text: '  Goodbye.', color: theme.colors.textDim }]);
         setTimeout(() => exit(), 80);
         return;
       }
 
-      // Clear command
+      // Clear
       if (parsed.command === 'clear') {
-        process.stdout.write('\x1b[H\x1b[2J'); // clear screen
+        process.stdout.write('\x1b[H\x1b[2J');
         setLines([]);
-        setScrollOffset(0);
         return;
       }
 
@@ -127,7 +114,7 @@ export function REPL({ ctx, version, email, plan }: REPLProps): React.ReactEleme
     [ctx, exit, appendLines],
   );
 
-  // Global key handler (non-prompt keys when running or scrolling)
+  // Global keys — Ctrl+C to cancel/exit, no scroll keys needed (terminal scrolls naturally)
   useInput(
     (inputChar, key) => {
       if (isRunning) {
@@ -143,44 +130,41 @@ export function REPL({ ctx, version, email, plan }: REPLProps): React.ReactEleme
         return;
       }
 
-      // Ctrl+C when idle → exit
       if (key.ctrl && inputChar === 'c') {
         appendLines([{ id: lineIdRef.current++, text: '  Goodbye.', color: theme.colors.textDim }]);
         setTimeout(() => exit(), 80);
-        return;
-      }
-
-      // Scroll with Page Up / Page Down (when not captured by PromptInput)
-      if (key.pageUp) {
-        setScrollOffset((s) => Math.min(s + Math.floor(viewportHeight / 2), lines.length));
-      }
-      if (key.pageDown) {
-        setScrollOffset((s) => Math.max(0, s - Math.floor(viewportHeight / 2)));
       }
     },
     { isActive: process.stdin.isTTY === true },
   );
 
   return (
-    <FullscreenLayout>
-      {/* Message area — grows to fill available height */}
-      <VirtualMessageList
-        lines={lines}
-        viewportHeight={viewportHeight}
-        scrollOffset={scrollOffset}
-      />
+    <Box flexDirection="column">
+      {/*
+        Static: Ink renders these items once and never re-renders them.
+        They print to stdout and scroll up naturally as new lines appear.
+        This is the correct standard-Ink pattern for append-only terminal output.
+      */}
+      <Static items={lines}>
+        {(line) =>
+          line.color !== undefined ? (
+            <Text key={line.id} color={line.color}>
+              {line.text}
+            </Text>
+          ) : (
+            <Text key={line.id}>{line.text}</Text>
+          )
+        }
+      </Static>
 
-      {/* Spinner (shown only while running) */}
-      {isRunning && (
+      {/* Dynamic bottom section — spinner while running, prompt when idle */}
+      {isRunning ? (
         <SpinnerWithVerb
           verb={runningCmd.split(' ')[0] ?? 'working'}
           isActive={isRunning}
           lastProgressTime={lastProgressTime}
         />
-      )}
-
-      {/* Prompt (shown only when idle) */}
-      {!isRunning && (
+      ) : (
         <PromptInput
           value={input}
           onChange={setInput}
@@ -193,7 +177,7 @@ export function REPL({ ctx, version, email, plan }: REPLProps): React.ReactEleme
         />
       )}
 
-      {/* Status line — always visible at bottom */}
+      {/* Status line always visible at bottom */}
       <StatusLine
         adapterName={ctx.adapter.displayName}
         version={version}
@@ -202,6 +186,6 @@ export function REPL({ ctx, version, email, plan }: REPLProps): React.ReactEleme
         sessionState={sessionState}
         isRunning={isRunning}
       />
-    </FullscreenLayout>
+    </Box>
   );
 }
