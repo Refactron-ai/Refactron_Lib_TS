@@ -43,7 +43,8 @@ export interface ParsedCommand {
 
 export function parseInput(raw: string): ParsedCommand {
   const parts = raw.trim().split(/\s+/);
-  const command = parts[0] ?? '';
+  // Strip leading '/' so /analyze, /help, etc. work like their bare forms
+  const command = (parts[0] ?? '').replace(/^\//, '');
   let target = '.';
   const flags: Record<string, boolean | string> = {};
 

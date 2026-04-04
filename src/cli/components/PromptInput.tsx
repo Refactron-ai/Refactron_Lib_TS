@@ -4,20 +4,39 @@
 //   - Block cursor █, ❯ prefix in brand color
 //   - Dim placeholder when empty
 //   - Ctrl+R history search (reverse-i-search)
+//   - Slash command picker: typing '/' shows filterable command menu
 //   - Footer hint bar: contextual 1-row hint below input
 import React, { useState, useCallback } from 'react';
 import { Box, Text, useInput, useStdout } from 'ink';
 import { theme } from '../../ui/theme.js';
 
-const KNOWN_COMMANDS = [
-  'analyze', 'autofix', 'verify', 'status',
-  'rollback', 'diff', 'help', 'login', 'logout', 'auth', 'clear', 'exit',
+interface SlashCommand {
+  name: string;      // without leading slash
+  description: string;
+}
+
+const SLASH_COMMANDS: SlashCommand[] = [
+  { name: 'analyze',  description: 'Scan files for issues' },
+  { name: 'autofix',  description: 'Fix issues with verification' },
+  { name: 'verify',   description: 'Verify a file is safe to change' },
+  { name: 'status',   description: 'Show last session summary' },
+  { name: 'diff',     description: 'Show fix diff' },
+  { name: 'rollback', description: 'Restore from last backup' },
+  { name: 'login',    description: 'Authenticate with Refactron' },
+  { name: 'logout',   description: 'Remove stored credentials' },
+  { name: 'auth',     description: 'Show auth status' },
+  { name: 'clear',    description: 'Clear the screen' },
+  { name: 'exit',     description: 'Quit Refactron' },
+  { name: 'help',     description: 'Show all commands' },
 ];
+
+// Names for typeahead ghost (bare, no slash)
+const KNOWN_COMMANDS = SLASH_COMMANDS.map((c) => c.name);
 
 interface PromptInputProps {
   onSubmit: (v: string) => void;
   isActive: boolean;
-  isRunning?: boolean; // passed from REPL for footer hint
+  isRunning?: boolean;
   history: string[];
 }
 
@@ -38,20 +57,28 @@ export function PromptInput({
   const [searching, setSearching] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
 
+  // ── Slash command picker ──────────────────────────────────────────────
+  const [slashIdx, setSlashIdx] = useState(0); // selected row index
+
+  const isSlashMode = !searching && value.startsWith('/');
+  const slashQuery = isSlashMode ? value.slice(1).toLowerCase() : '';
+  const slashMatches = isSlashMode
+    ? SLASH_COMMANDS.filter((c) => c.name.startsWith(slashQuery))
+    : [];
+
   const searchMatch = searching && searchQuery.length > 0
     ? history.slice().reverse().find((h) => h.includes(searchQuery)) ?? ''
     : '';
 
-  // Accept the current search match
   const acceptSearch = useCallback(() => {
     if (searchMatch) setValue(searchMatch);
     setSearching(false);
     setSearchQuery('');
   }, [searchMatch]);
 
-  // Typeahead ghost (only when not searching)
+  // Typeahead ghost (only when not searching and not slash mode)
   const ghost =
-    !searching && value.length > 0
+    !searching && !isSlashMode && value.length > 0
       ? (KNOWN_COMMANDS.find((cmd) => cmd.startsWith(value) && cmd !== value) ?? '')
       : '';
 
@@ -65,7 +92,6 @@ export function PromptInput({
           setSearching(true);
           setSearchQuery('');
         } else {
-          // Cycle to next match by shifting — simplification: just accept current
           acceptSearch();
         }
         return;
@@ -85,12 +111,48 @@ export function PromptInput({
         return;
       }
 
+      // ── Slash picker navigation ────────────────────────────────────────
+      if (isSlashMode && slashMatches.length > 0) {
+        if (key.upArrow) {
+          setSlashIdx((i) => Math.max(0, i - 1));
+          return;
+        }
+        if (key.downArrow) {
+          setSlashIdx((i) => Math.min(slashMatches.length - 1, i + 1));
+          return;
+        }
+        if (key.tab || key.return) {
+          const selected = slashMatches[Math.min(slashIdx, slashMatches.length - 1)];
+          if (selected) {
+            if (key.return) {
+              // Submit immediately
+              setValue('');
+              setHistoryIdx(-1);
+              setSavedDraft('');
+              setSlashIdx(0);
+              onSubmit(`/${selected.name}`);
+            } else {
+              // Tab: fill input only
+              setValue(`/${selected.name} `);
+              setSlashIdx(0);
+            }
+          }
+          return;
+        }
+        if (key.escape) {
+          setValue('');
+          setSlashIdx(0);
+          return;
+        }
+      }
+
       // ── Normal input ───────────────────────────────────────────────────
       if (key.return) {
         const submitted = value;
         setValue('');
         setHistoryIdx(-1);
         setSavedDraft('');
+        setSlashIdx(0);
         onSubmit(submitted);
         return;
       }
@@ -98,10 +160,12 @@ export function PromptInput({
       if (key.backspace || key.delete) {
         setValue((v) => v.slice(0, -1));
         setHistoryIdx(-1);
+        setSlashIdx(0);
         return;
       }
 
       if (key.upArrow) {
+        if (isSlashMode) return; // handled above
         if (history.length === 0) return;
         if (historyIdx === -1) setSavedDraft(value);
         const idx = Math.min(historyIdx + 1, history.length - 1);
@@ -111,6 +175,7 @@ export function PromptInput({
       }
 
       if (key.downArrow) {
+        if (isSlashMode) return; // handled above
         if (historyIdx <= 0) { setHistoryIdx(-1); setValue(savedDraft); return; }
         const idx = historyIdx - 1;
         setHistoryIdx(idx);
@@ -118,7 +183,7 @@ export function PromptInput({
         return;
       }
 
-      // Tab: accept ghost completion
+      // Tab: accept ghost completion (not in slash mode — handled above)
       if (key.tab && ghost) { setValue(ghost); return; }
 
       if (key.ctrl || key.meta) return;
@@ -127,6 +192,7 @@ export function PromptInput({
       if (inputChar && inputChar.length > 0) {
         setValue((v) => v + inputChar);
         setHistoryIdx(-1);
+        setSlashIdx(0);
       }
     },
     { isActive: process.stdin.isTTY === true },
@@ -135,8 +201,36 @@ export function PromptInput({
   // ── Render ─────────────────────────────────────────────────────────────
   return (
     <Box flexDirection="column">
-      {/* Top border — full-width rule separating output from input (YRC-style visual boundary) */}
+      {/* Top border */}
       <Text color={theme.colors.border}>{'─'.repeat(columns)}</Text>
+
+      {/* Slash command picker — shown above the input row */}
+      {isSlashMode && slashMatches.length > 0 && (
+        <Box flexDirection="column" paddingLeft={2} paddingBottom={1}>
+          {slashMatches.map((cmd, i) => {
+            const selected = i === Math.min(slashIdx, slashMatches.length - 1);
+            return (
+              <Box key={cmd.name} gap={2}>
+                <Text color={selected ? theme.colors.brand : theme.colors.text} bold={selected}>
+                  {'/' + cmd.name.padEnd(10)}
+                </Text>
+                {selected ? (
+                  <Text color={theme.colors.text}>{cmd.description}</Text>
+                ) : (
+                  <Text dimColor>{cmd.description}</Text>
+                )}
+              </Box>
+            );
+          })}
+        </Box>
+      )}
+
+      {/* No match for slash query */}
+      {isSlashMode && slashMatches.length === 0 && (
+        <Box paddingLeft={2} paddingBottom={1}>
+          <Text dimColor>No matching command</Text>
+        </Box>
+      )}
 
       {/* History search mode */}
       {searching && (
@@ -172,12 +266,14 @@ export function PromptInput({
         </Box>
       )}
 
-      {/* Footer hint bar — 1 row, matches YRC PromptInputFooterLeftSide */}
+      {/* Footer hint bar */}
       <Box paddingLeft={2} height={1}>
         {isRunning ? (
           <Text dimColor>ctrl+c to cancel</Text>
         ) : searching ? (
           <Text dimColor>Enter to accept · Esc to cancel</Text>
+        ) : isSlashMode && slashMatches.length > 0 ? (
+          <Text dimColor>↑↓ navigate · Enter to run · Tab to fill · Esc to clear</Text>
         ) : (
           <Text dimColor>enter to send · ctrl+c to exit · ↑↓ history · ctrl+r search</Text>
         )}
