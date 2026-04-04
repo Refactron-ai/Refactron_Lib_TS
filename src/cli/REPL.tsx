@@ -1,12 +1,12 @@
 // src/cli/REPL.tsx
-// Layout:
-//   Static [SessionHeader]  — printed once at top, scrolls up
-//   Static [lines]          — session output, append-only
-//   EmptyState              — live, shown when lines is empty
+// Layout (all in Ink live tree — no Static — so SessionHeader stays fixed):
+//   SessionHeader           — always visible at top
+//   lines.map(...)          — session output, grows downward
+//   EmptyState              — shown when lines is empty
 //   SpinnerWithVerb | PromptInput  (separated from output by a top border)
 //   StatusLine
 import React, { useState, useCallback, useRef } from 'react';
-import { Box, Static, Text, useApp, useInput } from 'ink';
+import { Box, Text, useApp, useInput } from 'ink';
 import { theme } from '../ui/theme.js';
 import { parseInput, executeCommand, type CommandContext, type CommandResult } from './runner.js';
 import { SessionHeader } from './components/SessionHeader.js';
@@ -81,7 +81,6 @@ export function REPL({ ctx, version, email, plan }: REPLProps): React.ReactEleme
       }
 
       if (parsed.command === 'clear') {
-        process.stdout.write('\x1b[H\x1b[2J');
         setLines([]);
         return;
       }
@@ -156,28 +155,22 @@ export function REPL({ ctx, version, email, plan }: REPLProps): React.ReactEleme
 
   return (
     <Box flexDirection="column">
-      {/* ── Output history (append-only, scrolls above the live area) ─────── */}
-      <Static items={lines}>
-        {(line) =>
-          line.color !== undefined ? (
-            <Text key={line.id} color={line.color}>{line.text}</Text>
-          ) : (
-            <Text key={line.id}>{line.text}</Text>
-          )
-        }
-      </Static>
-
-      {/* ── Live viewport ─────────────────────────────────────────────────── */}
-
-      {/* SessionHeader: always visible in the live area (YRC CondensedLogo pattern).
-          NOT in Static — Static items render above Ink's managed viewport in alternate
-          screen mode and scroll out of view. The header lives here so it stays anchored. */}
+      {/* ── Session header — always anchored at top ────────────────────────── */}
       <SessionHeader
         version={version}
         adapterName={ctx.adapter.displayName}
         email={email}
         plan={plan}
       />
+
+      {/* ── Output history — rendered in live tree so header stays fixed ───── */}
+      {lines.map((line) =>
+        line.color !== undefined ? (
+          <Text key={line.id} color={line.color}>{line.text}</Text>
+        ) : (
+          <Text key={line.id}>{line.text}</Text>
+        )
+      )}
 
       {/* Empty state — disappears after first command */}
       {lines.length === 0 && !isRunning && (
