@@ -76,25 +76,17 @@ function AppRoot({
   );
 }
 
-/** Enter alternate screen, hide cursor, disable mouse reporting. No-op when not a TTY. */
+/** Hide cursor and clear screen. Stays on main screen so terminal scrollback works. No-op when not a TTY. */
 function enterAltScreen(): void {
   if (!process.stdout.isTTY) return;
-  process.stdout.write('\x1b[?1049h'); // enter alternate screen buffer
   process.stdout.write('\x1b[H\x1b[2J'); // move to top-left, clear screen
-  process.stdout.write('\x1b[?25l');    // hide cursor
-  // Disable all mouse reporting modes so scroll wheel doesn't inject arrow keys
-  process.stdout.write('\x1b[?1000l'); // disable mouse button tracking
-  process.stdout.write('\x1b[?1002l'); // disable mouse drag tracking
-  process.stdout.write('\x1b[?1003l'); // disable all mouse motion tracking
-  process.stdout.write('\x1b[?1006l'); // disable SGR extended mouse mode
-  process.stdout.write('\x1b[?1015l'); // disable URXVT extended mouse mode
+  process.stdout.write('\x1b[?25l');     // hide cursor
 }
 
-/** Leave alternate screen, restore cursor, re-enable mouse. Safe to call multiple times. */
+/** Restore cursor. Safe to call multiple times. */
 function leaveAltScreen(): void {
   if (!process.stdout.isTTY) return;
-  process.stdout.write('\x1b[?25h');   // show cursor
-  process.stdout.write('\x1b[?1049l'); // leave alternate screen
+  process.stdout.write('\x1b[?25h'); // show cursor
 }
 
 export async function run(_argv: string[]): Promise<void> {
