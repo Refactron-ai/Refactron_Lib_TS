@@ -40,7 +40,7 @@ export function VirtualMessageList({
   const visibleLines = lines.slice(renderStart, renderEnd);
 
   return (
-    <Box flexDirection="column" flexGrow={1} overflow="hidden">
+    <Box flexDirection="column" flexGrow={1}>
       {/* Top spacer for off-screen messages above */}
       {topSpacerHeight > 0 && <Box height={topSpacerHeight} />}
 

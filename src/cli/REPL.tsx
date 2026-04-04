@@ -6,7 +6,7 @@
 //   StatusLine        → always-visible bottom bar
 //   PromptInput       → history + typeahead + ghost text
 import React, { useState, useCallback, useRef } from 'react';
-import { useApp, useStdout } from 'ink';
+import { useApp, useInput, useStdout } from 'ink';
 import { theme } from '../ui/theme.js';
 import { parseInput, executeCommand, type CommandContext } from './runner.js';
 import { FullscreenLayout } from './components/FullscreenLayout.js';
@@ -14,7 +14,6 @@ import { VirtualMessageList, type MessageLine } from './components/VirtualMessag
 import { SpinnerWithVerb } from './components/SpinnerWithVerb.js';
 import { StatusLine } from './components/StatusLine.js';
 import { PromptInput } from './components/PromptInput.js';
-import { useInput } from 'ink';
 
 interface REPLProps {
   ctx: CommandContext;

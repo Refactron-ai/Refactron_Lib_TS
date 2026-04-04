@@ -30,7 +30,7 @@ export function FullscreenLayout({ children }: FullscreenLayoutProps): React.Rea
   const height = stdout.rows ?? 24;
 
   return (
-    <Box flexDirection="column" height={height} width="100%" overflow="hidden">
+    <Box flexDirection="column" height={height} width="100%">
       {children}
     </Box>
   );
