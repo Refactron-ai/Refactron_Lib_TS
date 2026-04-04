@@ -15,6 +15,7 @@ import {
 } from '../../auth/index.js';
 import type { RefactronCredentials } from '../../auth/index.js';
 import { WelcomeSplash } from './WelcomeSplash.js';
+import { AnimatedMascot } from './AnimatedMascot.js';
 
 type LoginState =
   | 'prompt'
@@ -195,10 +196,22 @@ export function LoginFlow({
 
   const maskedKey = '•'.repeat(apiKeyInput.length);
 
+  // Map login state → mascot animation
+  const mascotAnim =
+    state === 'success'                      ? 'success' :
+    state === 'denied' || state === 'error'  ? 'sad'     :
+    state === 'running' || state === 'verifying' ? 'excited' :
+    'idle';
+
   return (
     <Box flexDirection="column">
       {/* WelcomeSplash: open WelcomeV2-style layout (no box borders) */}
       <WelcomeSplash version={version} />
+
+      {/* Animated mascot — pose changes with login state */}
+      <Box paddingLeft={2} paddingBottom={1}>
+        <AnimatedMascot animState={mascotAnim} />
+      </Box>
 
       <Box flexDirection="column" paddingLeft={2} gap={1}>
 
@@ -207,7 +220,6 @@ export function LoginFlow({
           <Box flexDirection="column" gap={1}>
             <Box flexDirection="column">
               <Text dimColor>Sign in to start refactoring safely.</Text>
-              <Text dimColor>Refactron uses OAuth 2.0 — no password needed.</Text>
               <Text dimColor>Your browser will open to approve access.</Text>
             </Box>
             <Box gap={1}>
