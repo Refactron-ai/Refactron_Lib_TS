@@ -1,25 +1,36 @@
 // src/cli/REPL.tsx
-// Persistent REPL session — mounts once, stays alive until user exits.
-// Architecture mirrors Claude Code: React event loop IS the session.
+// Persistent REPL session — Claude Code-style architecture.
+//   FullscreenLayout  → alternate screen, fixed viewport height
+//   VirtualMessageList → viewport culling, sticky scroll
+//   SpinnerWithVerb   → isolated 50ms animation, shimmer sweep, stalled ramp
+//   StatusLine        → always-visible bottom bar
+//   PromptInput       → history + typeahead + ghost text
 import React, { useState, useCallback, useRef } from 'react';
-import { Box, Text, Static, useInput, useApp } from 'ink';
+import { useApp, useStdout } from 'ink';
 import { theme } from '../ui/theme.js';
 import { parseInput, executeCommand, type CommandContext } from './runner.js';
-
-interface OutputLine {
-  id: number;
-  text: string;
-  color: string | undefined;
-}
+import { FullscreenLayout } from './components/FullscreenLayout.js';
+import { VirtualMessageList, type MessageLine } from './components/VirtualMessageList.js';
+import { SpinnerWithVerb } from './components/SpinnerWithVerb.js';
+import { StatusLine } from './components/StatusLine.js';
+import { PromptInput } from './components/PromptInput.js';
+import { useInput } from 'ink';
 
 interface REPLProps {
   ctx: CommandContext;
   version: string;
 }
 
+// Reserved rows at bottom: spinner row + prompt row + status line
+const CHROME_ROWS = 3;
+
 export function REPL({ ctx, version }: REPLProps): React.ReactElement {
   const { exit } = useApp();
-  const [completedLines, setCompletedLines] = useState<OutputLine[]>([
+  const { stdout } = useStdout();
+
+  const viewportHeight = Math.max(4, (stdout.rows ?? 24) - CHROME_ROWS);
+
+  const [lines, setLines] = useState<MessageLine[]>([
     {
       id: 0,
       text: `  refactron v${version}  —  type help for commands, exit to quit`,
@@ -29,26 +40,36 @@ export function REPL({ ctx, version }: REPLProps): React.ReactElement {
   ]);
   const [input, setInput] = useState('');
   const [isRunning, setIsRunning] = useState(false);
-  const [spinnerFrame, setSpinnerFrame] = useState(0);
   const [runningCmd, setRunningCmd] = useState('');
+  const [lastProgressTime, setLastProgressTime] = useState<number>(Date.now());
+  const [scrollOffset, setScrollOffset] = useState(0); // 0 = sticky bottom
+  const [history, setHistory] = useState<string[]>([]);
+
+  // Issue counts for status line (updated on analyze result)
+  const [issueCount] = useState<number | undefined>(undefined);
+  const [criticalCount] = useState<number | undefined>(undefined);
+  const [sessionState] = useState<string | undefined>(undefined);
+
   const lineIdRef = useRef(2);
   const abortRef = useRef<AbortController | null>(null);
 
-  // Spinner tick
-  React.useEffect(() => {
-    if (!isRunning) return;
-    const t = setInterval(() => setSpinnerFrame((f) => (f + 1) % theme.symbols.spinner.length), 80);
-    return () => clearInterval(t);
-  }, [isRunning]);
-
-  const appendLines = useCallback((lines: OutputLine[]) => {
-    setCompletedLines((prev) => [...prev, ...lines]);
+  const appendLines = useCallback((newLines: MessageLine[]) => {
+    setLines((prev) => [...prev, ...newLines]);
+    setLastProgressTime(Date.now());
+    // Reset scroll to bottom on new output (sticky scroll)
+    setScrollOffset(0);
   }, []);
 
   const handleSubmit = useCallback(
     async (raw: string) => {
       const trimmed = raw.trim();
       if (!trimmed) return;
+
+      // Add to history (deduplicate consecutive)
+      setHistory((prev) => {
+        if (prev[prev.length - 1] === trimmed) return prev;
+        return [...prev, trimmed];
+      });
 
       // Echo the command
       appendLines([
@@ -70,8 +91,9 @@ export function REPL({ ctx, version }: REPLProps): React.ReactElement {
 
       // Clear command
       if (parsed.command === 'clear') {
-        process.stdout.write('\x1Bc');
-        setCompletedLines([]);
+        process.stdout.write('\x1b[H\x1b[2J'); // clear screen
+        setLines([]);
+        setScrollOffset(0);
         return;
       }
 
@@ -80,7 +102,7 @@ export function REPL({ ctx, version }: REPLProps): React.ReactElement {
 
       const controller = new AbortController();
       abortRef.current = controller;
-      const buffer: OutputLine[] = [];
+      const buffer: MessageLine[] = [];
 
       try {
         await executeCommand(
@@ -108,10 +130,10 @@ export function REPL({ ctx, version }: REPLProps): React.ReactElement {
     [ctx, exit, appendLines],
   );
 
+  // Global key handler (non-prompt keys when running or scrolling)
   useInput(
     (inputChar, key) => {
       if (isRunning) {
-        // Ctrl+C cancels running command
         if (key.ctrl && inputChar === 'c') {
           abortRef.current?.abort();
           appendLines([
@@ -131,62 +153,58 @@ export function REPL({ ctx, version }: REPLProps): React.ReactElement {
         return;
       }
 
-      if (key.return) {
-        const submitted = input;
-        setInput('');
-        void handleSubmit(submitted);
-        return;
+      // Scroll with Page Up / Page Down (when not captured by PromptInput)
+      if (key.pageUp) {
+        setScrollOffset((s) => Math.min(s + Math.floor(viewportHeight / 2), lines.length));
       }
-
-      if (key.backspace || key.delete) {
-        setInput((prev) => prev.slice(0, -1));
-        return;
-      }
-
-      if (key.ctrl || key.meta) return;
-
-      if (inputChar && !key.upArrow && !key.downArrow && !key.leftArrow && !key.rightArrow) {
-        setInput((prev) => prev + inputChar);
+      if (key.pageDown) {
+        setScrollOffset((s) => Math.max(0, s - Math.floor(viewportHeight / 2)));
       }
     },
     { isActive: process.stdin.isTTY === true },
   );
 
   return (
-    <Box flexDirection="column">
-      {/* Completed output — Static never re-renders old lines */}
-      <Static items={completedLines}>
-        {(line) =>
-          line.color !== undefined ? (
-            <Text key={line.id} color={line.color}>
-              {line.text}
-            </Text>
-          ) : (
-            <Text key={line.id}>{line.text}</Text>
-          )
-        }
-      </Static>
+    <FullscreenLayout>
+      {/* Message area — grows to fill available height */}
+      <VirtualMessageList
+        lines={lines}
+        viewportHeight={viewportHeight}
+        scrollOffset={scrollOffset}
+      />
 
-      {/* Spinner while running */}
+      {/* Spinner (shown only while running) */}
       {isRunning && (
-        <Text color={theme.colors.accent}>
-          {'  '}
-          {theme.symbols.spinner[spinnerFrame % theme.symbols.spinner.length]}
-          {'  '}
-          {runningCmd}
-        </Text>
+        <SpinnerWithVerb
+          verb={runningCmd.split(' ')[0] ?? 'working'}
+          isActive={isRunning}
+          lastProgressTime={lastProgressTime}
+        />
       )}
 
-      {/* Prompt */}
+      {/* Prompt (shown only when idle) */}
       {!isRunning && (
-        <Box>
-          <Text color={theme.colors.accent} bold>
-            {'  ❯ '}
-          </Text>
-          <Text color={theme.colors.text}>{input}</Text>
-          <Text color={theme.colors.accent}>{'█'}</Text>
-        </Box>
+        <PromptInput
+          value={input}
+          onChange={setInput}
+          onSubmit={(v) => {
+            setInput('');
+            void handleSubmit(v);
+          }}
+          isActive={!isRunning}
+          history={history}
+        />
       )}
-    </Box>
+
+      {/* Status line — always visible at bottom */}
+      <StatusLine
+        adapterName={ctx.adapter.displayName}
+        version={version}
+        issueCount={issueCount}
+        criticalCount={criticalCount}
+        sessionState={sessionState}
+        isRunning={isRunning}
+      />
+    </FullscreenLayout>
   );
 }
