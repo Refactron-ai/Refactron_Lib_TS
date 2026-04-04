@@ -7,6 +7,52 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [0.1.0-beta.2] — 2026-04-05
+
+### Added
+
+**Interactive Issue Browser**
+- `analyze` now opens the interactive issue browser automatically after scanning — no extra command needed
+- Full-screen Ink TUI: paginated issue list, detail panel, diff preview, filter mode
+- `a` — fix selected issue in place (atomic write + backup, marks ✔, stays in browser)
+- `A` — fix all fixable issues in one pass with live `fixing N/M…` progress
+- `d` — dry-run diff preview (12 lines, Esc to dismiss)
+- `v` — verify a fixed issue's file (only available after fixing, shows ✓ safe / ✘ blocked)
+- `/` — real-time filter by message, file, severity, or type
+- `j`/`k` and `↑`/`↓` — navigation; `g`/`G` — jump to first/last; `PgUp`/`PgDn` — page
+- Status messages auto-dismiss after 3s
+
+**Work Sessions**
+- `WorkSessionManager` — persists full `CodeIssue[]` to `.refactron/work-sessions/{id}.json`
+- `autofix` and `verify` commands operate on the active session — no re-scan needed
+- `session list` — list all saved sessions; `session <id>` — load and activate
+- `issues` command — open browser on any active session
+
+**CLI UX**
+- Slash command picker: typing `/` in the prompt shows a filterable command menu
+- Ctrl+C double-press to exit: first press shows warning, auto-dismisses after 800ms
+- `hint: <tip>` line below spinner rotates through random tips every 4s while a command runs
+- Session header (`SessionHeader`) stays fixed at top — never scrolls away
+- Terminal mouse scroll re-enabled (removed alternate screen buffer, runs on main screen)
+- Mouse wheel no longer injects arrow keys into the REPL history
+
+### Changed
+
+- `analyze` returns `openBrowser: true` — browser launches immediately after scan summary
+- StatusLine footer bar removed — cleaner UI
+- `logout` exits the session on completion
+- Git subprocess calls batched via `--stdin` (1 call vs N per-file)
+- `isGitRepo()` result cached; temporal profiles built in parallel
+
+### Fixed
+
+- `SessionHeader` was rendering inside `Static` (scrolled away); moved to live Ink tree
+- Single-extension glob `**/*.{py}` edge case replaced with `**/*.py`
+- Second `analyze` run returning 0 files (`.refactron/` JSON picked up by glob); added ignore
+- Unused vars lint errors across REPL, IssueBrowser, LoginFlow, session types
+
+---
+
 ## [0.1.0-beta.1] — 2026-04-04
 
 Initial beta release.

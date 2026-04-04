@@ -1,0 +1,38 @@
+# Source
+src/
+tests/
+YRC/
+
+# Config & tooling
+tsconfig*.json
+.eslintrc*
+.eslintignore
+.prettierrc*
+.prettierignore
+vitest.config*
+.editorconfig
+
+# CI / GitHub
+.github/
+.husky/
+
+# Dev artifacts
+*.tgz
+coverage/
+.nyc_output/
+node_modules/
+
+# Env & secrets
+.env
+.env.*
+*.pem
+*.key
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/
+.idea/
+*.swp

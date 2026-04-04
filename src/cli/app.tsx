@@ -1,10 +1,16 @@
 // src/cli/app.tsx
-// Boots the persistent REPL session. Mounts once, stays alive until exit() called.
-import React from 'react';
+// Boots the persistent REPL session. Auth gate runs before REPL mounts.
+// If credentials are missing/expired → shows LoginFlow, then mounts REPL.
+import React, { useState } from 'react';
 import { render } from 'ink';
 import { REPL } from './REPL.js';
+import { LoginFlow } from './components/LoginFlow.js';
 import { AdapterRegistry } from '../adapters/registry.js';
-import { loadConfig } from '../core/config.js';
+import { loadConfig, type RefactronConfig } from '../core/config.js';
+import { loadCredentials, isAuthenticated, needsApiKey } from '../auth/index.js';
+import type { RefactronCredentials } from '../auth/index.js';
+import type { ILanguageAdapter } from '../adapters/interface.js';
+import { WorkSessionManager } from '../session/manager.js';
 import { glob } from 'glob';
 import { createRequire } from 'module';
 
@@ -28,6 +34,61 @@ async function detectBestAdapter(
   return best;
 }
 
+interface AppRootProps {
+  adapter: ILanguageAdapter;
+  config: RefactronConfig;
+  version: string;
+  projectRoot: string;
+  initialCreds: RefactronCredentials | null;
+  sessions: WorkSessionManager;
+}
+
+function AppRoot({
+  adapter,
+  config,
+  version,
+  projectRoot,
+  initialCreds,
+  sessions,
+}: AppRootProps): React.ReactElement {
+  const [creds, setCreds] = useState<RefactronCredentials | null>(initialCreds);
+  const authenticated = isAuthenticated(creds);
+  const apiKeyMissing = authenticated && needsApiKey(creds?.plan) && !creds?.api_key;
+
+  if (!authenticated || apiKeyMissing) {
+    return (
+      <LoginFlow
+        version={version}
+        adapterName={adapter.displayName}
+        onAuthenticated={(newCreds) => setCreds(newCreds)}
+        onExit={() => process.exit(0)}
+      />
+    );
+  }
+
+  return (
+    <REPL
+      ctx={{ adapter, config, projectRoot, sessions }}
+      version={version}
+      email={creds?.email}
+      plan={creds?.plan}
+    />
+  );
+}
+
+/** Hide cursor and clear screen. Stays on main screen so terminal scrollback works. No-op when not a TTY. */
+function enterAltScreen(): void {
+  if (!process.stdout.isTTY) return;
+  process.stdout.write('\x1b[H\x1b[2J'); // move to top-left, clear screen
+  process.stdout.write('\x1b[?25l'); // hide cursor
+}
+
+/** Restore cursor. Safe to call multiple times. */
+function leaveAltScreen(): void {
+  if (!process.stdout.isTTY) return;
+  process.stdout.write('\x1b[?25h'); // show cursor
+}
+
 export async function run(_argv: string[]): Promise<void> {
   const projectRoot = process.cwd();
   const config = await loadConfig(projectRoot);
@@ -44,12 +105,45 @@ export async function run(_argv: string[]): Promise<void> {
   // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
   const pkg = require('../../package.json') as { version: string };
 
+  const initialCreds = await loadCredentials();
+  const sessions = new WorkSessionManager(projectRoot);
+
+  // Enter alternate screen BEFORE render() — zero flash, clean viewport.
+  enterAltScreen();
+
+  // Guarantee screen restoration on any exit path.
+  const restoreOnce = (() => {
+    let done = false;
+    return () => {
+      if (!done) {
+        done = true;
+        leaveAltScreen();
+      }
+    };
+  })();
+
+  process.on('exit', restoreOnce);
+  process.on('SIGINT', () => {
+    restoreOnce();
+    process.exit(0);
+  });
+  process.on('SIGTERM', () => {
+    restoreOnce();
+    process.exit(0);
+  });
+
   const { waitUntilExit } = render(
-    <REPL ctx={{ adapter, config, projectRoot }} version={pkg.version} />,
-    { exitOnCtrlC: false }, // Ctrl+C handled inside REPL
+    <AppRoot
+      adapter={adapter}
+      config={config}
+      version={pkg.version}
+      projectRoot={projectRoot}
+      initialCreds={initialCreds}
+      sessions={sessions}
+    />,
+    { exitOnCtrlC: false },
   );
 
-  // Block here — this is the "infinite loop"
-  // waitUntilExit() resolves only when REPL calls useApp().exit()
   await waitUntilExit();
+  restoreOnce();
 }
