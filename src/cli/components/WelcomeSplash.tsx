@@ -1,35 +1,46 @@
 // src/cli/components/WelcomeSplash.tsx
-// YRC WelcomeV2-equivalent: open borderless layout, fixed 58-char width.
-// Shown in LoginFlow (before auth). No box borders — exactly like Claude Code's startup screen.
+// Open borderless welcome screen shown in LoginFlow (before auth).
+// Layout: sparse starfield bg · big pixel-R brand mark (right) · mascot (lower-left, brand color)
 import React from 'react';
 import { Box, Text } from 'ink';
 import { theme } from '../../ui/theme.js';
 
-const WELCOME_WIDTH = 58; // matches YRC WELCOME_V2_WIDTH
+const WELCOME_WIDTH = 58;
 
-// U+2026 HORIZONTAL ELLIPSIS repeated — one char, not three dots
+// U+2026 HORIZONTAL ELLIPSIS × 58
 const SEP = '\u2026'.repeat(WELCOME_WIDTH);
 
-// ASCII art rows: background block shapes + scattered stars + mascot
-// Each row is padded to WELCOME_WIDTH chars, plain text (no color override on bg shapes)
-const ART_ROWS_PLAIN = [
+// ── Pixel "R" — positioned right-of-center, 6 cols wide ───────────────────
+// Rendered as plain (dim) text so it doesn't compete with the brand-blue mascot.
+//
+//   ▐████▖
+//   ▐▌  ▐▌
+//   ▐████▘
+//   ▐▌ ▀█▌
+//   ▐▌  ▀█
+//
+// Each art row is 58 chars total (spaces pad left/right).
+
+const ART: string[] = [
+  // col:  0         1         2         3         4         5
+  //       0123456789012345678901234567890123456789012345678901234567
   '                                                          ',
-  '     *                              \u2588\u2588\u2588\u2588\u2588\u2593\u2593\u2591              ',
-  '                    *            \u2588\u2588\u2588\u2593\u2591     \u2591\u2591             ',
-  '          \u2591\u2591\u2591\u2591\u2591\u2591                 \u2588\u2588\u2588\u2593\u2591                    ',
-  '    \u2591\u2591\u2591   \u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591             \u2588\u2588\u2588\u2593\u2591                    ',
-  '   \u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591   *      \u2588\u2588\u2593\u2591\u2591      \u2591             ',
-  '                                  \u2591\u2593\u2593\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2593\u2591             ',
+  '  \u00b7                       \u2590\u2588\u2588\u2588\u2588\u2596                        ',
+  '                            \u2590\u258c  \u2590\u258c    \u00b7               ',
+  '       \u00b7                  \u2590\u2588\u2588\u2588\u2588\u2598         *             ',
+  '  *                         \u2590\u258c \u2580\u2588\u258c                      ',
+  '             \u00b7              \u2590\u258c  \u2580\u2588         \u00b7             ',
 ];
 
-// Mascot rows (rendered in brand color)  — "Refactron Bot" design
-const MASCOT_ROW_0 = '      \u2597\u2584\u2588\u2588\u2588\u2588\u2584\u2596 ';  // "▗▄████▄▖" padded
-const MASCOT_ROW_1 = '      \u2590\u258c \u2584\u2584 \u2590\u258c';           // "▐▌ ▄▄ ▐▌"
-const MASCOT_ROW_2 = '       \u259d\u2518  \u259d\u2518  ';                   // " ▝▘  ▝▘ "
+// Mascot rows in brand color — bot sits lower-left
+const M0 = '  \u2597\u2584\u2588\u2588\u2588\u2588\u2584\u2596                                      '; // ▗▄████▄▖
+const M1 = '  \u2590\u258c \u2584\u2584 \u2590\u258c                                      '; // ▐▌ ▄▄ ▐▌
+const M2 = '   \u259d\u2518  \u259d\u2518                                       '; //  ▝▘  ▝▘
 
-// Bottom separator: mascot body embedded in ellipsis dots
+// Bottom separator row: mascot top-row embedded in ellipsis stream
 const BOT_SEP =
-  '\u2026\u2026\u2026 \u2597\u2584\u2588\u2588\u2588\u2588\u2584\u2596 \u2026\u2026\u2026\u2026\u2026\u2026\u2026\u2026\u2026\u2026\u2026\u2026\u2026\u2026\u2026\u2026\u2026\u2026\u2026\u2026\u2591\u2026\u2026\u2026\u2026\u2026\u2026\u2026\u2026\u2026\u2026\u2591\u2026\u2026\u2026\u2026\u2026\u2026\u2026\u2026\u2026\u2026';
+  '\u2026\u2026 \u2597\u2584\u2588\u2588\u2588\u2588\u2584\u2596 ' +
+  '\u2026'.repeat(WELCOME_WIDTH - 12);
 
 interface WelcomeSplashProps {
   version: string;
@@ -38,30 +49,30 @@ interface WelcomeSplashProps {
 export function WelcomeSplash({ version }: WelcomeSplashProps): React.ReactElement {
   return (
     <Box flexDirection="column" marginBottom={1}>
-      {/* Title line */}
+      {/* Title */}
       <Text>
-        <Text color={theme.colors.brand}>{'Welcome to Refactron'}</Text>
+        <Text color={theme.colors.brand} bold>{'Welcome to Refactron'}</Text>
         {'  '}
         <Text dimColor>{'v'}{version}</Text>
       </Text>
 
       {/* Top separator */}
-      <Text>{SEP}</Text>
+      <Text dimColor>{SEP}</Text>
 
-      {/* Background art rows */}
-      {ART_ROWS_PLAIN.map((row, i) => (
-        <Text key={i}>{row}</Text>
+      {/* Starfield + pixel-R background (plain / dim) */}
+      {ART.map((row, i) => (
+        <Text key={i} dimColor>{row}</Text>
       ))}
 
-      {/* Mascot rows (brand color) */}
-      <Text color={theme.colors.brand}>{MASCOT_ROW_0}</Text>
-      <Text color={theme.colors.brand}>{MASCOT_ROW_1}</Text>
-      <Text color={theme.colors.brand}>{MASCOT_ROW_2}</Text>
+      {/* Mascot — brand blue, lower-left */}
+      <Text color={theme.colors.brand}>{M0}</Text>
+      <Text color={theme.colors.brand}>{M1}</Text>
+      <Text color={theme.colors.brand}>{M2}</Text>
 
       {/* Bottom separator */}
-      <Text>{SEP}</Text>
+      <Text dimColor>{SEP}</Text>
 
-      {/* Bottom row: mascot feet embedded in ellipsis */}
+      {/* Footer row: mascot body peek + dots */}
       <Text color={theme.colors.brand}>{BOT_SEP}</Text>
     </Box>
   );
