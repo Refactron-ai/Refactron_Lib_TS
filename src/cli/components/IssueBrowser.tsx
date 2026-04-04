@@ -85,6 +85,7 @@ export function IssueBrowser({
   const [diffLines, setDiffLines] = useState<string[] | null>(null);
   const [isWorking, setIsWorking] = useState(false);
   const [workingLabel, setWorkingLabel] = useState('');
+  const [hintIdx, setHintIdx] = useState(0);
 
   // ── Auto-dismiss status after 3s ──────────────────────────────────────
   useEffect(() => {
@@ -97,6 +98,59 @@ export function IssueBrowser({
   const pushStatus = useCallback((text: string, color: string = theme.colors.textDim) => {
     setStatus({ text, color, id: ++statusSeq });
   }, []);
+
+  // ── Rotating hints — rebuild when state changes, cycle every 3.5s ─────
+  const hints = useMemo(() => {
+    const hasAnyFixed = fixedIds.size > 0;
+    const fixedNotVerified = [...fixedIds].some((id) => {
+      const issue = issues.find((i) => i.id === id);
+      return issue && !verifiedFiles.has(issue.file);
+    });
+    const hasBlocked = [...verifiedFiles.values()].some((v) => !v);
+    const allVerifiedSafe = hasAnyFixed && !fixedNotVerified && !hasBlocked;
+    const unfixedCount = issues.filter((i) => i.fixable && !fixedIds.has(i.id)).length;
+
+    const list: Array<{ text: string; color?: string; highlight?: string }> = [];
+
+    if (allVerifiedSafe) {
+      list.push({ text: '✔ All fixed issues verified safe — press ', highlight: 'q', color: theme.colors.success });
+      list.push({ text: 'Changes are written to disk. Press ', highlight: 'q to exit', color: theme.colors.success });
+    } else if (hasBlocked) {
+      list.push({ text: '✘ Blocked issues found — press ', highlight: 'q', color: theme.colors.error });
+      list.push({ text: 'Run ', highlight: 'rollback', color: theme.colors.error });
+      list.push({ text: 'To undo all applied fixes, quit and run rollback', color: theme.colors.error });
+    } else if (fixedNotVerified) {
+      list.push({ text: 'Fixed but not verified — navigate to a ✔ issue and press ', highlight: 'v' });
+      list.push({ text: 'Verification checks blast radius before marking safe', });
+      list.push({ text: 'After verifying, press ', highlight: 'q to exit' });
+    } else if (unfixedCount > 0) {
+      list.push({ text: 'Press ', highlight: 'a', });
+      list.push({ text: 'Press ', highlight: 'd', });
+      list.push({ text: 'Press ', highlight: 'A to fix all ' + String(unfixedCount) + ' fixable issues at once' });
+      list.push({ text: '/ to filter by filename, message, or severity' });
+      list.push({ text: 'j / k or ↑ / ↓ to navigate · g / G to jump first/last' });
+    }
+
+    // Always include navigation reminder when list is getting long
+    if (list.length === 0) {
+      list.push({ text: 'No fixable issues — press ', highlight: 'q to exit' });
+    }
+
+    return list;
+  }, [fixedIds, verifiedFiles, issues]);
+
+  // Advance hint index on interval, reset when hints change
+  useEffect(() => {
+    setHintIdx(0);
+  }, [hints]);
+
+  useEffect(() => {
+    if (hints.length <= 1) return;
+    const t = setInterval(() => setHintIdx((i) => (i + 1) % hints.length), 3500);
+    return () => clearInterval(t);
+  }, [hints.length]);
+
+  const currentHint = hints[hintIdx % hints.length];
 
   // ── Filtered list ──────────────────────────────────────────────────────
   const filtered = useMemo(() => {
@@ -517,71 +571,19 @@ export function IssueBrowser({
 
       <Text color={theme.colors.border}>{border}</Text>
 
-      {/* ── Next-step hint — contextual based on session state ────────── */}
-      {!isWorking && !filterMode && (() => {
-        const hasAnyFixed = fixedCount > 0;
-        const fixedNotVerified = [...fixedIds].some(
-          (id) => {
-            const issue = issues.find((i) => i.id === id);
-            return issue && !verifiedFiles.has(issue.file);
-          },
-        );
-        const hasBlocked = [...verifiedFiles.values()].some((v) => !v);
-        const allVerifiedSafe =
-          hasAnyFixed &&
-          !fixedNotVerified &&
-          !hasBlocked;
-
-        if (allVerifiedSafe) {
-          return (
-            <Box paddingLeft={2} paddingBottom={0}>
-              <Text color={theme.colors.success}>{'  ✔ '}</Text>
-              <Text color={theme.colors.success}>{'All fixed issues verified safe. '}</Text>
-              <Text dimColor>{'Press '}</Text>
-              <Text color={theme.colors.brand}>{'q'}</Text>
-              <Text dimColor>{' to exit — changes are already written to disk.'}</Text>
-            </Box>
-          );
-        }
-        if (hasBlocked) {
-          return (
-            <Box paddingLeft={2} paddingBottom={0}>
-              <Text color={theme.colors.error}>{'  ✘ '}</Text>
-              <Text color={theme.colors.error}>{'Blocked issues found. '}</Text>
-              <Text dimColor>{'Press '}</Text>
-              <Text color={theme.colors.brand}>{'q'}</Text>
-              <Text dimColor>{' then run '}</Text>
-              <Text color={theme.colors.brand}>{'rollback'}</Text>
-              <Text dimColor>{' to undo unsafe changes.'}</Text>
-            </Box>
-          );
-        }
-        if (fixedNotVerified) {
-          return (
-            <Box paddingLeft={2} paddingBottom={0}>
-              <Text dimColor>{'  → '}</Text>
-              <Text dimColor>{'Fixed issues not yet verified. Navigate to a fixed issue and press '}</Text>
-              <Text color={theme.colors.brand}>{'v'}</Text>
-              <Text dimColor>{' to verify.'}</Text>
-            </Box>
-          );
-        }
-        if (!hasAnyFixed && fixableTotal > 0) {
-          return (
-            <Box paddingLeft={2} paddingBottom={0}>
-              <Text dimColor>{'  → '}</Text>
-              <Text dimColor>{'Press '}</Text>
-              <Text color={theme.colors.brand}>{'a'}</Text>
-              <Text dimColor>{' to fix selected · '}</Text>
-              <Text color={theme.colors.brand}>{'A'}</Text>
-              <Text dimColor>{' to fix all · '}</Text>
-              <Text color={theme.colors.brand}>{'d'}</Text>
-              <Text dimColor>{' to preview diff before fixing.'}</Text>
-            </Box>
-          );
-        }
-        return null;
-      })()}
+      {/* ── Rotating next-step hint ────────────────────────────────────── */}
+      {!isWorking && !filterMode && currentHint && (
+        <Box paddingLeft={2}>
+          <Text dimColor>{'  → '}</Text>
+          <Text color={currentHint.color ?? theme.colors.textDim}>{currentHint.text}</Text>
+          {currentHint.highlight && (
+            <Text color={theme.colors.brand}>{currentHint.highlight}</Text>
+          )}
+          {hints.length > 1 && (
+            <Text dimColor>{'  '}{hintIdx + 1}{'/'}{hints.length}</Text>
+          )}
+        </Box>
+      )}
 
       {/* ── Footer ────────────────────────────────────────────────────── */}
       <Box paddingLeft={1}>
