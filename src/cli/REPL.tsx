@@ -5,7 +5,7 @@
 //   EmptyState              — shown when lines is empty
 //   SpinnerWithVerb | PromptInput  (separated from output by a top border)
 //   StatusLine
-import React, { useState, useCallback, useRef } from 'react';
+import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { Box, Text, useApp, useInput } from 'ink';
 import { theme } from '../ui/theme.js';
 import { parseInput, executeCommand, type CommandContext, type CommandResult } from './runner.js';
@@ -52,6 +52,14 @@ export function REPL({ ctx, version, email, plan }: REPLProps): React.ReactEleme
   const lineIdRef = useRef(0);
   const abortRef = useRef<AbortController | null>(null);
   const [ctrlCPending, setCtrlCPending] = useState(false);
+  const ctrlCTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Auto-dismiss warning ~800ms after it appears (simulates key-release)
+  useEffect(() => {
+    if (!ctrlCPending) return;
+    ctrlCTimerRef.current = setTimeout(() => setCtrlCPending(false), 800);
+    return () => { if (ctrlCTimerRef.current) clearTimeout(ctrlCTimerRef.current); };
+  }, [ctrlCPending]);
 
   const nextId = useCallback(() => lineIdRef.current++, []);
 
@@ -157,11 +165,6 @@ export function REPL({ ctx, version, email, plan }: REPLProps): React.ReactEleme
           setCtrlCPending(true);
         }
         return;
-      }
-
-      // Any other key dismisses the warning
-      if (ctrlCPending) {
-        setCtrlCPending(false);
       }
     },
     { isActive: process.stdin.isTTY === true },
