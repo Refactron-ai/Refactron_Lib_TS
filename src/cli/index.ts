@@ -31,7 +31,7 @@ const STATIC_HELP = `
 `;
 
 // Fast paths — zero imports, <10ms
-if (!cmd || cmd === '--version' || cmd === '-v') {
+if (cmd === '--version' || cmd === '-v') {
   const require = createRequire(import.meta.url);
   // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
   const pkg = require('../../package.json') as { version: string };
