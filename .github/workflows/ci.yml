@@ -94,3 +94,21 @@ jobs:
           name: dist
           path: dist/
           retention-days: 7
+
+  e2e-allowed-failure:
+    name: E2E (allowed failure until Week 4)
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: npm ci
+      - run: pip install pytest requests
+      - run: npm run build
+      - run: npm run test:e2e

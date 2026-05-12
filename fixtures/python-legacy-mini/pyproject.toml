@@ -1,0 +1,15 @@
+[project]
+name = "python-legacy-mini"
+version = "0.0.0"
+description = "Legacy Python fixture for Refactron's Week 4 golden e2e test. Do not modify."
+requires-python = ">=3.8"
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=7.0",
+  "requests>=2.28",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]

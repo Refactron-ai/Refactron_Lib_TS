@@ -30,6 +30,7 @@
     "format": "prettier --write src/ tests/",
     "format:check": "prettier --check src/ tests/",
     "test": "vitest run",
+    "test:e2e": "vitest run --config vitest.e2e.config.ts",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "test:verification": "vitest run tests/verification/",
