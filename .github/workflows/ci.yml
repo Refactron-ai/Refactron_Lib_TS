@@ -48,7 +48,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-      - run: pip install pytest
+      - run: pip install pytest requests
       - run: npm ci
       - run: npm test -- --coverage
       - uses: codecov/codecov-action@v4
