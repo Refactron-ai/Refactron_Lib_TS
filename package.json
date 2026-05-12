@@ -23,7 +23,8 @@
     "url": "https://github.com/Refactron-ai/Refactron_Lib_TS/issues"
   },
   "scripts": {
-    "build": "tsc --project tsconfig.build.json && chmod +x dist/cli/index.js",
+    "build": "tsc --project tsconfig.build.json && chmod +x dist/cli/index.js && npm run build:copy-py",
+    "build:copy-py": "mkdir -p dist/verify/checks/_py && cp src/verify/checks/_py/*.py dist/verify/checks/_py/",
     "build:watch": "tsc --project tsconfig.build.json --watch",
     "typecheck": "tsc --noEmit",
     "lint": "eslint src/ tests/ --ext .ts,.tsx --max-warnings 0",
