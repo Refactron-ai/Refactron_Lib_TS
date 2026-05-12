@@ -19,6 +19,31 @@ function countThens(node: SyntaxNode): number {
   return count;
 }
 
+function hasNestedThen(callNode: SyntaxNode): boolean {
+  // A `.then` whose callback body contains another `.then(...)` call counts as a
+  // promise chain too — the user just nested instead of chaining.
+  const args = callNode.childForFieldName('arguments');
+  if (!args) return false;
+  let found = false;
+  function walk(n: SyntaxNode): void {
+    if (found) return;
+    if (n.type === 'call_expression') {
+      const fn = n.childForFieldName('function');
+      if (
+        fn &&
+        fn.type === 'member_expression' &&
+        fn.childForFieldName('property')?.text === 'then'
+      ) {
+        found = true;
+        return;
+      }
+    }
+    for (const c of n.namedChildren) walk(c);
+  }
+  for (const c of args.namedChildren) walk(c);
+  return found;
+}
+
 export function detect(ctx: DetectorContext): DetectorFinding[] {
   const findings: DetectorFinding[] = [];
   let counter = 0;
@@ -35,7 +60,8 @@ export function detect(ctx: DetectorContext): DetectorFinding[] {
         );
         if (isOuter) {
           const total = countThens(node);
-          if (total >= 2) {
+          const nested = total >= 2 || hasNestedThen(node);
+          if (nested) {
             findings.push({
               id: `then-${ctx.relPath}-${node.startPosition.row}-${counter++}`,
               file: ctx.relPath,
