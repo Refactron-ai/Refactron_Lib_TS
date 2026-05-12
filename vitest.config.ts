@@ -10,6 +10,7 @@ export default defineConfig({
       exclude: ['node_modules/', 'dist/', 'tests/fixtures/'],
     },
     include: ['tests/**/*.test.ts'],
+    exclude: ['node_modules/**', 'dist/**', 'fixtures/**'],
     timeout: 30000,
   },
 });
