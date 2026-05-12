@@ -36,6 +36,14 @@ Requires Node.js ≥ 18 and Python 3.8+ (for Python-adapter tests).
 
 These define types every other module depends on. PRs that modify them are closed without review; changes require a major version bump and coordinated migration. If a contract change seems necessary, open an issue first.
 
+## v2.0 Engine Contracts
+
+`src/contracts.ts` is the new locked engine surface for the v2.0 rebuild. It defines the four engine interfaces (`Analyzer`, `Refactorer`, `Verifier`, `Documenter`) along with `RefactorPlan`, `FileChange`, and the ten `TransformId` literals. Modifications require a major version bump.
+
+`src/core/models.ts` and `src/adapters/interface.ts` remain locked but are now classified as legacy. They back the existing blast-radius engines and continue to compile until the Weeks 2–4 migration retires them.
+
+During Weeks 2–4, new engine code targets `contracts.ts` while existing engines keep compiling against `models.ts`. Do not import from both surfaces in the same file — pick one side of the migration boundary per module.
+
 ## Blast Radius Invariant
 
 Every `CodeIssue` produced anywhere in the codebase MUST carry a non-null `blastRadius` of shape `{affectedFiles, affectedFunctions, affectedTestFiles, score, level}`. Tests or analyzers that emit issues without it will be rejected.
