@@ -44,6 +44,12 @@ if (cmd === '--help' || cmd === '-h') {
   process.exit(0);
 }
 
+if (cmd === 'analyze') {
+  const { runAnalyzeCommand } = await import('./analyze-command.js');
+  const code = await runAnalyzeCommand(process.argv.slice(3));
+  process.exit(code);
+}
+
 // v2.0 subcommands are not yet wired into the CLI. Reject them deterministically so
 // platforms whose stdin EOF makes the REPL fallback exit 0 don't mask the gap.
 // `run` lands in Week 5 (after Week 4 transforms); `document` in Week 6; `init` in Week 5.
