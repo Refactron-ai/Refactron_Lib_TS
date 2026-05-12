@@ -1,9 +1,4 @@
-import type {
-  Verifier,
-  RefactorPlan,
-  VerificationResult,
-  GateResult,
-} from '../contracts.js';
+import type { Verifier, RefactorPlan, VerificationResult, GateResult } from '../contracts.js';
 import { createShadowTree } from './shadow-tree.js';
 import { syntaxGate } from './gates/syntax.js';
 import { importsGate } from './gates/imports.js';

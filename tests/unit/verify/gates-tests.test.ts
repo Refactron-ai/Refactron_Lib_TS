@@ -20,52 +20,40 @@ async function fixtureWithPassingTest(): Promise<string> {
 }
 
 describe('testsGate', () => {
-  it(
-    'passes when shadow tree tests pass',
-    async () => {
-      const root = await fixtureWithPassingTest();
-      const h = await createShadowTree(root, []);
-      const r = await testsGate({ shadowRoot: h.path, changes: [] }, root, {});
-      await h.cleanup();
-      expect(r.passed).toBe(true);
-    },
-    60_000,
-  );
+  it('passes when shadow tree tests pass', async () => {
+    const root = await fixtureWithPassingTest();
+    const h = await createShadowTree(root, []);
+    const r = await testsGate({ shadowRoot: h.path, changes: [] }, root, {});
+    await h.cleanup();
+    expect(r.passed).toBe(true);
+  }, 60_000);
 
-  it(
-    'fails when a change breaks behavior',
-    async () => {
-      const root = await fixtureWithPassingTest();
-      const change = {
-        path: path.join(root, 'lib.py'),
-        oldHash: 'x',
-        newContent: 'def x(): return 2\n',
-        transformId: 'format_to_fstring' as const,
-      };
-      const h = await createShadowTree(root, [change]);
-      const r = await testsGate({ shadowRoot: h.path, changes: [change] }, root, {});
-      await h.cleanup();
-      expect(r.passed).toBe(false);
-      expect(r.blockingReason).toBeTruthy();
-    },
-    60_000,
-  );
+  it('fails when a change breaks behavior', async () => {
+    const root = await fixtureWithPassingTest();
+    const change = {
+      path: path.join(root, 'lib.py'),
+      oldHash: 'x',
+      newContent: 'def x(): return 2\n',
+      transformId: 'format_to_fstring' as const,
+    };
+    const h = await createShadowTree(root, [change]);
+    const r = await testsGate({ shadowRoot: h.path, changes: [change] }, root, {});
+    await h.cleanup();
+    expect(r.passed).toBe(false);
+    expect(r.blockingReason).toBeTruthy();
+  }, 60_000);
 
-  it(
-    'aborts with a clear message if baseline already fails',
-    async () => {
-      const root = await fs.mkdtemp(path.join(os.tmpdir(), 'tg-bf-'));
-      await fs.writeFile(
-        path.join(root, 'pyproject.toml'),
-        '[tool.pytest.ini_options]\ntestpaths = ["."]\npythonpath = ["."]\n',
-      );
-      await fs.writeFile(path.join(root, 'test_x.py'), 'def test_fail(): assert False\n');
-      const h = await createShadowTree(root, []);
-      const r = await testsGate({ shadowRoot: h.path, changes: [] }, root, {});
-      await h.cleanup();
-      expect(r.passed).toBe(false);
-      expect(r.blockingReason).toMatch(/baseline/i);
-    },
-    60_000,
-  );
+  it('aborts with a clear message if baseline already fails', async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'tg-bf-'));
+    await fs.writeFile(
+      path.join(root, 'pyproject.toml'),
+      '[tool.pytest.ini_options]\ntestpaths = ["."]\npythonpath = ["."]\n',
+    );
+    await fs.writeFile(path.join(root, 'test_x.py'), 'def test_fail(): assert False\n');
+    const h = await createShadowTree(root, []);
+    const r = await testsGate({ shadowRoot: h.path, changes: [] }, root, {});
+    await h.cleanup();
+    expect(r.passed).toBe(false);
+    expect(r.blockingReason).toMatch(/baseline/i);
+  }, 60_000);
 });

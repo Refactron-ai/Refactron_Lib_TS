@@ -3,10 +3,7 @@ import { fileURLToPath } from 'node:url';
 import * as path from 'node:path';
 import type { GateResult } from '../../contracts.js';
 
-const SIDECAR = path.resolve(
-  path.dirname(fileURLToPath(import.meta.url)),
-  '_py/imports_check.py',
-);
+const SIDECAR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '_py/imports_check.py');
 
 export async function checkPythonImports(
   projectRoot: string,

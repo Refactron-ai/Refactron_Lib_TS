@@ -3,10 +3,7 @@ import { fileURLToPath } from 'node:url';
 import * as path from 'node:path';
 import type { GateResult } from '../../contracts.js';
 
-const SIDECAR = path.resolve(
-  path.dirname(fileURLToPath(import.meta.url)),
-  '_py/syntax_check.py',
-);
+const SIDECAR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '_py/syntax_check.py');
 
 export async function checkPythonSyntax(files: string[]): Promise<GateResult> {
   const t0 = Date.now();

@@ -4,10 +4,7 @@ import type { CheckContext } from '../types.js';
 import { checkPythonImports } from '../checks/imports-python.js';
 import { checkTypescriptImports } from '../checks/imports-typescript.js';
 
-export async function importsGate(
-  ctx: CheckContext,
-  projectRoot: string,
-): Promise<GateResult> {
+export async function importsGate(ctx: CheckContext, projectRoot: string): Promise<GateResult> {
   const t0 = Date.now();
   const py: string[] = [];
   const tsf: string[] = [];

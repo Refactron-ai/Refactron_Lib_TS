@@ -37,10 +37,7 @@ export async function testsGate(
     try {
       const { createShadowTree } = await import('../shadow-tree.js');
       const h = await createShadowTree(projectRoot, []);
-      const baseline = await runRunner(
-        { ...runner, cwd: h.path },
-        { retries: BASELINE_RETRIES },
-      );
+      const baseline = await runRunner({ ...runner, cwd: h.path }, { retries: BASELINE_RETRIES });
       await h.cleanup();
       if (baseline.exitCode !== 0) {
         return {
@@ -62,8 +59,10 @@ export async function testsGate(
     return {
       passed: false,
       durationMs: Date.now() - t0,
-      blockingReason:
-        `tests fail after refactoring:\n${mutated.stdout}\n${mutated.stderr}`.slice(0, 4000),
+      blockingReason: `tests fail after refactoring:\n${mutated.stdout}\n${mutated.stderr}`.slice(
+        0,
+        4000,
+      ),
     };
   }
   return { passed: true, durationMs: Date.now() - t0 };
