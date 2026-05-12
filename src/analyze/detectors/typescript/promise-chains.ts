@@ -51,7 +51,11 @@ export function detect(ctx: DetectorContext): DetectorFinding[] {
   function visit(node: SyntaxNode): void {
     if (node.type === 'call_expression') {
       const fn = node.childForFieldName('function');
-      if (fn && fn.type === 'member_expression' && fn.childForFieldName('property')?.text === 'then') {
+      if (
+        fn &&
+        fn.type === 'member_expression' &&
+        fn.childForFieldName('property')?.text === 'then'
+      ) {
         const parent = node.parent;
         const isOuter = !(
           parent &&

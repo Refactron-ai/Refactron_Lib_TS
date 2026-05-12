@@ -20,8 +20,7 @@ export function extractCallEdges(
     if (!fn) return null;
     if (fn.type === 'identifier') return fn.text;
     if (fn.type === 'member_expression' || fn.type === 'attribute') {
-      const prop =
-        fn.childForFieldName('property') ?? fn.childForFieldName('attribute');
+      const prop = fn.childForFieldName('property') ?? fn.childForFieldName('attribute');
       return prop?.text ?? null;
     }
     return null;
@@ -29,8 +28,7 @@ export function extractCallEdges(
 
   function visitFn(funcNode: Parser.SyntaxNode, caller: string): void {
     function walk(n: Parser.SyntaxNode): void {
-      const isCall =
-        lang === 'python' ? n.type === 'call' : n.type === 'call_expression';
+      const isCall = lang === 'python' ? n.type === 'call' : n.type === 'call_expression';
       if (isCall) {
         const callee = calleeName(n);
         if (callee) edges.push({ caller, callee, file: relPath });

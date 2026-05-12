@@ -2,7 +2,12 @@ import { describe, it, expect } from 'vitest';
 import { parsePython } from '../../../../../src/analyze/parser.js';
 import { detect } from '../../../../../src/analyze/detectors/python/manual-typecheck.js';
 
-const ctx = (s: string) => ({ absPath: '/x/a.py', relPath: 'a.py', source: s, tree: parsePython(s) });
+const ctx = (s: string) => ({
+  absPath: '/x/a.py',
+  relPath: 'a.py',
+  source: s,
+  tree: parsePython(s),
+});
 
 describe('python: manual-typecheck', () => {
   it('flags isinstance chain dispatching function body', () => {
@@ -18,6 +23,8 @@ describe('python: manual-typecheck', () => {
     expect(f[0]!.confidence).toBe('medium');
   });
   it('skips one-off isinstance check', () => {
-    expect(detect(ctx('def f(x):\n    if isinstance(x, str):\n        return 1\n    return 2\n'))).toHaveLength(0);
+    expect(
+      detect(ctx('def f(x):\n    if isinstance(x, str):\n        return 1\n    return 2\n')),
+    ).toHaveLength(0);
   });
 });

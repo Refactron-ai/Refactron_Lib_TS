@@ -56,9 +56,7 @@ export async function* walkProject(root: string): AsyncIterable<FileRecord> {
       const abs = path.join(dir, entry.name);
       const rel = path.relative(absRoot, abs);
       // ignore() expects forward slashes; emulate gitignore semantics.
-      const ignKey = entry.isDirectory()
-        ? rel.replace(/\\/g, '/') + '/'
-        : rel.replace(/\\/g, '/');
+      const ignKey = entry.isDirectory() ? rel.replace(/\\/g, '/') + '/' : rel.replace(/\\/g, '/');
       if (ig.ignores(ignKey)) continue;
       if (entry.isDirectory()) {
         yield* walk(abs);

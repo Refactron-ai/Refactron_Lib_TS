@@ -72,10 +72,7 @@ function tsImports(source: string, tsx: boolean): string[] {
   return out;
 }
 
-export async function buildImportGraph(
-  root: string,
-  files: FileRecord[],
-): Promise<ImportGraph> {
+export async function buildImportGraph(root: string, files: FileRecord[]): Promise<ImportGraph> {
   const known = new Set(files.map((f) => f.relPath));
   const graph: ImportGraph = new Map();
   for (const f of files) {

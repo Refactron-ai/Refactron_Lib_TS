@@ -61,8 +61,7 @@ export class RefactronAnalyzer implements Analyzer {
         continue;
       }
       const tsx = f.relPath.endsWith('.tsx');
-      const tree =
-        f.lang === 'python' ? parsePython(source) : parseTypescript(source, tsx);
+      const tree = f.lang === 'python' ? parsePython(source) : parseTypescript(source, tsx);
       const ctx = { absPath: f.absPath, relPath: f.relPath, source, tree };
 
       for (const d of detectorsFor(f.lang)) {

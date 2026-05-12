@@ -18,9 +18,7 @@ export function renderTerminal(report: ExtendedAnalysisReport): string {
   lines.push(
     `${chalk.bold(`${report.findings.length} findings`)} ${chalk.dim(`(~${total} min remediation)`)}`,
   );
-  for (const [tid, items] of [...byTransform.entries()].sort(([a], [b]) =>
-    a.localeCompare(b),
-  )) {
+  for (const [tid, items] of [...byTransform.entries()].sort(([a], [b]) => a.localeCompare(b))) {
     lines.push('');
     lines.push(chalk.cyan(`▸ ${tid}`) + chalk.dim(` (${items.length})`));
     const table = new Table({

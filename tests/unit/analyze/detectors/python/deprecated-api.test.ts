@@ -2,7 +2,12 @@ import { describe, it, expect } from 'vitest';
 import { parsePython } from '../../../../../src/analyze/parser.js';
 import { detect } from '../../../../../src/analyze/detectors/python/deprecated-api.js';
 
-const ctx = (s: string) => ({ absPath: '/x/a.py', relPath: 'a.py', source: s, tree: parsePython(s) });
+const ctx = (s: string) => ({
+  absPath: '/x/a.py',
+  relPath: 'a.py',
+  source: s,
+  tree: parsePython(s),
+});
 
 describe('python: deprecated-api (requests)', () => {
   it('flags `import requests`', () => {
