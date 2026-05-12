@@ -57,105 +57,101 @@ async function snapshotPyTree(root: string): Promise<Map<string, string>> {
 }
 
 describe('refactron golden e2e', () => {
-  it(
-    'run --apply produces verified, behavior-preserving output on python-legacy-mini',
-    async () => {
-      const fixture = path.resolve(__dirname, '../../fixtures/python-legacy-mini');
-      const cliPath = path.resolve(__dirname, '../../dist/cli/index.js');
+  it('run --apply produces verified, behavior-preserving output on python-legacy-mini', async () => {
+    const fixture = path.resolve(__dirname, '../../fixtures/python-legacy-mini');
+    const cliPath = path.resolve(__dirname, '../../dist/cli/index.js');
 
-      // dist must be built before this test runs. Fail loudly rather than
-      // silently passing/skipping if the build step was forgotten.
-      try {
-        await fs.access(cliPath);
-      } catch {
-        throw new Error(
-          `dist CLI not found at ${cliPath}. Run \`npm run build\` before \`npm run test:e2e\`.`,
-        );
-      }
-
-      const python = await resolvePython();
-
-      // 1. Copy fixture to a scratch dir
-      const scratch = await fs.mkdtemp(path.join(os.tmpdir(), 'refactron-golden-'));
-      await fs.cp(fixture, scratch, { recursive: true });
-
-      // 2. Snapshot BEFORE
-      const before = await snapshotPyTree(scratch);
-      expect(before.size).toBeGreaterThan(0);
-
-      // 3. Baseline pytest must pass — protects against fixture rot
-      const baseline = await execa(python, ['-m', 'pytest', '-q'], {
-        cwd: scratch,
-        reject: false,
-      });
-      if (baseline.exitCode !== 0) {
-        throw new Error(
-          `Fixture baseline is broken (pytest exit ${baseline.exitCode}). ` +
-            `Fix fixtures/python-legacy-mini before depending on this test.\n` +
-            `stdout:\n${baseline.stdout}\nstderr:\n${baseline.stderr}`,
-        );
-      }
-
-      // 4. Invoke the v2.0 CLI shape. Today this fails because `run` is not
-      //    a registered subcommand — that is the "right reason" failure.
-      const cli = await execa(
-        'node',
-        [cliPath, 'run', '--apply', '--transforms=all', scratch],
-        { reject: false, timeout: 90_000, input: '' },
+    // dist must be built before this test runs. Fail loudly rather than
+    // silently passing/skipping if the build step was forgotten.
+    try {
+      await fs.access(cliPath);
+    } catch {
+      throw new Error(
+        `dist CLI not found at ${cliPath}. Run \`npm run build\` before \`npm run test:e2e\`.`,
       );
+    }
 
-      // 5. CLI gate — THIS IS THE FAILING ASSERTION until Week 4.
-      expect(
-        cli.exitCode,
-        `refactron run --apply failed.\nstdout:\n${cli.stdout}\nstderr:\n${cli.stderr}`,
-      ).toBe(0);
+    const python = await resolvePython();
 
-      // 6. Test gate — re-run pytest on the mutated scratch tree
-      const post = await execa(python, ['-m', 'pytest', '-q'], {
-        cwd: scratch,
-        reject: false,
-      });
-      expect(
-        post.exitCode,
-        `pytest failed on refactored tree.\nstdout:\n${post.stdout}\nstderr:\n${post.stderr}`,
-      ).toBe(0);
+    // 1. Copy fixture to a scratch dir
+    const scratch = await fs.mkdtemp(path.join(os.tmpdir(), 'refactron-golden-'));
+    await fs.cp(fixture, scratch, { recursive: true });
 
-      // 7. Deterministic-diff snapshot
-      const after = await snapshotPyTree(scratch);
-      const allKeys = Array.from(new Set([...before.keys(), ...after.keys()])).sort();
-      const diffs: string[] = [];
-      for (const rel of allKeys) {
-        const a = before.get(rel) ?? '';
-        const b = after.get(rel) ?? '';
-        if (a === b) continue;
-        diffs.push(createTwoFilesPatch(rel, rel, a, b, '', '', { context: 3 }));
-      }
-      const combinedDiff = diffs.join('\n');
-      expect(combinedDiff).toMatchSnapshot();
+    // 2. Snapshot BEFORE
+    const before = await snapshotPyTree(scratch);
+    expect(before.size).toBeGreaterThan(0);
 
-      // 8. Syntax gate — every .py file (excluding tests/) must still parse
-      for (const rel of after.keys()) {
-        if (rel.startsWith('tests/') || rel.startsWith(`tests${path.sep}`)) continue;
-        const abs = path.join(scratch, rel);
-        const parse = await execa(
-          python,
-          ['-c', 'import ast, sys; ast.parse(open(sys.argv[1]).read())', abs],
-          { reject: false },
-        );
-        expect(parse.exitCode, `Syntax gate failed for ${rel}: ${parse.stderr}`).toBe(0);
-      }
+    // 3. Baseline pytest must pass — protects against fixture rot
+    const baseline = await execa(python, ['-m', 'pytest', '-q'], {
+      cwd: scratch,
+      reject: false,
+    });
+    if (baseline.exitCode !== 0) {
+      throw new Error(
+        `Fixture baseline is broken (pytest exit ${baseline.exitCode}). ` +
+          `Fix fixtures/python-legacy-mini before depending on this test.\n` +
+          `stdout:\n${baseline.stdout}\nstderr:\n${baseline.stderr}`,
+      );
+    }
 
-      // 9. Import gate
-      const importCheck = await execa(
+    // 4. Invoke the v2.0 CLI shape. Today this fails because `run` is not
+    //    a registered subcommand — that is the "right reason" failure.
+    const cli = await execa('node', [cliPath, 'run', '--apply', '--transforms=all', scratch], {
+      reject: false,
+      timeout: 90_000,
+      input: '',
+    });
+
+    // 5. CLI gate — THIS IS THE FAILING ASSERTION until Week 4.
+    expect(
+      cli.exitCode,
+      `refactron run --apply failed.\nstdout:\n${cli.stdout}\nstderr:\n${cli.stderr}`,
+    ).toBe(0);
+
+    // 6. Test gate — re-run pytest on the mutated scratch tree
+    const post = await execa(python, ['-m', 'pytest', '-q'], {
+      cwd: scratch,
+      reject: false,
+    });
+    expect(
+      post.exitCode,
+      `pytest failed on refactored tree.\nstdout:\n${post.stdout}\nstderr:\n${post.stderr}`,
+    ).toBe(0);
+
+    // 7. Deterministic-diff snapshot
+    const after = await snapshotPyTree(scratch);
+    const allKeys = Array.from(new Set([...before.keys(), ...after.keys()])).sort();
+    const diffs: string[] = [];
+    for (const rel of allKeys) {
+      const a = before.get(rel) ?? '';
+      const b = after.get(rel) ?? '';
+      if (a === b) continue;
+      diffs.push(createTwoFilesPatch(rel, rel, a, b, '', '', { context: 3 }));
+    }
+    const combinedDiff = diffs.join('\n');
+    expect(combinedDiff).toMatchSnapshot();
+
+    // 8. Syntax gate — every .py file (excluding tests/) must still parse
+    for (const rel of after.keys()) {
+      if (rel.startsWith('tests/') || rel.startsWith(`tests${path.sep}`)) continue;
+      const abs = path.join(scratch, rel);
+      const parse = await execa(
         python,
-        ['-c', 'import callbacks, formatting, typecheck, legacy_http, models, utils'],
-        { cwd: scratch, reject: false },
+        ['-c', 'import ast, sys; ast.parse(open(sys.argv[1]).read())', abs],
+        { reject: false },
       );
-      expect(
-        importCheck.exitCode,
-        `Import gate failed.\nstdout:\n${importCheck.stdout}\nstderr:\n${importCheck.stderr}`,
-      ).toBe(0);
-    },
-    120_000,
-  );
+      expect(parse.exitCode, `Syntax gate failed for ${rel}: ${parse.stderr}`).toBe(0);
+    }
+
+    // 9. Import gate
+    const importCheck = await execa(
+      python,
+      ['-c', 'import callbacks, formatting, typecheck, legacy_http, models, utils'],
+      { cwd: scratch, reject: false },
+    );
+    expect(
+      importCheck.exitCode,
+      `Import gate failed.\nstdout:\n${importCheck.stdout}\nstderr:\n${importCheck.stderr}`,
+    ).toBe(0);
+  }, 120_000);
 });

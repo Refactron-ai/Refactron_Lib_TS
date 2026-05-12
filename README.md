@@ -1,5 +1,8 @@
 # Refactron
 
+> **Alpha — do not use in production.**
+> Refactron is mid-rebuild on the v2.0 architecture. The npm package on the registry is the older blast-radius engine; the `main` branch is the in-flight v2.0 surface. The golden end-to-end test is intentionally red until the Week 4 refactoring engine lands.
+
 > Safety-first refactoring — finds, fixes, and verifies code changes are safe before touching the filesystem.
 
 [![CI](https://github.com/Refactron-ai/Refactron_Lib_TS/actions/workflows/ci.yml/badge.svg)](https://github.com/Refactron-ai/Refactron_Lib_TS/actions/workflows/ci.yml)
