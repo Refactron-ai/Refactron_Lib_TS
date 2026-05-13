@@ -1,5 +1,5 @@
 // tests/unit/cli/document-command.test.ts
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import * as fs from 'node:fs/promises';
 import * as os from 'node:os';
 import * as path from 'node:path';
@@ -9,13 +9,24 @@ import { persistLastApply } from '../../../src/cli/last-apply.js';
 
 const tmpDirs: string[] = [];
 let savedEnv: NodeJS.ProcessEnv;
+let stdoutSpy: ReturnType<typeof vi.spyOn>;
+let stderrSpy: ReturnType<typeof vi.spyOn>;
 
 beforeEach(() => {
   savedEnv = { ...process.env };
   process.env.REFACTRON_TOKEN = 'dummy';
+  // runDocumentCommand prints summaries to stdout and error messages to stderr.
+  // When the verification engine's test gate runs this suite on a shadow tree,
+  // those writes leak through vitest's reporter into the parent terminal and
+  // make `run --apply` look like it invoked `document`. Silence both channels
+  // for the duration of each test.
+  stdoutSpy = vi.spyOn(process.stdout, 'write').mockReturnValue(true);
+  stderrSpy = vi.spyOn(process.stderr, 'write').mockReturnValue(true);
 });
 
 afterEach(async () => {
+  stdoutSpy.mockRestore();
+  stderrSpy.mockRestore();
   for (const d of tmpDirs.splice(0)) {
     await fs.rm(d, { recursive: true, force: true });
   }
