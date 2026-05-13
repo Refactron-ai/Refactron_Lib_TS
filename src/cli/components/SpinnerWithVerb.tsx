@@ -38,15 +38,20 @@ function lerpColor(
 }
 
 // ── SpinnerAnimationRow — owns 80ms interval ────────────────────────────────
+// Self-managing: tracks its own stall time off lastProgressTime so the parent
+// component never needs to re-render. Previously the parent ticked every 500ms
+// to recompute stall, which caused the whole spinner block (including the
+// terminal-wide top border) to repaint every half-second — visible jitter on
+// terminals that don't smoothly handle alt-screen partial repaints.
 interface RowProps {
   verb: string;
-  stallMs: number;
+  lastProgressTime: number;
   reducedMotion?: boolean;
 }
 
 const SpinnerAnimationRow = memo(function SpinnerAnimationRow({
   verb,
-  stallMs,
+  lastProgressTime,
   reducedMotion = false,
 }: RowProps): React.ReactElement {
   const [tick, setTick] = useState(0);
@@ -56,6 +61,10 @@ const SpinnerAnimationRow = memo(function SpinnerAnimationRow({
     const t = setInterval(() => setTick((n) => n + 1), ms);
     return () => clearInterval(t);
   }, [reducedMotion]);
+
+  // Compute stall from the latest progress time on each animation tick.
+  // No extra render — `tick` is already changing every 80ms.
+  const stallMs = Math.max(0, Date.now() - lastProgressTime);
 
   // ── Reduced motion: ● blinking dot ──────────────────────────────────────
   if (reducedMotion) {
@@ -118,7 +127,32 @@ const HINTS = [
   "press 'g' / 'G' to jump to first or last issue",
 ];
 
-// ── SpinnerWithVerb — outer component, stall timer ──────────────────────────
+// ── HintRow — rotates every 4s, self-managing ───────────────────────────────
+// Isolated from the parent so hint rotation doesn't repaint the spinner block.
+const HintRow = memo(function HintRow(): React.ReactElement {
+  const [hintIdx, setHintIdx] = useState(() => Math.floor(Math.random() * HINTS.length));
+  useEffect(() => {
+    const t = setInterval(() => {
+      setHintIdx((i) => {
+        let next = Math.floor(Math.random() * HINTS.length);
+        if (next === i) next = (i + 1) % HINTS.length;
+        return next;
+      });
+    }, 4000);
+    return () => clearInterval(t);
+  }, []);
+  return (
+    <Box paddingLeft={2} height={1}>
+      <Text dimColor>{'hint: '}</Text>
+      <Text dimColor>{HINTS[hintIdx]}</Text>
+    </Box>
+  );
+});
+
+// ── SpinnerWithVerb — outer component ───────────────────────────────────────
+// Renders ONCE per mount + when its props change. Stall ramp and hint rotation
+// are owned by inner memo'd components so timers don't trigger parent re-renders.
+// This keeps the terminal-wide top border from repainting on every tick.
 interface SpinnerWithVerbProps {
   verb: string;
   isActive: boolean;
@@ -134,43 +168,21 @@ export function SpinnerWithVerb({
 }: SpinnerWithVerbProps): React.ReactElement | null {
   const { stdout } = useStdout();
   const columns = stdout?.columns ?? 80;
-  const [now, setNow] = useState(() => Date.now());
-  const [hintIdx, setHintIdx] = useState(() => Math.floor(Math.random() * HINTS.length));
-
-  useEffect(() => {
-    if (!isActive) return;
-    const t = setInterval(() => setNow(Date.now()), 500);
-    return () => clearInterval(t);
-  }, [isActive]);
-
-  // Rotate to a new random hint every 4s while active
-  useEffect(() => {
-    if (!isActive) return;
-    const t = setInterval(() => {
-      setHintIdx((i) => {
-        let next = Math.floor(Math.random() * HINTS.length);
-        if (next === i) next = (i + 1) % HINTS.length;
-        return next;
-      });
-    }, 4000);
-    return () => clearInterval(t);
-  }, [isActive]);
 
   if (!isActive) return null;
-
-  const stallMs = lastProgressTime != null ? Math.max(0, now - lastProgressTime) : 0;
 
   return (
     <Box flexDirection="column">
       {/* Top border — mirrors PromptInput's visual boundary */}
       <Text color={theme.colors.border}>{'─'.repeat(columns)}</Text>
       <Box paddingLeft={2}>
-        <SpinnerAnimationRow verb={verb} stallMs={stallMs} reducedMotion={reducedMotion} />
+        <SpinnerAnimationRow
+          verb={verb}
+          lastProgressTime={lastProgressTime ?? Date.now()}
+          reducedMotion={reducedMotion}
+        />
       </Box>
-      <Box paddingLeft={2} height={1}>
-        <Text dimColor>{'hint: '}</Text>
-        <Text dimColor>{HINTS[hintIdx]}</Text>
-      </Box>
+      <HintRow />
     </Box>
   );
 }
