@@ -24,9 +24,7 @@ export class OpenAIProvider implements LLMProvider {
   async generate(prompt: string, opts: GenerateOptions): Promise<string> {
     const controller = new AbortController();
     const timer =
-      opts.timeoutMs !== undefined
-        ? setTimeout(() => controller.abort(), opts.timeoutMs)
-        : null;
+      opts.timeoutMs !== undefined ? setTimeout(() => controller.abort(), opts.timeoutMs) : null;
 
     try {
       let response: Response;

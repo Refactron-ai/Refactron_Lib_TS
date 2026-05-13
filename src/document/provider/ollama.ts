@@ -23,9 +23,7 @@ export class OllamaProvider implements LLMProvider {
   async generate(prompt: string, opts: GenerateOptions): Promise<string> {
     const controller = new AbortController();
     const timer =
-      opts.timeoutMs !== undefined
-        ? setTimeout(() => controller.abort(), opts.timeoutMs)
-        : null;
+      opts.timeoutMs !== undefined ? setTimeout(() => controller.abort(), opts.timeoutMs) : null;
 
     try {
       let response: Response;
@@ -48,10 +46,7 @@ export class OllamaProvider implements LLMProvider {
         if (e instanceof Error && e.name === 'AbortError') {
           throw new ProviderError('timeout', 'Ollama request timed out');
         }
-        throw new ProviderError(
-          'unreachable',
-          `Ollama unreachable at ${this.opts.endpoint}`,
-        );
+        throw new ProviderError('unreachable', `Ollama unreachable at ${this.opts.endpoint}`);
       }
 
       if (!response.ok) {

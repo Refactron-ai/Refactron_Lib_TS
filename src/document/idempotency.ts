@@ -94,11 +94,7 @@ function typescriptHasDocstring(symbol: string, source: string): boolean {
   return false;
 }
 
-export function hasExistingDocstring(
-  language: Language,
-  symbol: string,
-  source: string,
-): boolean {
+export function hasExistingDocstring(language: Language, symbol: string, source: string): boolean {
   if (language === 'python') return pythonHasDocstring(symbol, source);
   return typescriptHasDocstring(symbol, source);
 }

@@ -161,9 +161,7 @@ export async function runDocumentCommand(
   }
 
   // ── Build DocumenterOptions ───────────────────────────────────────────────
-  const originals = new Map<string, string>(
-    snapshot.changes.map((c) => [c.path, c.oldContent]),
-  );
+  const originals = new Map<string, string>(snapshot.changes.map((c) => [c.path, c.oldContent]));
   const useCache = !flags.noCache && config.documentation.cache;
   const cacheDir = useCache ? path.join(target, '.refactron', 'cache', 'llm') : null;
   const opts: DocumenterOptions = {
@@ -200,9 +198,7 @@ export async function runDocumentCommand(
   }
 
   if (!flags.apply) {
-    process.stdout.write(
-      `refactron document: ${patch.docstrings.length} docstring(s) ready\n`,
-    );
+    process.stdout.write(`refactron document: ${patch.docstrings.length} docstring(s) ready\n`);
     for (const d of patch.docstrings) {
       process.stdout.write(`  - ${path.relative(target, d.file)} :: ${d.symbol}\n`);
     }

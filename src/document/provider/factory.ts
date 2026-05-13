@@ -14,10 +14,7 @@ export interface ProviderConfig {
   endpoint: string | null;
 }
 
-export function pickProvider(
-  cfg: ProviderConfig,
-  env: NodeJS.ProcessEnv,
-): LLMProvider {
+export function pickProvider(cfg: ProviderConfig, env: NodeJS.ProcessEnv): LLMProvider {
   if (cfg.provider === 'ollama') {
     return new OllamaProvider({
       endpoint: cfg.endpoint ?? 'http://localhost:11434',
@@ -27,9 +24,7 @@ export function pickProvider(
   if (cfg.provider === 'openai') {
     const apiKey = env.OPENAI_API_KEY;
     if (!apiKey) {
-      throw new Error(
-        "documentation.provider='openai' requires OPENAI_API_KEY in the environment",
-      );
+      throw new Error("documentation.provider='openai' requires OPENAI_API_KEY in the environment");
     }
     return new OpenAIProvider({ apiKey });
   }

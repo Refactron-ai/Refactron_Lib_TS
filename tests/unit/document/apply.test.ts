@@ -43,7 +43,11 @@ describe('insertDocstring — typescript', () => {
 
 describe('appendChangelog', () => {
   it('creates a Changelog scaffold when the existing content is empty', () => {
-    const out = appendChangelog('', ['- Migrated requests → httpx.', '- Inlined f-strings.'], '2025-01-15');
+    const out = appendChangelog(
+      '',
+      ['- Migrated requests → httpx.', '- Inlined f-strings.'],
+      '2025-01-15',
+    );
     expect(out).toBe(
       `# Changelog\n\n## [Unreleased] — 2025-01-15\n\n- Migrated requests → httpx.\n- Inlined f-strings.\n`,
     );

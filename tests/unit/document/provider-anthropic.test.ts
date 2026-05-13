@@ -16,10 +16,9 @@ describe('AnthropicProvider', () => {
     let captured: CapturedCall | null = null;
     globalThis.fetch = vi.fn(async (url: unknown, init: CapturedCall['init']) => {
       captured = { url, init };
-      return new Response(
-        JSON.stringify({ content: [{ type: 'text', text: 'docstring' }] }),
-        { status: 200 },
-      );
+      return new Response(JSON.stringify({ content: [{ type: 'text', text: 'docstring' }] }), {
+        status: 200,
+      });
     }) as unknown as typeof fetch;
 
     const p = new AnthropicProvider({ apiKey: 'sk-ant-test' });

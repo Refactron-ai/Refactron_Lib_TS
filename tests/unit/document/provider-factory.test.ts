@@ -35,10 +35,7 @@ describe('pickProvider', () => {
   it('throws when openai configured without OPENAI_API_KEY', () => {
     delete process.env.OPENAI_API_KEY;
     expect(() =>
-      pickProvider(
-        { provider: 'openai', model: 'gpt-4o-mini', endpoint: null },
-        process.env,
-      ),
+      pickProvider({ provider: 'openai', model: 'gpt-4o-mini', endpoint: null }, process.env),
     ).toThrow(/OPENAI_API_KEY/);
   });
 
