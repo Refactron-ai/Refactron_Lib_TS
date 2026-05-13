@@ -1,6 +1,8 @@
 #!/usr/bin/env node
 // src/cli/index.ts
-import { createRequire } from 'module';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import * as path from 'node:path';
 
 const argv = process.argv.slice(2);
 const cmd = argv[0];
@@ -32,9 +34,8 @@ const STATIC_HELP = `
 
 // Fast paths — zero imports, <10ms
 if (cmd === '--version' || cmd === '-v') {
-  const require = createRequire(import.meta.url);
-  // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-  const pkg = require('../../package.json') as { version: string };
+  const pkgPath = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../package.json');
+  const pkg = JSON.parse(readFileSync(pkgPath, 'utf8')) as { version: string };
   process.stdout.write(pkg.version + '\n');
   process.exit(0);
 }
@@ -42,6 +43,12 @@ if (cmd === '--version' || cmd === '-v') {
 if (cmd === '--help' || cmd === '-h') {
   process.stdout.write(STATIC_HELP);
   process.exit(0);
+}
+
+if (cmd === 'analyze') {
+  const { runAnalyzeCommand } = await import('./analyze-command.js');
+  const code = await runAnalyzeCommand(process.argv.slice(3));
+  process.exit(code);
 }
 
 // v2.0 subcommands are not yet wired into the CLI. Reject them deterministically so
