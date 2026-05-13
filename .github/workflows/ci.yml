@@ -74,6 +74,12 @@ jobs:
       - run: npm run build
       - name: Self-analysis gate
         run: node dist/cli/index.js analyze src/ --fail-on high
+        env:
+          # The Week-5 auth gate requires a non-empty token on every CLI
+          # invocation. Self-analysis runs no network calls; a dummy token
+          # is sufficient. Switch to ${{ secrets.REFACTRON_TOKEN }} when
+          # CI starts exercising backend-bound features (Week 6+).
+          REFACTRON_TOKEN: ci_self_analysis_dummy_token
       - name: Verification blocks bad transforms
         run: npm run test:verification
 
