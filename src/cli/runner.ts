@@ -10,6 +10,8 @@ import { RefactronVerifier } from '../verify/engine.js';
 import { writeBatchAtomic } from '../verify/atomic-batch-writer.js';
 import type { TransformId } from '../contracts.js';
 import { findingsToIssues } from './v2-adapters.js';
+import { persistLastApply } from './last-apply.js';
+import * as fsp from 'node:fs/promises';
 import { WorkSessionManager } from '../session/manager.js';
 import type { WorkSession } from '../session/types.js';
 import { theme } from '../ui/theme.js';
@@ -272,7 +274,7 @@ export async function executeCommand(
       theme.colors.text,
     );
     onLine(
-      '  document [target]              generate docstrings for verified refactors (Week 6)',
+      '  document [target]              generate docstrings + changelog for the last verified refactor',
       theme.colors.text,
     );
     onLine('  init     [target]              scaffold .refactronrc.json', theme.colors.text);
@@ -409,6 +411,20 @@ export async function executeCommand(
       return {};
     }
 
+    // Capture pre-write content for each planned path so the documentation
+    // engine (or any post-apply consumer) can reconstruct old → new diffs
+    // after writeBatchAtomic has replaced the on-disk contents.
+    const originalsBeforeWrite = new Map<string, string>();
+    for (const change of plan.changes) {
+      try {
+        const buf = await fsp.readFile(change.path, 'utf8');
+        originalsBeforeWrite.set(change.path, buf);
+      } catch {
+        // Missing/unreadable file — skip; documentation will simply not
+        // generate for this path.
+      }
+    }
+
     onLine(`  Verifying ${plan.changes.length} change(s) …`, theme.colors.textDim);
     const verifier = new RefactronVerifier({ projectRoot: sessionTarget });
     const result = await verifier.verify(plan);
@@ -431,6 +447,16 @@ export async function executeCommand(
     }
 
     await writeBatchAtomic(result.writableChanges);
+    await persistLastApply({
+      projectRoot: sessionTarget,
+      verifiedAt: new Date().toISOString(),
+      changes: result.writableChanges.map((c) => ({
+        path: c.path,
+        oldContent: originalsBeforeWrite.get(c.path) ?? '',
+        newContent: c.newContent,
+        transformId: c.transformId,
+      })),
+    });
     onLine(
       `  ${theme.symbols.pass}  ${result.writableChanges.length} file(s) refactored and verified.`,
       theme.colors.success,
@@ -490,6 +516,29 @@ export async function executeCommand(
       onLine('', undefined);
       onLine(`  ${theme.symbols.pass}  Loaded session ${loaded.id}`, theme.colors.success);
       printSessionCard(loaded, ctx.projectRoot, onLine);
+    }
+    return {};
+  }
+
+  // ── document — generate docstrings + CHANGELOG for last verified refactor ─
+
+  if (command === 'document') {
+    const { runDocumentCommand } = await import('./document-command.js');
+    const argv: string[] = [ctx.projectRoot];
+    if (flags['apply'] === true) argv.push('--apply');
+    if (flags['no-cache'] === true) argv.push('--no-cache');
+    if (flags['json'] === true) argv.push('--json');
+    const providerFlag = flags['provider'];
+    if (typeof providerFlag === 'string') argv.push('--provider', providerFlag);
+    const modelFlag = flags['model'];
+    if (typeof modelFlag === 'string') argv.push('--model', modelFlag);
+    const code = await runDocumentCommand(argv);
+    if (code === 8) {
+      onLine('No verified refactor in this project — run `run --apply` first.', theme.colors.error);
+    } else if (code === 7) {
+      onLine('Not authenticated. Run `refactron login` first.', theme.colors.error);
+    } else if (code !== 0) {
+      onLine(`document exited ${code}`, theme.colors.error);
     }
     return {};
   }

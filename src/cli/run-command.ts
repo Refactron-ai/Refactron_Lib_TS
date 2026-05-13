@@ -9,6 +9,7 @@ import type { Confidence } from '../analyze/detectors/types.js';
 import type { TransformId } from '../contracts.js';
 import { requireAuth } from './auth-gate.js';
 import { loadRefactronConfig } from './config-loader.js';
+import { persistLastApply } from './last-apply.js';
 
 const TRANSFORM_IDS: TransformId[] = [
   'callback_to_async_await',
@@ -178,6 +179,18 @@ export async function runRunCommand(argv: string[]): Promise<number> {
   }
 
   // --apply
+  // Capture pre-write originals so the `document` command can rebuild a diff
+  // context after the verifier's atomic writes hit disk. Missing/unreadable
+  // files are simply skipped — documentation will produce nothing for them.
+  const originalsBeforeWrite = new Map<string, string>();
+  for (const change of plan.changes) {
+    try {
+      originalsBeforeWrite.set(change.path, await fs.readFile(change.path, 'utf8'));
+    } catch {
+      // best-effort
+    }
+  }
+
   const verifierOpts: { projectRoot: string; testCmd?: string } = { projectRoot: flags.target };
   if (testCmd) verifierOpts.testCmd = testCmd;
   const verifier = new RefactronVerifier(verifierOpts);
@@ -190,6 +203,16 @@ export async function runRunCommand(argv: string[]): Promise<number> {
     return 1;
   }
   await writeBatchAtomic(result.writableChanges);
+  await persistLastApply({
+    projectRoot: flags.target,
+    verifiedAt: new Date().toISOString(),
+    changes: result.writableChanges.map((c) => ({
+      path: c.path,
+      oldContent: originalsBeforeWrite.get(c.path) ?? '',
+      newContent: c.newContent,
+      transformId: c.transformId,
+    })),
+  });
   process.stdout.write(
     `refactron run: ${result.writableChanges.length} file(s) refactored and verified\n`,
   );
