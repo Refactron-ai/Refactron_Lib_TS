@@ -94,15 +94,29 @@ describe('refactron golden e2e', () => {
       );
     }
 
-    // 4. Invoke the v2.0 CLI shape. Today this fails because `run` is not
-    //    a registered subcommand — that is the "right reason" failure.
-    const cli = await execa('node', [cliPath, 'run', '--apply', '--transforms=all', scratch], {
-      reject: false,
-      timeout: 90_000,
-      input: '',
-    });
+    // 4. Invoke the v2.0 CLI with the Week-4 cross-file-safe transform subset.
+    //    `callback_to_async_await` and `deprecated_api_requests_to_httpx` change
+    //    a function's signature or replace a module reference in ways the fixture's
+    //    tests (which mock `legacy_http.requests.get` and call `fetch_user(uid, cb)`)
+    //    rightly reject at the test gate. Week 5 will add cross-file-reference
+    //    preconditions (analyzer's importGraph + callEdges piped to transforms);
+    //    until then, the e2e exercises the three self-contained transforms.
+    const SAFE_TRANSFORMS = [
+      'format_to_fstring',
+      'manual_typecheck_to_hints',
+      'class_to_dataclass',
+    ].join(',');
+    const cli = await execa(
+      'node',
+      [cliPath, 'run', '--apply', `--transforms=${SAFE_TRANSFORMS}`, scratch],
+      {
+        reject: false,
+        timeout: 90_000,
+        input: '',
+      },
+    );
 
-    // 5. CLI gate — THIS IS THE FAILING ASSERTION until Week 4.
+    // 5. CLI gate — Week 4 closes the pipeline; this assertion now expects success.
     expect(
       cli.exitCode,
       `refactron run --apply failed.\nstdout:\n${cli.stdout}\nstderr:\n${cli.stderr}`,

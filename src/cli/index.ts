@@ -51,10 +51,16 @@ if (cmd === 'analyze') {
   process.exit(code);
 }
 
-// v2.0 subcommands are not yet wired into the CLI. Reject them deterministically so
+if (cmd === 'run') {
+  const { runRunCommand } = await import('./run-command.js');
+  const code = await runRunCommand(process.argv.slice(3));
+  process.exit(code);
+}
+
+// v2.0 subcommands not yet wired into the CLI. Reject them deterministically so
 // platforms whose stdin EOF makes the REPL fallback exit 0 don't mask the gap.
-// `run` lands in Week 5 (after Week 4 transforms); `document` in Week 6; `init` in Week 5.
-const V2_PENDING = new Set(['run', 'document', 'init']);
+// `document` lands in Week 6; `init` in Week 5.
+const V2_PENDING = new Set(['document', 'init']);
 if (cmd !== undefined && V2_PENDING.has(cmd)) {
   process.stderr.write(`refactron: subcommand '${cmd}' is not yet implemented in this build.\n`);
   process.exit(13);
