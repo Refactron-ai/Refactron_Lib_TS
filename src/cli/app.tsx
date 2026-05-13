@@ -12,7 +12,9 @@ import type { RefactronCredentials } from '../auth/index.js';
 import type { ILanguageAdapter } from '../adapters/interface.js';
 import { WorkSessionManager } from '../session/manager.js';
 import { glob } from 'glob';
-import { createRequire } from 'module';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import * as path from 'node:path';
 
 async function detectBestAdapter(
   adapters: Awaited<ReturnType<AdapterRegistry['detectAdapters']>>,
@@ -101,9 +103,8 @@ export async function run(_argv: string[]): Promise<void> {
     process.exit(1);
   }
 
-  const require = createRequire(import.meta.url);
-  // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-  const pkg = require('../../package.json') as { version: string };
+  const pkgPath = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../package.json');
+  const pkg = JSON.parse(readFileSync(pkgPath, 'utf8')) as { version: string };
 
   const initialCreds = await loadCredentials();
   const sessions = new WorkSessionManager(projectRoot);
