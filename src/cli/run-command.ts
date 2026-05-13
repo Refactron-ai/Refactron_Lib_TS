@@ -1,5 +1,6 @@
 // src/cli/run-command.ts
 import * as fs from 'node:fs/promises';
+import * as path from 'node:path';
 import { RefactronAnalyzer } from '../analyze/engine.js';
 import { RefactronRefactorer } from '../transform/engine.js';
 import { RefactronVerifier } from '../verify/engine.js';
@@ -10,6 +11,41 @@ import type { TransformId } from '../contracts.js';
 import { requireAuth } from './auth-gate.js';
 import { loadRefactronConfig } from './config-loader.js';
 import { persistLastApply } from './last-apply.js';
+import { scopePlanChanges } from './runner.js';
+
+// Markers that identify a project root. Walked up from a file argument to find
+// the right directory to hand to the analyzer/refactorer/verifier.
+const PROJECT_ROOT_MARKERS = [
+  '.git',
+  'package.json',
+  'pyproject.toml',
+  '.refactronrc.json',
+  '.refactronrc',
+  'refactron.config.js',
+];
+
+async function pathExists(p: string): Promise<boolean> {
+  try {
+    await fs.access(p);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function findProjectRoot(start: string): Promise<string> {
+  let dir = start;
+  // Walk up until we hit one of the markers or the filesystem root.
+  // Falls back to `start` itself if nothing matches.
+  for (;;) {
+    for (const marker of PROJECT_ROOT_MARKERS) {
+      if (await pathExists(path.join(dir, marker))) return dir;
+    }
+    const parent = path.dirname(dir);
+    if (parent === dir) return start;
+    dir = parent;
+  }
+}
 
 const TRANSFORM_IDS: TransformId[] = [
   'callback_to_async_await',
@@ -130,12 +166,37 @@ export async function runRunCommand(argv: string[]): Promise<number> {
     throw err;
   }
 
+  // Resolve target → (projectRoot, optional scopedPath). When the user passes
+  // a FILE, the engine still needs a directory to act as the project root, so
+  // we walk up for a marker (.git / package.json / pyproject.toml / .refactronrc).
+  // The file itself becomes the scope filter on the resulting plan.
+  let projectRoot: string;
+  let scopedPath: string | null = null;
+  let scopedIsFile = false;
+  {
+    const absTarget = path.resolve(flags.target);
+    let stat;
+    try {
+      stat = await fs.stat(absTarget);
+    } catch {
+      process.stderr.write(`refactron run: no such path: ${flags.target}\n`);
+      return 2;
+    }
+    if (stat.isFile()) {
+      projectRoot = await findProjectRoot(path.dirname(absTarget));
+      scopedPath = absTarget;
+      scopedIsFile = true;
+    } else {
+      projectRoot = absTarget;
+    }
+  }
+
   // Load .refactronrc — flags override config values entirely (no merging of arrays).
   let confidence: Confidence;
   let transforms: TransformId[];
   let testCmd: string | null;
   try {
-    const config = await loadRefactronConfig(flags.target);
+    const config = await loadRefactronConfig(projectRoot);
     confidence = flags.confidence ?? config.confidence;
     testCmd = flags.testCmd ?? config.testCmd;
     if (flags.transforms !== null) {
@@ -153,10 +214,14 @@ export async function runRunCommand(argv: string[]): Promise<number> {
   }
 
   const analyzer = new RefactronAnalyzer({ confidence });
-  const report = await analyzer.analyzeExtended(flags.target);
+  const report = await analyzer.analyzeExtended(projectRoot);
 
-  const refactorer = new RefactronRefactorer({ projectRoot: flags.target });
+  const refactorer = new RefactronRefactorer({ projectRoot });
   const plan = await refactorer.plan(report, transforms);
+
+  if (scopedPath !== null) {
+    plan.changes = scopePlanChanges(plan.changes, scopedPath, scopedIsFile);
+  }
 
   if (plan.changes.length === 0) {
     process.stdout.write('refactron run: no changes to apply\n');
@@ -191,7 +256,7 @@ export async function runRunCommand(argv: string[]): Promise<number> {
     }
   }
 
-  const verifierOpts: { projectRoot: string; testCmd?: string } = { projectRoot: flags.target };
+  const verifierOpts: { projectRoot: string; testCmd?: string } = { projectRoot };
   if (testCmd) verifierOpts.testCmd = testCmd;
   const verifier = new RefactronVerifier(verifierOpts);
   const result = await verifier.verify(plan);
@@ -204,7 +269,7 @@ export async function runRunCommand(argv: string[]): Promise<number> {
   }
   await writeBatchAtomic(result.writableChanges);
   await persistLastApply({
-    projectRoot: flags.target,
+    projectRoot,
     verifiedAt: new Date().toISOString(),
     changes: result.writableChanges.map((c) => ({
       path: c.path,
