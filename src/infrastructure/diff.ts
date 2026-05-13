@@ -5,6 +5,7 @@ export function generateUnifiedDiff(
   originalPath: string,
   original: string,
   transformed: string,
+  context = 3,
 ): string {
   return createTwoFilesPatch(
     `a/${originalPath}`,
@@ -13,7 +14,7 @@ export function generateUnifiedDiff(
     transformed,
     '',
     '',
-    { context: 3 },
+    { context },
   );
 }
 

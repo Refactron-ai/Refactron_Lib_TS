@@ -13,6 +13,7 @@ import { findingsToIssues } from './v2-adapters.js';
 import { persistLastApply } from './last-apply.js';
 import { formatAnalysisReport } from './format-analysis.js';
 import { formatGateProgress, formatVerifySuccess, formatVerifyFailure } from './format-verify.js';
+import { formatPlanAsDryRun } from './format-plan.js';
 import * as fsp from 'node:fs/promises';
 import { WorkSessionManager } from '../session/manager.js';
 import type { WorkSession } from '../session/types.js';
@@ -403,14 +404,21 @@ export async function executeCommand(
     }
 
     if (!apply) {
-      onLine(`  Dry-run: ${plan.changes.length} file(s) would change.`, theme.colors.accent);
+      // New dry-run surface: per-file unified diff with truncation + a Summary
+      // block. The legacy "N file(s) would change" bullet list is gone; the
+      // formatter prints its own summary.
+      const originals = new Map<string, string>();
       for (const c of plan.changes) {
-        onLine(
-          `  ${theme.symbols.bullet} ${path.relative(sessionTarget, c.path)}`,
-          theme.colors.textDim,
-        );
+        try {
+          originals.set(c.path, await fsp.readFile(c.path, 'utf8'));
+        } catch {
+          // missing/unreadable — formatter treats as empty (all additions)
+        }
       }
-      onLine('  Re-run with --apply to verify and write changes.', theme.colors.textDim);
+      const dryRunLines = await formatPlanAsDryRun(plan, originals, {
+        projectRoot: sessionTarget,
+      });
+      for (const line of dryRunLines) onLine(line.text, line.color);
       onLine('', undefined);
       return {};
     }
