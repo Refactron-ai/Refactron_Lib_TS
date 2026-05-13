@@ -94,27 +94,24 @@ describe('refactron golden e2e', () => {
       );
     }
 
-    // 4. Invoke the v2.0 CLI with the Week-4 cross-file-safe transform subset.
-    //    `callback_to_async_await` and `deprecated_api_requests_to_httpx` change
-    //    a function's signature or replace a module reference in ways the fixture's
-    //    tests (which mock `legacy_http.requests.get` and call `fetch_user(uid, cb)`)
-    //    rightly reject at the test gate. Week 5 will add cross-file-reference
-    //    preconditions (analyzer's importGraph + callEdges piped to transforms);
-    //    until then, the e2e exercises the three self-contained transforms.
-    const SAFE_TRANSFORMS = [
-      'format_to_fstring',
-      'manual_typecheck_to_hints',
-      'class_to_dataclass',
-    ].join(',');
-    const cli = await execa(
-      'node',
-      [cliPath, 'run', '--apply', `--transforms=${SAFE_TRANSFORMS}`, scratch],
-      {
-        reject: false,
-        timeout: 90_000,
-        input: '',
+    // 4. Invoke the v2.0 CLI with the full transform set. Week 5's cross-file
+    //    preconditions (analyzer's importGraph + callEdges piped to transforms)
+    //    make `callback_to_async_await` and `deprecated_api_requests_to_httpx`
+    //    safely skip themselves on files referenced from test code, rather than
+    //    producing broken output. The other transforms apply as before.
+    // Week 5 added a hard auth gate on the one-shot CLI path. The e2e test runs
+    // without a local `~/.refactron/credentials.json`, so we provide a dummy
+    // REFACTRON_TOKEN — the gate accepts any non-empty env-supplied token (env
+    // creds skip the expiry check by design). CI overrides via its own secret.
+    const cli = await execa('node', [cliPath, 'run', '--apply', '--transforms=all', scratch], {
+      reject: false,
+      timeout: 90_000,
+      input: '',
+      env: {
+        ...process.env,
+        REFACTRON_TOKEN: process.env.REFACTRON_TOKEN ?? 'sk_test_e2e_dummy',
       },
-    );
+    });
 
     // 5. CLI gate — Week 4 closes the pipeline; this assertion now expects success.
     expect(

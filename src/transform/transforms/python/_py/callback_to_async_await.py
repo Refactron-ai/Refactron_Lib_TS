@@ -1,8 +1,10 @@
 import os
+import re
 import sys
 
 sys.path.insert(0, os.path.dirname(__file__))
 from _base import read_source, emit  # noqa: E402
+from _cross_file import load_cross_file  # noqa: E402
 
 import libcst as cst  # noqa: E402
 import libcst.matchers as m  # noqa: E402
@@ -31,10 +33,15 @@ class CallbackToAsyncTransformer(cst.CSTTransformer):
     def __init__(self):
         self.preconditions = []
         self.changed = False
+        self._skip_external = set()
 
     def leave_FunctionDef(
         self, original: cst.FunctionDef, updated: cst.FunctionDef
     ) -> cst.FunctionDef:
+        # Cross-file skip: an external caller references this function — refuse to rewrite.
+        if updated.name.value in self._skip_external:
+            return updated
+
         if updated.asynchronous is not None:
             # already async — caller's pre-flight records the precondition when applicable
             return updated
@@ -117,11 +124,48 @@ class CallbackToAsyncTransformer(cst.CSTTransformer):
         )
 
 
+def module_name_from_path(rel_path):
+    """`callbacks.py` -> `callbacks`. `pkg/foo.py` -> `pkg.foo`. Drops `__init__`."""
+    no_ext = rel_path[:-3] if rel_path.endswith(".py") else rel_path
+    parts = no_ext.replace("\\", "/").split("/")
+    if parts and parts[-1] == "__init__":
+        parts = parts[:-1]
+    return ".".join(parts)
+
+
+def find_external_callers(this_rel_path, fn_name, cross_file):
+    """Return external relpaths that reference `<this_module>.<fn>(` or
+    `from <this_module> import <fn>` followed by a `<fn>(` call elsewhere in
+    the file. Conservative string-scan — over-skip beats under-skip.
+    """
+    if not cross_file:
+        return []
+    mod = module_name_from_path(this_rel_path)
+    if not mod:
+        return []
+    dotted_re = re.compile(r"\b" + re.escape(mod) + r"\." + re.escape(fn_name) + r"\s*\(")
+    from_import_re = re.compile(
+        r"(^|\n)\s*from\s+" + re.escape(mod) + r"\s+import\s+[^\n]*\b" + re.escape(fn_name) + r"\b",
+    )
+    fn_call_re = re.compile(r"\b" + re.escape(fn_name) + r"\s*\(")
+    callers = []
+    for rel, content in (cross_file.get("files") or {}).items():
+        if rel == this_rel_path:
+            continue
+        if dotted_re.search(content):
+            callers.append(rel)
+            continue
+        if from_import_re.search(content) and fn_call_re.search(content):
+            callers.append(rel)
+    return callers
+
+
 def main():
     if len(sys.argv) < 2:
-        emit(ok=False, error="usage: callback_to_async_await.py <file>")
+        emit(ok=False, error="usage: callback_to_async_await.py <file> [cross_file_json]")
         return
     path = sys.argv[1]
+    cross_file = load_cross_file(2)
     src = read_source(path)
     try:
         module = cst.parse_module(src)
@@ -129,8 +173,15 @@ def main():
         emit(ok=False, error=f"parse error: {e}")
         return
 
-    # Pre-flight: if a function is already async and has a callback alias as last
-    # positional param, record `not-already-async` precondition (skip).
+    # Determine this file's project-relative path from the cross-file context.
+    # Without it, no external-caller check runs (Week 4 behavior preserved).
+    this_rel = None
+    if cross_file:
+        root = cross_file.get("projectRoot") or ""
+        if root and path.startswith(root):
+            this_rel = os.path.relpath(path, root).replace(os.sep, "/")
+
+    # Pre-flight: already-async warning.
     early_pre = []
     for func in m.findall(module, m.FunctionDef()):
         if func.asynchronous is not None and func.params.params:
@@ -144,7 +195,36 @@ def main():
                     }
                 )
 
+    # Cross-file pre-pass: any top-level FunctionDef with a callback-aliased param
+    # that's referenced by an external file becomes a skip target.
+    skip_external = set()
+    if this_rel and cross_file:
+        for func in module.body:
+            if not isinstance(func, cst.FunctionDef):
+                continue
+            params = func.params.params
+            if not params:
+                continue
+            last = params[-1].name.value
+            if last not in CALLBACK_ALIASES:
+                continue
+            callers = find_external_callers(this_rel, func.name.value, cross_file)
+            if callers:
+                skip_external.add(func.name.value)
+                early_pre.append(
+                    {
+                        "id": f"external-callers:{func.name.value}",
+                        "satisfied": False,
+                        "reason": (
+                            f"function {func.name.value} is called from "
+                            f"{len(callers)} external file(s): {','.join(callers[:3])}"
+                        ),
+                    }
+                )
+
     visitor = CallbackToAsyncTransformer()
+    visitor._skip_external = skip_external
+
     new_module = module.visit(visitor)
     preconditions = early_pre + visitor.preconditions
     if not visitor.changed and not early_pre and not visitor.preconditions:

@@ -3,6 +3,9 @@ import * as fs from 'node:fs/promises';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { transform } from '../../../../../src/transform/transforms/python/callback-to-async.js';
+import { buildCrossFileContext } from '../../../../../src/transform/cross-file.js';
+import type { ExtendedAnalysisReport } from '../../../../../src/analyze/engine.js';
+import type { CrossFileContext } from '../../../../../src/transform/types.js';
 
 async function file(source: string): Promise<string> {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), 't1-'));
@@ -79,5 +82,79 @@ describe('callback_to_async_await (python)', () => {
     const p = await file(src);
     const r = await transform({ absPath: p, relPath: 'f.py', source: src, findings: [] });
     expect(r.newContent).toBeNull();
+  });
+});
+
+async function projectWithCallers(
+  callerSource: string,
+): Promise<{ src: string; ctx: CrossFileContext }> {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 't1-xf-'));
+  await fs.writeFile(
+    path.join(root, 'callbacks.py'),
+    'def fetch(url, callback):\n    callback(url)\n',
+  );
+  await fs.writeFile(path.join(root, 'test_caller.py'), callerSource);
+  const report: ExtendedAnalysisReport = {
+    root,
+    findings: [],
+    analyzedAt: new Date(),
+    importGraph: new Map([
+      ['callbacks.py', new Set<string>()],
+      ['test_caller.py', new Set<string>(['callbacks.py'])],
+    ]),
+    callEdges: [],
+  };
+  const cf = await buildCrossFileContext(report, root);
+  return { src: path.join(root, 'callbacks.py'), ctx: cf };
+}
+
+describe('python: callback_to_async_await — cross-file', () => {
+  it('skips when an external file calls <module>.<fn> with the callback arg', async () => {
+    const { src, ctx } = await projectWithCallers(
+      'import callbacks\nimport unittest.mock\ndef cb(x): pass\ncallbacks.fetch("u", cb)\n',
+    );
+    const source = await fs.readFile(src, 'utf8');
+    const r = await transform({
+      absPath: src,
+      relPath: 'callbacks.py',
+      source,
+      findings: [],
+      crossFile: ctx,
+    });
+    expect(r.newContent).toBeNull();
+    expect(
+      r.preconditions.some(
+        (p) => !p.satisfied && /external/.test(p.reason ?? '') && /fetch/.test(p.id),
+      ),
+    ).toBe(true);
+  });
+
+  it('skips when an external file uses from-import then calls fn(...)', async () => {
+    const { src, ctx } = await projectWithCallers(
+      'from callbacks import fetch\ndef cb(x): pass\nfetch("u", cb)\n',
+    );
+    const source = await fs.readFile(src, 'utf8');
+    const r = await transform({
+      absPath: src,
+      relPath: 'callbacks.py',
+      source,
+      findings: [],
+      crossFile: ctx,
+    });
+    expect(r.newContent).toBeNull();
+  });
+
+  it('proceeds when no external callers exist', async () => {
+    const { src, ctx } = await projectWithCallers('# no callers\n');
+    const source = await fs.readFile(src, 'utf8');
+    const r = await transform({
+      absPath: src,
+      relPath: 'callbacks.py',
+      source,
+      findings: [],
+      crossFile: ctx,
+    });
+    expect(r.newContent).not.toBeNull();
+    expect(r.newContent).toContain('async def fetch');
   });
 });

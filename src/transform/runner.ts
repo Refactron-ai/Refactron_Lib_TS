@@ -7,13 +7,23 @@ export type SidecarResult =
 
 const DEFAULT_TIMEOUT_MS = 60_000;
 
+export interface RunPythonTransformOpts {
+  timeoutMs?: number;
+  // Path to a JSON file containing a serialized CrossFileContext. When set,
+  // it is appended to the sidecar argv so `_cross_file.load_cross_file()` can read it.
+  crossFilePath?: string;
+}
+
 export async function runPythonTransform(
   sidecarPath: string,
   filePath: string,
-  timeoutMs: number = DEFAULT_TIMEOUT_MS,
+  opts: RunPythonTransformOpts = {},
 ): Promise<SidecarResult> {
+  const timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+  const args = [sidecarPath, filePath];
+  if (opts.crossFilePath) args.push(opts.crossFilePath);
   try {
-    const r = await execa('python3', [sidecarPath, filePath], {
+    const r = await execa('python3', args, {
       reject: false,
       timeout: timeoutMs,
     });

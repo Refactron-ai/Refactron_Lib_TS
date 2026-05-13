@@ -1,14 +1,17 @@
 // src/cli/runner.ts
 // Command execution engine — runs a parsed command, streams output lines via onLine()
 import path from 'path';
-import fs from 'fs/promises';
 import type { ILanguageAdapter } from '../adapters/interface.js';
 import type { RefactronConfig } from '../core/config.js';
 import type { AnalysisResult, Severity } from '../core/models.js';
-import { VerificationEngine } from '../verification/engine.js';
-import { Orchestrator } from '../core/orchestrator.js';
+import { RefactronAnalyzer } from '../analyze/engine.js';
+import { RefactronRefactorer } from '../transform/engine.js';
+import { RefactronVerifier } from '../verify/engine.js';
+import { writeBatchAtomic } from '../verify/atomic-batch-writer.js';
+import type { TransformId } from '../contracts.js';
+import { findingsToIssues } from './v2-adapters.js';
 import { WorkSessionManager } from '../session/manager.js';
-import type { WorkSession, WorkSessionVerifyEntry } from '../session/types.js';
+import type { WorkSession } from '../session/types.js';
 import { theme } from '../ui/theme.js';
 import {
   loadCredentials,
@@ -181,7 +184,8 @@ export async function executeCommand(
   onLine: (line: string, color?: string) => void,
   signal: AbortSignal,
 ): Promise<CommandResult> {
-  const { command, target, flags } = parsed;
+  let { command } = parsed;
+  const { target, flags } = parsed;
   const absTarget = path.resolve(target);
 
   // ── Auth commands ────────────────────────────────────────────────────────
@@ -257,6 +261,31 @@ export async function executeCommand(
     }
   }
 
+  // ── Deprecated verb aliases (v2.0) ───────────────────────────────────────
+  // Legacy verbs route to the v2 'run' handler with equivalent flags.
+  const DEPRECATED_ALIASES: Record<
+    string,
+    { newCmd: string; flags?: Record<string, boolean | string> }
+  > = {
+    autofix: { newCmd: 'run', flags: { apply: true } },
+    verify: { newCmd: 'run', flags: { 'dry-run': true } },
+    diff: { newCmd: 'run', flags: { 'dry-run': true } },
+  };
+
+  if (command in DEPRECATED_ALIASES) {
+    const alias = DEPRECATED_ALIASES[command]!;
+    onLine('', undefined);
+    onLine(
+      `  ⚠  '${command}' is deprecated in v2.0. Use '${alias.newCmd}' with the equivalent flags instead.`,
+      theme.colors.warning,
+    );
+    onLine('', undefined);
+    command = alias.newCmd;
+    for (const [k, v] of Object.entries(alias.flags ?? {})) {
+      flags[k] = v;
+    }
+  }
+
   // ── Regular commands ─────────────────────────────────────────────────────
 
   if (command === 'help' || command === '?') {
@@ -303,42 +332,63 @@ export async function executeCommand(
 
   if (command === 'analyze') {
     onLine(`  Scanning ${absTarget} …`, theme.colors.textDim);
-    const orchestrator = new Orchestrator(ctx.adapter, ctx.config, ctx.projectRoot);
-    const { analysis } = await orchestrator.analyze(absTarget);
+    const startedAt = Date.now();
+    const analyzer = new RefactronAnalyzer({ confidence: 'high' });
+    const report = await analyzer.analyzeExtended(absTarget);
     if (signal.aborted) return {};
 
-    // Build session context from analysis result
+    const issues = findingsToIssues(report.findings);
     const bySeverity: Record<Severity, number> = { critical: 0, high: 0, medium: 0, low: 0 };
-    for (const issue of analysis.issues) bySeverity[issue.severity]++;
-    const fixableCount = analysis.issues.filter((i) => i.fixable).length;
+    for (const issue of issues) bySeverity[issue.severity]++;
+    const fixableCount = issues.filter((i) => i.fixable).length;
+    const filesAnalyzed = report.importGraph.size;
+    const durationMs = Date.now() - startedAt;
+
+    const analysisResult: AnalysisResult = {
+      target: absTarget,
+      filesAnalyzed,
+      filesSkipped: 0,
+      issues,
+      languageBreakdown: {},
+      durationMs,
+      timestamp: report.analyzedAt,
+    };
 
     const session = ctx.sessions.createSession({
-      target: analysis.target,
-      filesAnalyzed: analysis.filesAnalyzed,
-      filesSkipped: analysis.filesSkipped,
-      totalIssues: analysis.issues.length,
+      target: absTarget,
+      filesAnalyzed,
+      filesSkipped: 0,
+      totalIssues: issues.length,
       fixableCount,
       issuesBySeverity: bySeverity,
-      issues: analysis.issues,
-      durationMs: analysis.durationMs,
-      timestamp: analysis.timestamp.toISOString(),
+      issues,
+      durationMs,
+      timestamp: report.analyzedAt.toISOString(),
     });
     ctx.sessions.setActive(session);
     await ctx.sessions.save(session);
 
-    formatAnalysis(analysis, onLine);
+    const transformsHit = [...new Set(report.findings.map((f) => f.transformId))];
+    onLine(
+      `  Scanned ${report.findings.length} pattern(s) in ${filesAnalyzed} file(s).`,
+      theme.colors.success,
+    );
+    if (transformsHit.length > 0) {
+      onLine(`  ${theme.symbols.bullet} ${transformsHit.join(', ')}`, theme.colors.textDim);
+    }
+    formatAnalysis(analysisResult, onLine);
     onLine('', undefined);
     onLine(
-      `  ${theme.symbols.pass}  Session ${session.id}  —  ${analysis.issues.length} issues found. Opening browser…`,
+      `  ${theme.symbols.pass}  Session ${session.id}  —  ${issues.length} issues found. Opening browser…`,
       theme.colors.textDim,
     );
     onLine('', undefined);
     return { openBrowser: true };
   }
 
-  // ── autofix — operates on active session ─────────────────────────────────
+  // ── run — v2 refactor pipeline (analyze → plan → verify → write) ────────
 
-  if (command === 'autofix') {
+  if (command === 'run') {
     const active = ctx.sessions.getActive();
     if (!active) {
       onLine('', undefined);
@@ -350,150 +400,71 @@ export async function executeCommand(
       return {};
     }
 
-    const dryRun = flags['dry-run'] === true;
-    const verify = flags['verify'] === true;
-    const fixable = active.analysis.issues.filter((i) => i.fixable).length;
+    const sessionTarget = active.analysis.target;
+    const apply = flags['apply'] === true;
+    const transformsFlag = flags['transforms'];
+    const transforms: TransformId[] =
+      typeof transformsFlag === 'string' && transformsFlag !== 'all'
+        ? (transformsFlag
+            .split(',')
+            .map((s) => s.trim())
+            .filter(Boolean) as TransformId[])
+        : [];
 
     onLine('', undefined);
-    onLine(
-      `  ${dryRun ? 'Previewing' : 'Fixing'} ${fixable} fixable issue(s) from session ${active.id} …`,
-      theme.colors.textDim,
-    );
-
-    // Reconstruct AnalysisResult from session
-    const analysisResult: AnalysisResult = {
-      target: active.analysis.target,
-      filesAnalyzed: active.analysis.filesAnalyzed,
-      filesSkipped: active.analysis.filesSkipped,
-      issues: active.analysis.issues,
-      languageBreakdown: {},
-      durationMs: active.analysis.durationMs,
-      timestamp: new Date(active.analysis.timestamp),
-    };
-
-    const orchestrator = new Orchestrator(ctx.adapter, ctx.config, ctx.projectRoot);
-    const session = await orchestrator.autofixFromAnalysis(analysisResult, { dryRun, verify });
+    onLine(`  Planning refactor for ${sessionTarget} …`, theme.colors.textDim);
+    const analyzer = new RefactronAnalyzer({ confidence: 'high' });
+    const report = await analyzer.analyzeExtended(sessionTarget);
     if (signal.aborted) return {};
 
-    // Save fix results back into the work session
-    const updated = ctx.sessions.updateActive({
-      phase: 'fixed',
-      fix: {
-        dryRun,
-        appliedCount: session.appliedFixes.length,
-        blockedCount: session.blockedFixes.length,
-        appliedFixes: session.appliedFixes,
-        blockedFixes: session.blockedFixes,
-        timestamp: new Date().toISOString(),
-      },
-    });
-    if (updated) await ctx.sessions.save(updated);
+    const refactorer = new RefactronRefactorer({ projectRoot: sessionTarget });
+    const plan = await refactorer.plan(report, transforms);
+    if (signal.aborted) return {};
 
-    onLine('', undefined);
-    onLine(`  Applied:  ${session.appliedFixes.length}`, theme.colors.success);
-    onLine(
-      `  Blocked:  ${session.blockedFixes.length}`,
-      session.blockedFixes.length > 0 ? theme.colors.error : theme.colors.textDim,
-    );
-    for (const fix of session.blockedFixes) {
-      onLine(
-        `    ${theme.symbols.fail} ${fix.filePath}:${fix.lineNumber} — ${fix.message}`,
-        theme.colors.textDim,
-      );
-    }
-    onLine(`  State:    ${session.state}`, theme.colors.textDim);
-    onLine('', undefined);
-    return {};
-  }
-
-  // ── verify — operates on active session ──────────────────────────────────
-
-  if (command === 'verify') {
-    const active = ctx.sessions.getActive();
-    if (!active) {
+    if (plan.changes.length === 0) {
+      onLine('  No changes to apply.', theme.colors.textDim);
       onLine('', undefined);
+      return {};
+    }
+
+    if (!apply) {
+      onLine(`  Dry-run: ${plan.changes.length} file(s) would change.`, theme.colors.accent);
+      for (const c of plan.changes) {
+        onLine(
+          `  ${theme.symbols.bullet} ${path.relative(sessionTarget, c.path)}`,
+          theme.colors.textDim,
+        );
+      }
+      onLine('  Re-run with --apply to verify and write changes.', theme.colors.textDim);
+      onLine('', undefined);
+      return {};
+    }
+
+    onLine(`  Verifying ${plan.changes.length} change(s) …`, theme.colors.textDim);
+    const verifier = new RefactronVerifier({ projectRoot: sessionTarget });
+    const result = await verifier.verify(plan);
+    if (signal.aborted) return {};
+
+    if (!result.passed) {
+      const failed = (
+        Object.entries(result.gates) as Array<
+          [string, { passed: boolean; blockingReason?: string }]
+        >
+      ).find(([, g]) => !g.passed);
       onLine(
-        `  ${theme.symbols.fail}  No active session. Run: analyze <target> first.`,
+        `  ${theme.symbols.fail}  Verification failed at gate '${failed?.[0] ?? 'unknown'}': ${
+          failed?.[1].blockingReason ?? 'unknown'
+        }`,
         theme.colors.error,
       );
       onLine('', undefined);
       return {};
     }
 
-    const specificFile = target !== '.' ? absTarget : null;
-    const issues = specificFile
-      ? active.analysis.issues.filter((i) => i.file === specificFile)
-      : active.analysis.issues;
-
-    const fixableFiles = [...new Set(issues.filter((i) => i.fixable).map((i) => i.file))];
-    if (fixableFiles.length === 0) {
-      onLine('  No fixable issues to verify in active session.', theme.colors.textDim);
-      return {};
-    }
-
-    const verEngine = new VerificationEngine(ctx.adapter);
-    onLine('', undefined);
+    await writeBatchAtomic(result.writableChanges);
     onLine(
-      `  Verifying ${fixableFiles.length} file(s) from session ${active.id} …`,
-      theme.colors.textDim,
-    );
-    onLine('', undefined);
-
-    let passed = 0;
-    let blocked = 0;
-    const entries: WorkSessionVerifyEntry[] = [];
-
-    for (const file of fixableFiles) {
-      if (signal.aborted) return {};
-      const fileIssues = issues.filter((i) => i.file === file && i.fixable);
-      const maxBlast = fileIssues.reduce(
-        (max, i) => (i.blastRadius.score > max.score ? i.blastRadius : max),
-        fileIssues[0]!.blastRadius,
-      );
-      const currentCode = await fs.readFile(file, 'utf-8');
-      const result = await verEngine.verify(file, currentCode, maxBlast);
-      const rel = path.relative(ctx.projectRoot, file);
-      const confidence = `${Math.round(result.confidenceScore * 100)}%`;
-
-      entries.push({
-        file,
-        safe: result.safeToApply,
-        confidence: result.confidenceScore,
-        reason: result.blockingReason,
-        checksRun: result.checksRun,
-      });
-
-      if (result.safeToApply) {
-        onLine(
-          `  ${theme.symbols.pass}  ${rel}  (confidence: ${confidence})`,
-          theme.colors.success,
-        );
-        passed++;
-      } else {
-        onLine(
-          `  ${theme.symbols.fail}  ${rel}  — ${result.blockingReason ?? 'blocked'}  (confidence: ${confidence})`,
-          theme.colors.error,
-        );
-        blocked++;
-      }
-    }
-
-    const updated = ctx.sessions.updateActive({
-      phase: 'verified',
-      verify: {
-        filesChecked: fixableFiles.length,
-        passed,
-        blocked,
-        entries,
-        timestamp: new Date().toISOString(),
-      },
-    });
-    if (updated) await ctx.sessions.save(updated);
-
-    onLine('', undefined);
-    onLine(
-      `  ${passed} passed  ${blocked} blocked  —  ${fixableFiles.length} file(s) checked`,
-      blocked > 0 ? theme.colors.error : theme.colors.success,
+      `  ${theme.symbols.pass}  ${result.writableChanges.length} file(s) refactored and verified.`,
+      theme.colors.success,
     );
     onLine('', undefined);
     return {};
@@ -559,24 +530,6 @@ export async function executeCommand(
   if (command === 'rollback') {
     onLine('  Rollback restores files from the last autofix backup.', theme.colors.textDim);
     onLine('  Run: autofix <target> to create a new session with backups.', theme.colors.textDim);
-    return {};
-  }
-
-  if (command === 'diff') {
-    const active = ctx.sessions.getActive();
-    if (!active?.fix) {
-      onLine('  No fix results in active session. Run: autofix first.', theme.colors.textDim);
-      return {};
-    }
-    for (const fix of active.fix.appliedFixes) {
-      if (fix.diff) {
-        onLine(
-          `  ${path.relative(ctx.projectRoot, fix.filePath)}:${fix.lineNumber}`,
-          theme.colors.accent,
-        );
-        onLine(fix.diff, undefined);
-      }
-    }
     return {};
   }
 
