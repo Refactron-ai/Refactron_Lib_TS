@@ -7,6 +7,7 @@ import { writeBatchAtomic } from '../verify/atomic-batch-writer.js';
 import { generateUnifiedDiff } from '../infrastructure/diff.js';
 import type { Confidence } from '../analyze/detectors/types.js';
 import type { TransformId } from '../contracts.js';
+import { requireAuth } from './auth-gate.js';
 
 const TRANSFORM_IDS: TransformId[] = [
   'callback_to_async_await',
@@ -114,6 +115,8 @@ export function parseFlags(argv: string[]): ParsedFlags {
 }
 
 export async function runRunCommand(argv: string[]): Promise<number> {
+  const authResult = await requireAuth('run');
+  if (authResult !== true) return authResult;
   let flags: ParsedFlags;
   try {
     flags = parseFlags(argv);

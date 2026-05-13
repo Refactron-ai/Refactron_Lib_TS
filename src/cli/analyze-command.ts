@@ -3,6 +3,7 @@ import { RefactronAnalyzer } from '../analyze/engine.js';
 import { renderTerminal } from '../analyze/format/terminal.js';
 import { toJson } from '../analyze/format/json.js';
 import type { Confidence } from '../analyze/detectors/types.js';
+import { requireAuth } from './auth-gate.js';
 
 interface ParsedFlags {
   target: string;
@@ -76,6 +77,8 @@ export function parseFlags(argv: string[]): ParsedFlags {
 }
 
 export async function runAnalyzeCommand(argv: string[]): Promise<number> {
+  const authResult = await requireAuth('analyze');
+  if (authResult !== true) return authResult;
   let flags: ParsedFlags;
   try {
     flags = parseFlags(argv);

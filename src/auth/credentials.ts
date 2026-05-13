@@ -27,7 +27,23 @@ export function isAuthenticated(creds: RefactronCredentials | null): boolean {
   return !isExpired(creds);
 }
 
+export function envCredentials(): RefactronCredentials | null {
+  const token = process.env.REFACTRON_TOKEN;
+  if (!token) return null;
+  return {
+    api_base_url: process.env.REFACTRON_API_BASE_URL ?? 'https://api.refactron.dev',
+    access_token: token,
+    token_type: 'Bearer',
+    expires_at: null,
+    email: null,
+    plan: 'free',
+    api_key: null,
+  };
+}
+
 export async function loadCredentials(): Promise<RefactronCredentials | null> {
+  const env = envCredentials();
+  if (env) return env;
   try {
     const raw = await fs.readFile(CREDENTIALS_FILE, 'utf-8');
     return JSON.parse(raw) as RefactronCredentials;
