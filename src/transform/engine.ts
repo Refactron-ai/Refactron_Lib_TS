@@ -11,7 +11,9 @@ import type {
   TransformId,
 } from '../contracts.js';
 import type { DetectorFinding } from '../analyze/detectors/types.js';
-import type { TransformImpl } from './types.js';
+import type { ExtendedAnalysisReport } from '../analyze/engine.js';
+import type { CrossFileContext, TransformImpl } from './types.js';
+import { buildCrossFileContext } from './cross-file.js';
 
 // Side-effect imports: each transform module's `impl` is registered here so the
 // bundler cannot tree-shake any of the ten implementations away.
@@ -77,6 +79,12 @@ export class RefactronRefactorer implements Refactorer {
       byFile.set(f.file, list);
     }
 
+    // Build cross-file context once when the analyzer gave us an ExtendedAnalysisReport.
+    // Transforms that don't need cross-file info simply ignore the field.
+    const crossFile: CrossFileContext | undefined = isExtended(report)
+      ? await buildCrossFileContext(report, this.opts.projectRoot)
+      : undefined;
+
     const changes: FileChange[] = [];
     const preconditions: Precondition[] = [];
 
@@ -102,6 +110,7 @@ export class RefactronRefactorer implements Refactorer {
           relPath,
           source: currentText,
           findings: findingsForTransform,
+          ...(crossFile ? { crossFile } : {}),
         });
         for (const p of result.preconditions) {
           preconditions.push({ ...p, id: `${tid}:${relPath}:${p.id}` });
@@ -125,4 +134,8 @@ export class RefactronRefactorer implements Refactorer {
 
     return { changes, preconditions };
   }
+}
+
+function isExtended(r: AnalysisReport): r is ExtendedAnalysisReport {
+  return 'importGraph' in r && 'callEdges' in r;
 }
