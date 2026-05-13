@@ -187,7 +187,8 @@ export async function executeCommand(
   onLine: (line: string, color?: string) => void,
   signal: AbortSignal,
 ): Promise<CommandResult> {
-  const { command, target, flags } = parsed;
+  let { command } = parsed;
+  const { target, flags } = parsed;
   const absTarget = path.resolve(target);
 
   // ── Auth commands ────────────────────────────────────────────────────────
@@ -260,6 +261,31 @@ export async function executeCommand(
       onLine(`  Run: login  to log in.`, theme.colors.textDim);
       onLine('', undefined);
       return {};
+    }
+  }
+
+  // ── Deprecated verb aliases (v2.0) ───────────────────────────────────────
+  // Legacy verbs route to the v2 'run' handler with equivalent flags.
+  const DEPRECATED_ALIASES: Record<
+    string,
+    { newCmd: string; flags?: Record<string, boolean | string> }
+  > = {
+    autofix: { newCmd: 'run', flags: { apply: true } },
+    verify: { newCmd: 'run', flags: { 'dry-run': true } },
+    diff: { newCmd: 'run', flags: { 'dry-run': true } },
+  };
+
+  if (command in DEPRECATED_ALIASES) {
+    const alias = DEPRECATED_ALIASES[command]!;
+    onLine('', undefined);
+    onLine(
+      `  ⚠  '${command}' is deprecated in v2.0. Use '${alias.newCmd}' with the equivalent flags instead.`,
+      theme.colors.warning,
+    );
+    onLine('', undefined);
+    command = alias.newCmd;
+    for (const [k, v] of Object.entries(alias.flags ?? {})) {
+      flags[k] = v;
     }
   }
 
