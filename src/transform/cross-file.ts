@@ -9,8 +9,12 @@ const TEST_DIR_RE = /(^|\/)tests\//;
 // Cap each file's contents to avoid blowing up the JSON serialization on large projects.
 const MAX_FILE_BYTES = 100 * 1024;
 
+function toPosix(p: string): string {
+  return p.replace(/\\/g, '/');
+}
+
 function isTestFile(relPath: string): boolean {
-  const normalized = relPath.replace(/\\/g, '/');
+  const normalized = toPosix(relPath);
   return TEST_FILE_RE.test(normalized) || TEST_DIR_RE.test(normalized);
 }
 
@@ -35,9 +39,15 @@ export async function buildCrossFileContext(
   const imports: Record<string, string[]> = {};
   const testFiles: string[] = [];
 
-  for (const [src, deps] of report.importGraph) {
-    imports[src] = [...deps].sort();
-    for (const dst of deps) {
+  // Normalize all relpath keys and values to forward slashes at this boundary.
+  // Analyzer-emitted relpaths come from path.relative() and contain backslashes
+  // on Windows; the Python sidecars (and module-name derivation) expect POSIX-
+  // style separators, so we normalize once here rather than in every sidecar.
+  for (const [srcRaw, deps] of report.importGraph) {
+    const src = toPosix(srcRaw);
+    const depsPosix = [...deps].map(toPosix).sort();
+    imports[src] = depsPosix;
+    for (const dst of depsPosix) {
       const list = importedBy[dst] ?? [];
       if (!list.includes(src)) list.push(src);
       importedBy[dst] = list;
@@ -49,10 +59,7 @@ export async function buildCrossFileContext(
   }
 
   // Files only appearing as destinations also need to be read + test-tagged.
-  const allFiles = new Set<string>([
-    ...Object.keys(files),
-    ...Object.values(imports).flat(),
-  ]);
+  const allFiles = new Set<string>([...Object.keys(files), ...Object.values(imports).flat()]);
   for (const f of allFiles) {
     if (!(f in files)) {
       files[f] = await readCapped(path.resolve(projectRoot, f));
