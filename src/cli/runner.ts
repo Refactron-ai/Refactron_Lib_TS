@@ -274,7 +274,7 @@ export async function executeCommand(
       theme.colors.text,
     );
     onLine(
-      '  document [target]              generate docstrings for verified refactors (Week 6)',
+      '  document [target]              generate docstrings + changelog for the last verified refactor',
       theme.colors.text,
     );
     onLine('  init     [target]              scaffold .refactronrc.json', theme.colors.text);
@@ -516,6 +516,29 @@ export async function executeCommand(
       onLine('', undefined);
       onLine(`  ${theme.symbols.pass}  Loaded session ${loaded.id}`, theme.colors.success);
       printSessionCard(loaded, ctx.projectRoot, onLine);
+    }
+    return {};
+  }
+
+  // ── document — generate docstrings + CHANGELOG for last verified refactor ─
+
+  if (command === 'document') {
+    const { runDocumentCommand } = await import('./document-command.js');
+    const argv: string[] = [ctx.projectRoot];
+    if (flags['apply'] === true) argv.push('--apply');
+    if (flags['no-cache'] === true) argv.push('--no-cache');
+    if (flags['json'] === true) argv.push('--json');
+    const providerFlag = flags['provider'];
+    if (typeof providerFlag === 'string') argv.push('--provider', providerFlag);
+    const modelFlag = flags['model'];
+    if (typeof modelFlag === 'string') argv.push('--model', modelFlag);
+    const code = await runDocumentCommand(argv);
+    if (code === 8) {
+      onLine('No verified refactor in this project — run `run --apply` first.', theme.colors.error);
+    } else if (code === 7) {
+      onLine('Not authenticated. Run `refactron login` first.', theme.colors.error);
+    } else if (code !== 0) {
+      onLine(`document exited ${code}`, theme.colors.error);
     }
     return {};
   }

@@ -13,7 +13,7 @@ const STATIC_HELP = `
   Commands:
     analyze  [target]              Scan for transform patterns
     run      [target] [--apply]    Plan + verify + apply transforms (default dry-run)
-    document [target]              Generate docstrings for verified refactors (Week 6)
+    document [target] [--apply]    Generate docstrings + CHANGELOG for the last verified refactor
     init     [target]              Scaffold .refactronrc.json
     login    [--print-token]       Authenticate with Refactron
 
@@ -68,6 +68,11 @@ if (cmd === 'run') {
   process.exit(code);
 }
 
+if (cmd === 'document') {
+  const { runDocumentCommand } = await import('./document-command.js');
+  process.exit(await runDocumentCommand(process.argv.slice(3)));
+}
+
 if (cmd === 'init') {
   const { runInitCommand } = await import('./init-command.js');
   process.exit(await runInitCommand(process.argv.slice(3)));
@@ -78,15 +83,6 @@ if (cmd === 'login' && process.argv.includes('--print-token')) {
   const { creds } = await runLoginFlow(false, () => {});
   process.stdout.write((creds?.access_token ?? '') + '\n');
   process.exit(creds?.access_token ? 0 : 1);
-}
-
-// v2.0 subcommands not yet wired into the CLI. Reject them deterministically so
-// platforms whose stdin EOF makes the REPL fallback exit 0 don't mask the gap.
-// `document` lands in Week 6.
-const V2_PENDING = new Set(['document']);
-if (cmd !== undefined && V2_PENDING.has(cmd)) {
-  process.stderr.write(`refactron: subcommand '${cmd}' is not yet implemented in this build.\n`);
-  process.exit(13);
 }
 
 // Full application load only when needed
