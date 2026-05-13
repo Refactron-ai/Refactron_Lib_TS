@@ -15,10 +15,7 @@ async function project(files: Record<string, string>): Promise<string> {
   return root;
 }
 
-function fakeReport(
-  root: string,
-  imports: Record<string, string[]>,
-): ExtendedAnalysisReport {
+function fakeReport(root: string, imports: Record<string, string[]>): ExtendedAnalysisReport {
   const g = new Map<string, Set<string>>();
   for (const [src, dests] of Object.entries(imports)) g.set(src, new Set(dests));
   return {
@@ -64,10 +61,6 @@ describe('buildCrossFileContext', () => {
       'app_test.py': [],
     });
     const ctx = await buildCrossFileContext(report, root);
-    expect(ctx.testFiles.sort()).toEqual([
-      'app_test.py',
-      'test_helpers.py',
-      'tests/test_x.py',
-    ]);
+    expect(ctx.testFiles.sort()).toEqual(['app_test.py', 'test_helpers.py', 'tests/test_x.py']);
   });
 });

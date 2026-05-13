@@ -428,12 +428,12 @@ export async function executeCommand(
     }
 
     if (!apply) {
-      onLine(
-        `  Dry-run: ${plan.changes.length} file(s) would change.`,
-        theme.colors.accent,
-      );
+      onLine(`  Dry-run: ${plan.changes.length} file(s) would change.`, theme.colors.accent);
       for (const c of plan.changes) {
-        onLine(`  ${theme.symbols.bullet} ${path.relative(sessionTarget, c.path)}`, theme.colors.textDim);
+        onLine(
+          `  ${theme.symbols.bullet} ${path.relative(sessionTarget, c.path)}`,
+          theme.colors.textDim,
+        );
       }
       onLine('  Re-run with --apply to verify and write changes.', theme.colors.textDim);
       onLine('', undefined);
@@ -447,7 +447,9 @@ export async function executeCommand(
 
     if (!result.passed) {
       const failed = (
-        Object.entries(result.gates) as Array<[string, { passed: boolean; blockingReason?: string }]>
+        Object.entries(result.gates) as Array<
+          [string, { passed: boolean; blockingReason?: string }]
+        >
       ).find(([, g]) => !g.passed);
       onLine(
         `  ${theme.symbols.fail}  Verification failed at gate '${failed?.[0] ?? 'unknown'}': ${

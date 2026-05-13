@@ -120,9 +120,7 @@ describe('python: deprecated_api — cross-file', () => {
     });
     expect(r.newContent).toBeNull();
     expect(
-      r.preconditions.some(
-        (c) => !c.satisfied && c.id === 'external-string-refs:requests',
-      ),
+      r.preconditions.some((c) => !c.satisfied && c.id === 'external-string-refs:requests'),
     ).toBe(true);
   });
 });

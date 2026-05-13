@@ -59,12 +59,7 @@ const validate = ajv.compile(SCHEMA);
 
 export async function loadRefactronConfig(projectRoot: string): Promise<RefactronRc> {
   const explorer = cosmiconfig('refactron', {
-    searchPlaces: [
-      '.refactronrc',
-      '.refactronrc.json',
-      '.refactronrc.yaml',
-      'refactron.config.js',
-    ],
+    searchPlaces: ['.refactronrc', '.refactronrc.json', '.refactronrc.yaml', 'refactron.config.js'],
     stopDir: projectRoot,
   });
   const result = await explorer.search(projectRoot);

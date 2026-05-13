@@ -72,7 +72,9 @@ function makeFakeContext(projectRoot: string): {
     clearActive(): void {
       activeId = null;
     },
-    updateActive(updates: Partial<Pick<WorkSession, 'phase' | 'fix' | 'verify'>>): WorkSession | null {
+    updateActive(
+      updates: Partial<Pick<WorkSession, 'phase' | 'fix' | 'verify'>>,
+    ): WorkSession | null {
       if (!activeId) return null;
       const existing = store.get(activeId);
       if (!existing) return null;
