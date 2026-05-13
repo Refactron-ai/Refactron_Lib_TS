@@ -8,6 +8,10 @@ import type { AnalysisResult, Severity } from '../core/models.js';
 import { VerificationEngine } from '../verification/engine.js';
 import { Orchestrator } from '../core/orchestrator.js';
 import { RefactronAnalyzer } from '../analyze/engine.js';
+import { RefactronRefactorer } from '../transform/engine.js';
+import { RefactronVerifier } from '../verify/engine.js';
+import { writeBatchAtomic } from '../verify/atomic-batch-writer.js';
+import type { TransformId } from '../contracts.js';
 import { findingsToIssues } from './v2-adapters.js';
 import { WorkSessionManager } from '../session/manager.js';
 import type { WorkSession, WorkSessionVerifyEntry } from '../session/types.js';
@@ -357,6 +361,88 @@ export async function executeCommand(
     );
     onLine('', undefined);
     return { openBrowser: true };
+  }
+
+  // ── run — v2 refactor pipeline (analyze → plan → verify → write) ────────
+
+  if (command === 'run') {
+    const active = ctx.sessions.getActive();
+    if (!active) {
+      onLine('', undefined);
+      onLine(
+        `  ${theme.symbols.fail}  No active session. Run: analyze <target> first.`,
+        theme.colors.error,
+      );
+      onLine('', undefined);
+      return {};
+    }
+
+    const sessionTarget = active.analysis.target;
+    const apply = flags['apply'] === true;
+    const transformsFlag = flags['transforms'];
+    const transforms: TransformId[] =
+      typeof transformsFlag === 'string' && transformsFlag !== 'all'
+        ? (transformsFlag
+            .split(',')
+            .map((s) => s.trim())
+            .filter(Boolean) as TransformId[])
+        : [];
+
+    onLine('', undefined);
+    onLine(`  Planning refactor for ${sessionTarget} …`, theme.colors.textDim);
+    const analyzer = new RefactronAnalyzer({ confidence: 'high' });
+    const report = await analyzer.analyzeExtended(sessionTarget);
+    if (signal.aborted) return {};
+
+    const refactorer = new RefactronRefactorer({ projectRoot: sessionTarget });
+    const plan = await refactorer.plan(report, transforms);
+    if (signal.aborted) return {};
+
+    if (plan.changes.length === 0) {
+      onLine('  No changes to apply.', theme.colors.textDim);
+      onLine('', undefined);
+      return {};
+    }
+
+    if (!apply) {
+      onLine(
+        `  Dry-run: ${plan.changes.length} file(s) would change.`,
+        theme.colors.accent,
+      );
+      for (const c of plan.changes) {
+        onLine(`  ${theme.symbols.bullet} ${path.relative(sessionTarget, c.path)}`, theme.colors.textDim);
+      }
+      onLine('  Re-run with --apply to verify and write changes.', theme.colors.textDim);
+      onLine('', undefined);
+      return {};
+    }
+
+    onLine(`  Verifying ${plan.changes.length} change(s) …`, theme.colors.textDim);
+    const verifier = new RefactronVerifier({ projectRoot: sessionTarget });
+    const result = await verifier.verify(plan);
+    if (signal.aborted) return {};
+
+    if (!result.passed) {
+      const failed = (
+        Object.entries(result.gates) as Array<[string, { passed: boolean; blockingReason?: string }]>
+      ).find(([, g]) => !g.passed);
+      onLine(
+        `  ${theme.symbols.fail}  Verification failed at gate '${failed?.[0] ?? 'unknown'}': ${
+          failed?.[1].blockingReason ?? 'unknown'
+        }`,
+        theme.colors.error,
+      );
+      onLine('', undefined);
+      return {};
+    }
+
+    await writeBatchAtomic(result.writableChanges);
+    onLine(
+      `  ${theme.symbols.pass}  ${result.writableChanges.length} file(s) refactored and verified.`,
+      theme.colors.success,
+    );
+    onLine('', undefined);
+    return {};
   }
 
   // ── autofix — operates on active session ─────────────────────────────────
