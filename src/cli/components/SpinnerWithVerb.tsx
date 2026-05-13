@@ -130,6 +130,8 @@ const HINTS = [
   "run 'init' to scaffold a .refactronrc.json with project defaults",
   '10 deterministic AST transforms — 5 Python (via LibCST) + 5 TypeScript (via ts-morph)',
   'atomic batch write: either every file commits or none — no half-applied refactors',
+  "'document' generates docstrings via your local Ollama (or OpenAI/Anthropic if you opt in)",
+  'the llm never touches your code — only your docs, and only after verification',
 ];
 
 // ── HintRow — rotates every 4s, self-managing ───────────────────────────────

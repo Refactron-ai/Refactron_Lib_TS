@@ -22,7 +22,10 @@ const SLASH_COMMANDS: SlashCommand[] = [
     name: 'run',
     description: 'Plan + verify + apply transforms (default dry-run; pass --apply to write)',
   },
-  { name: 'document', description: 'Generate docstrings for verified refactors (Week 6)' },
+  {
+    name: 'document',
+    description: 'Generate docstrings + CHANGELOG for the last verified refactor',
+  },
   { name: 'init', description: 'Scaffold .refactronrc.json in this project' },
   // Session utilities
   { name: 'status', description: 'Show active session summary' },
