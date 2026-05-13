@@ -4,11 +4,12 @@ import { renderTerminal } from '../analyze/format/terminal.js';
 import { toJson } from '../analyze/format/json.js';
 import type { Confidence } from '../analyze/detectors/types.js';
 import { requireAuth } from './auth-gate.js';
+import { loadRefactronConfig } from './config-loader.js';
 
 interface ParsedFlags {
   target: string;
   json: boolean;
-  confidence: Confidence;
+  confidence: Confidence | null;
   graphPath: string | null;
   failOn: Confidence | null;
 }
@@ -25,7 +26,7 @@ export class AnalyzeFlagError extends Error {}
 export function parseFlags(argv: string[]): ParsedFlags {
   let target: string | null = null;
   let json = false;
-  let confidence: Confidence = 'high';
+  let confidence: Confidence | null = null;
   let graphPath: string | null = null;
   let failOn: Confidence | null = null;
 
@@ -89,7 +90,16 @@ export async function runAnalyzeCommand(argv: string[]): Promise<number> {
     }
     throw err;
   }
-  const analyzer = new RefactronAnalyzer({ confidence: flags.confidence });
+  let confidence: Confidence;
+  try {
+    const config = await loadRefactronConfig(flags.target);
+    confidence = flags.confidence ?? config.confidence;
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    process.stderr.write(`refactron analyze: ${msg}\n`);
+    return 2;
+  }
+  const analyzer = new RefactronAnalyzer({ confidence });
   const report = await analyzer.analyzeExtended(flags.target);
   if (flags.graphPath) {
     await fs.writeFile(flags.graphPath, toJson(report), 'utf8');

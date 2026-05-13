@@ -61,9 +61,11 @@
     "CHANGELOG.md"
   ],
   "dependencies": {
+    "ajv": "^8.20.0",
     "chalk": "^5.0.0",
     "cli-table3": "^0.6.5",
     "commander": "^12.0.0",
+    "cosmiconfig": "^9.0.1",
     "diff": "^5.0.0",
     "execa": "^8.0.0",
     "glob": "^10.0.0",

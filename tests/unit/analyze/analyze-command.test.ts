@@ -2,11 +2,11 @@ import { describe, it, expect } from 'vitest';
 import { parseFlags, AnalyzeFlagError } from '../../../src/cli/analyze-command.js';
 
 describe('analyze-command parseFlags', () => {
-  it('defaults: target ".", confidence "high", no fail-on', () => {
+  it('defaults: target ".", confidence null (resolved from config), no fail-on', () => {
     expect(parseFlags([])).toEqual({
       target: '.',
       json: false,
-      confidence: 'high',
+      confidence: null,
       graphPath: null,
       failOn: null,
     });

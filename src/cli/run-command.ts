@@ -8,6 +8,7 @@ import { generateUnifiedDiff } from '../infrastructure/diff.js';
 import type { Confidence } from '../analyze/detectors/types.js';
 import type { TransformId } from '../contracts.js';
 import { requireAuth } from './auth-gate.js';
+import { loadRefactronConfig } from './config-loader.js';
 
 const TRANSFORM_IDS: TransformId[] = [
   'callback_to_async_await',
@@ -29,8 +30,8 @@ export interface ParsedFlags {
   target: string;
   apply: boolean;
   dryRun: boolean;
-  transforms: TransformId[];
-  confidence: Confidence;
+  transforms: TransformId[] | null;
+  confidence: Confidence | null;
   testCmd: string | null;
   json: boolean;
 }
@@ -59,8 +60,8 @@ export function parseFlags(argv: string[]): ParsedFlags {
   let target: string | null = null;
   let apply = false;
   let dryRun = false;
-  let transforms: TransformId[] = [...TRANSFORM_IDS];
-  let confidence: Confidence = 'high';
+  let transforms: TransformId[] | null = null;
+  let confidence: Confidence | null = null;
   let testCmd: string | null = null;
   let json = false;
 
@@ -128,11 +129,33 @@ export async function runRunCommand(argv: string[]): Promise<number> {
     throw err;
   }
 
-  const analyzer = new RefactronAnalyzer({ confidence: flags.confidence });
+  // Load .refactronrc — flags override config values entirely (no merging of arrays).
+  let confidence: Confidence;
+  let transforms: TransformId[];
+  let testCmd: string | null;
+  try {
+    const config = await loadRefactronConfig(flags.target);
+    confidence = flags.confidence ?? config.confidence;
+    testCmd = flags.testCmd ?? config.testCmd;
+    if (flags.transforms !== null) {
+      transforms = flags.transforms;
+    } else if (config.transforms.includes('all')) {
+      transforms = [...TRANSFORM_IDS];
+    } else {
+      // schema validated; all entries are valid TransformId strings (no 'all')
+      transforms = config.transforms as TransformId[];
+    }
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    process.stderr.write(`refactron run: ${msg}\n`);
+    return 2;
+  }
+
+  const analyzer = new RefactronAnalyzer({ confidence });
   const report = await analyzer.analyzeExtended(flags.target);
 
   const refactorer = new RefactronRefactorer({ projectRoot: flags.target });
-  const plan = await refactorer.plan(report, flags.transforms);
+  const plan = await refactorer.plan(report, transforms);
 
   if (plan.changes.length === 0) {
     process.stdout.write('refactron run: no changes to apply\n');
@@ -156,7 +179,7 @@ export async function runRunCommand(argv: string[]): Promise<number> {
 
   // --apply
   const verifierOpts: { projectRoot: string; testCmd?: string } = { projectRoot: flags.target };
-  if (flags.testCmd) verifierOpts.testCmd = flags.testCmd;
+  if (testCmd) verifierOpts.testCmd = testCmd;
   const verifier = new RefactronVerifier(verifierOpts);
   const result = await verifier.verify(plan);
   if (!result.passed) {
