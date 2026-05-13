@@ -16,18 +16,26 @@ interface SlashCommand {
 }
 
 const SLASH_COMMANDS: SlashCommand[] = [
-  { name: 'analyze', description: 'Scan files for issues' },
-  { name: 'autofix', description: 'Fix issues with verification' },
-  { name: 'verify', description: 'Verify a file is safe to change' },
-  { name: 'status', description: 'Show last session summary' },
-  { name: 'diff', description: 'Show fix diff' },
+  // The four v2 verbs (per the locked plan: analyze, run, document, init)
+  { name: 'analyze', description: 'Scan project for transform patterns' },
+  {
+    name: 'run',
+    description: 'Plan + verify + apply transforms (default dry-run; pass --apply to write)',
+  },
+  { name: 'document', description: 'Generate docstrings for verified refactors (Week 6)' },
+  { name: 'init', description: 'Scaffold .refactronrc.json in this project' },
+  // Session utilities
+  { name: 'status', description: 'Show active session summary' },
+  { name: 'session', description: 'list / <id> — manage saved sessions' },
   { name: 'rollback', description: 'Restore from last backup' },
+  // Auth
   { name: 'login', description: 'Authenticate with Refactron' },
   { name: 'logout', description: 'Remove stored credentials' },
   { name: 'auth', description: 'Show auth status' },
+  // Utilities
   { name: 'clear', description: 'Clear the screen' },
-  { name: 'exit', description: 'Quit Refactron' },
   { name: 'help', description: 'Show all commands' },
+  { name: 'exit', description: 'Quit Refactron' },
 ];
 
 // Names for typeahead ghost (bare, no slash)

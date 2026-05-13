@@ -24,7 +24,7 @@ describe('REPL v2 execution', () => {
     else process.env.REFACTRON_TOKEN = prevToken;
   });
 
-  it('analyze populates a session and signals openBrowser=true', async () => {
+  it('analyze populates a session and prints findings without opening any UI', async () => {
     const lines: string[] = [];
     const { ctx, getActive } = makeFakeContext(FIXTURE);
     const result = await executeCommand(
@@ -34,10 +34,13 @@ describe('REPL v2 execution', () => {
       new AbortController().signal,
     );
 
-    expect(result.openBrowser).toBe(true);
+    // analyze is read-only: no UI signal in the result, just a populated session.
+    expect(result).toEqual({});
     const active = getActive();
     expect(active).toBeTruthy();
     expect(active!.analysis.issues.length).toBeGreaterThan(0);
+    // The 'next steps' hint should mention `run` so users know where to go.
+    expect(lines.some((l) => l.includes('run --dry-run') || l.includes('run --apply'))).toBe(true);
   }, 60_000);
 });
 

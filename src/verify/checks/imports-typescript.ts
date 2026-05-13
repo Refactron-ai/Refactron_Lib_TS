@@ -1,7 +1,17 @@
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 import * as ts from 'typescript';
+import { builtinModules } from 'node:module';
 import type { GateResult } from '../../contracts.js';
+
+// Node builtins resolve at runtime without @types/node being present. Accept
+// them by name in either bare ('path') or prefixed ('node:path') form so the
+// import gate doesn't false-reject on healthy user code.
+const NODE_BUILTINS = new Set<string>(builtinModules);
+function isNodeBuiltin(spec: string): boolean {
+  if (spec.startsWith('node:')) return true;
+  return NODE_BUILTINS.has(spec);
+}
 
 function loadTsConfig(projectRoot: string): ts.CompilerOptions {
   const cfgPath = ts.findConfigFile(projectRoot, ts.sys.fileExists, 'tsconfig.json');
@@ -29,8 +39,7 @@ export async function checkTypescriptImports(
     const info = ts.preProcessFile(text, true, true);
     for (const ref of info.importedFiles) {
       const resolved = ts.resolveModuleName(ref.fileName, file, options, host);
-      const isNodeBuiltin = /^node:/.test(ref.fileName);
-      if (!resolved.resolvedModule && !isNodeBuiltin) {
+      if (!resolved.resolvedModule && !isNodeBuiltin(ref.fileName)) {
         return {
           passed: false,
           durationMs: Date.now() - t0,

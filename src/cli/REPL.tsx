@@ -12,7 +12,6 @@ import { parseInput, executeCommand, type CommandContext, type CommandResult } f
 import { SessionHeader } from './components/SessionHeader.js';
 import { SpinnerWithVerb } from './components/SpinnerWithVerb.js';
 import { PromptInput } from './components/PromptInput.js';
-import { IssueBrowser } from './components/IssueBrowser.js';
 import type { MessageLine } from './types.js';
 
 export type { MessageLine };
@@ -44,8 +43,6 @@ export function REPL({ ctx, version, email, plan }: REPLProps): React.ReactEleme
   const [runningCmd, setRunningCmd] = useState('');
   const [lastProgressTime, setLastProgressTime] = useState<number>(Date.now());
   const [history, setHistory] = useState<string[]>([]);
-
-  const [browserActive, setBrowserActive] = useState(false);
 
   const lineIdRef = useRef(0);
   const abortRef = useRef<AbortController | null>(null);
@@ -136,9 +133,6 @@ export function REPL({ ctx, version, email, plan }: REPLProps): React.ReactEleme
       if (result.shouldExit) {
         setTimeout(() => exit(), 80);
       }
-      if (result.openBrowser) {
-        setBrowserActive(true);
-      }
     },
     [ctx, exit, appendLines, nextId],
   );
@@ -216,30 +210,7 @@ export function REPL({ ctx, version, email, plan }: REPLProps): React.ReactEleme
         </Box>
       )}
 
-      {/* Issue browser — takes over the input area when active */}
-      {browserActive && ctx.sessions.getActive() ? (
-        <IssueBrowser
-          issues={ctx.sessions.getActive()!.analysis.issues}
-          sessionId={ctx.sessions.getActive()!.id}
-          projectRoot={ctx.projectRoot}
-          adapter={ctx.adapter}
-          config={ctx.config}
-          onExit={(fixedFiles) => {
-            setBrowserActive(false);
-            if (fixedFiles.length > 0) {
-              appendLines([
-                { id: nextId(), text: '', color: undefined },
-                {
-                  id: nextId(),
-                  text: `  ${OUTPUT_CIRCLE} ${fixedFiles.length} file(s) fixed. Run: verify to check them.`,
-                  color: theme.colors.success,
-                },
-                { id: nextId(), text: '', color: undefined },
-              ]);
-            }
-          }}
-        />
-      ) : isRunning ? (
+      {isRunning ? (
         /* Spinner while running */
         <SpinnerWithVerb
           verb={runningCmd.split(' ')[0] ?? 'working'}
@@ -257,7 +228,7 @@ export function REPL({ ctx, version, email, plan }: REPLProps): React.ReactEleme
       )}
 
       {/* Ctrl+C warning — live, dismisses on any keypress */}
-      {!browserActive && ctrlCPending && (
+      {ctrlCPending && (
         <Box paddingLeft={2}>
           <Text color={theme.colors.textDim}>Press </Text>
           <Text color={theme.colors.warning}>Ctrl+C</Text>

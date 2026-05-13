@@ -43,8 +43,10 @@ export async function transform(ctx: TransformContext): Promise<TransformResult>
     const preconditions: TsPrecondition[] = [];
     const allIdentifiers = sf.getDescendantsOfKind(SyntaxKind.Identifier);
 
+    // sf.getVariableStatements() only returns TOP-LEVEL statements; we need
+    // every var anywhere in the file (e.g. inside functions, blocks, classes).
     const statements = sf
-      .getVariableStatements()
+      .getDescendantsOfKind(SyntaxKind.VariableStatement)
       .filter((vs) => vs.getDeclarationKind() === VariableDeclarationKind.Var);
 
     if (statements.length === 0) {

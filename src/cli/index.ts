@@ -8,28 +8,39 @@ const argv = process.argv.slice(2);
 const cmd = argv[0];
 
 const STATIC_HELP = `
-  refactron v0.1.0-beta.1 — safety-first refactoring
+  refactron — safety-first refactoring
 
   Commands:
-    analyze [target]      Analyze files for issues
-    autofix [target]      Fix issues with verification
-    verify  [file]        Verify a specific file
-    rollback              Rollback last applied fixes
-    status                Show current session status
-    diff [target]         Show diff for a fix
+    analyze  [target]              Scan for transform patterns
+    run      [target] [--apply]    Plan + verify + apply transforms (default dry-run)
+    document [target]              Generate docstrings for verified refactors (Week 6)
+    init     [target]              Scaffold .refactronrc.json
+    login    [--print-token]       Authenticate with Refactron
 
-  Options:
-    --fail-on <level>     Exit non-zero if issues at level found (critical|high|medium|low)
-    --format <fmt>        Output format: terminal|json|sarif
-    --dry-run             Preview fixes without writing
-    --verify              Require verification before applying
+  Run with no args to enter the interactive TUI.
+
+  analyze flags:
+    --json                  Machine-readable output
+    --confidence=<level>    high | medium | low (default: high)
+    --fail-on=<level>       Exit 1 if any finding at this confidence or above
+    --graph=<path>          Write import + call graph JSON
+
+  run flags:
+    --apply                 Actually write to disk (otherwise dry-run)
+    --transforms=<list>     Comma-separated transform ids, or 'all'
+    --confidence=<level>    Same semantics as analyze
+    --test-cmd=<cmd>        Override the auto-detected test runner
+    --json                  Machine-readable output
+
+  Auth:
+    Set REFACTRON_TOKEN env var, or run 'refactron login' to persist credentials.
 
   Examples:
     refactron analyze src/
-    refactron autofix . --verify
-    refactron autofix . --dry-run
-    refactron status
-    refactron rollback
+    refactron analyze src/ --json --fail-on=high
+    refactron run fixtures/python-legacy-mini --dry-run
+    refactron run --apply --transforms=format_to_fstring,class_to_dataclass .
+    refactron init my-project/
 `;
 
 // Fast paths — zero imports, <10ms
