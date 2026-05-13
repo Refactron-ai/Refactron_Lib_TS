@@ -5,12 +5,22 @@ import { cosmiconfig } from 'cosmiconfig';
 import Ajv from 'ajv';
 import type { ValidateFunction } from 'ajv';
 
+export interface DocumentationConfig {
+  provider: 'ollama' | 'openai' | 'anthropic';
+  model: string;
+  endpoint: string | null;
+  tokenBudget: number;
+  redactPatterns: string[];
+  cache: boolean;
+}
+
 export interface RefactronRc {
   transforms: string[]; // 'all' or TransformId values
   exclude: string[];
   testCmd: string | null;
   confidence: 'high' | 'medium' | 'low';
   dryRun: boolean;
+  documentation: DocumentationConfig;
 }
 
 const VALID_TRANSFORMS = [
@@ -27,12 +37,35 @@ const VALID_TRANSFORMS = [
   'promise_constructor_to_async',
 ] as const;
 
+const DOCS_DEFAULT: DocumentationConfig = {
+  provider: 'ollama',
+  model: 'llama3.1:8b',
+  endpoint: 'http://localhost:11434',
+  tokenBudget: 4000,
+  redactPatterns: [],
+  cache: true,
+};
+
 const DEFAULTS: RefactronRc = {
   transforms: ['all'],
   exclude: [],
   testCmd: null,
   confidence: 'high',
   dryRun: true,
+  documentation: DOCS_DEFAULT,
+};
+
+const DOCS_SCHEMA = {
+  type: 'object',
+  additionalProperties: false,
+  properties: {
+    provider: { type: 'string', enum: ['ollama', 'openai', 'anthropic'] },
+    model: { type: 'string' },
+    endpoint: { type: ['string', 'null'] },
+    tokenBudget: { type: 'integer', minimum: 256, maximum: 32000 },
+    redactPatterns: { type: 'array', items: { type: 'string' } },
+    cache: { type: 'boolean' },
+  },
 };
 
 const SCHEMA = {
@@ -44,6 +77,7 @@ const SCHEMA = {
     testCmd: { type: ['string', 'null'] },
     confidence: { type: 'string', enum: ['high', 'medium', 'low'] },
     dryRun: { type: 'boolean' },
+    documentation: DOCS_SCHEMA,
   },
 };
 
@@ -63,11 +97,15 @@ export async function loadRefactronConfig(projectRoot: string): Promise<Refactro
     stopDir: projectRoot,
   });
   const result = await explorer.search(projectRoot);
-  if (!result) return { ...DEFAULTS };
+  if (!result) return { ...DEFAULTS, documentation: { ...DOCS_DEFAULT } };
   const data = (result.config ?? {}) as Partial<RefactronRc>;
   if (!validate(data)) {
     const msg = ajv.errorsText(validate.errors, { separator: '; ' });
     throw new Error(`Invalid .refactronrc: ${msg}`);
   }
-  return { ...DEFAULTS, ...data } as RefactronRc;
+  return {
+    ...DEFAULTS,
+    ...data,
+    documentation: { ...DOCS_DEFAULT, ...(data.documentation ?? {}) },
+  } as RefactronRc;
 }

@@ -54,3 +54,42 @@ describe('loadRefactronConfig', () => {
     await expect(loadRefactronConfig(tmp)).rejects.toThrow(/Invalid \.refactronrc/);
   });
 });
+
+describe('documentation sub-config', () => {
+  it('defaults to ollama / llama3.1:8b / local endpoint', async () => {
+    const cfg = await loadRefactronConfig(tmp);
+    expect(cfg.documentation).toMatchObject({
+      provider: 'ollama',
+      model: 'llama3.1:8b',
+      endpoint: 'http://localhost:11434',
+      tokenBudget: 4000,
+      redactPatterns: [],
+      cache: true,
+    });
+  });
+
+  it('accepts a customised documentation block and preserves defaults', async () => {
+    await fs.writeFile(
+      path.join(tmp, '.refactronrc.json'),
+      JSON.stringify({
+        documentation: { provider: 'openai', model: 'gpt-4o-mini', tokenBudget: 2000 },
+      }),
+    );
+    const cfg = await loadRefactronConfig(tmp);
+    expect(cfg.documentation.provider).toBe('openai');
+    expect(cfg.documentation.model).toBe('gpt-4o-mini');
+    expect(cfg.documentation.tokenBudget).toBe(2000);
+    // defaults preserved via deep-merge
+    expect(cfg.documentation.cache).toBe(true);
+    expect(cfg.documentation.endpoint).toBe('http://localhost:11434');
+    expect(cfg.documentation.redactPatterns).toEqual([]);
+  });
+
+  it('rejects unknown providers', async () => {
+    await fs.writeFile(
+      path.join(tmp, '.refactronrc.json'),
+      JSON.stringify({ documentation: { provider: 'bogus' } }),
+    );
+    await expect(loadRefactronConfig(tmp)).rejects.toThrow(/provider/);
+  });
+});
