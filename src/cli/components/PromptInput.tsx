@@ -24,8 +24,7 @@ const SLASH_COMMANDS: SlashCommand[] = [
   },
   { name: 'document', description: 'Generate docstrings for verified refactors (Week 6)' },
   { name: 'init', description: 'Scaffold .refactronrc.json in this project' },
-  // Session + browser utilities
-  { name: 'issues', description: 'Open the interactive issue browser for the active session' },
+  // Session utilities
   { name: 'status', description: 'Show active session summary' },
   { name: 'session', description: 'list / <id> — manage saved sessions' },
   { name: 'rollback', description: 'Restore from last backup' },

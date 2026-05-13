@@ -32,7 +32,6 @@ const AUTH_EXEMPT = new Set([
   'quit',
   'q',
   'session',
-  'issues',
   '',
 ]);
 
@@ -175,7 +174,6 @@ function printSessionCard(
 
 export interface CommandResult {
   shouldExit?: boolean;
-  openBrowser?: boolean; // trigger interactive issue browser in REPL
 }
 
 export async function executeCommand(
@@ -279,8 +277,7 @@ export async function executeCommand(
     );
     onLine('  init     [target]              scaffold .refactronrc.json', theme.colors.text);
     onLine('', undefined);
-    onLine('  Session + browser:', theme.colors.accent);
-    onLine('  issues                         open interactive issue browser', theme.colors.text);
+    onLine('  Session:', theme.colors.accent);
     onLine('  status                         show active session details', theme.colors.text);
     onLine('  session list                   list all saved sessions', theme.colors.text);
     onLine('  session <id>                   load a previous session', theme.colors.text);
@@ -296,23 +293,10 @@ export async function executeCommand(
     return {};
   }
 
-  // ── issues — open interactive browser ───────────────────────────────────
-
-  if (command === 'issues') {
-    const active = ctx.sessions.getActive();
-    if (!active) {
-      onLine('', undefined);
-      onLine(
-        `  ${theme.symbols.fail}  No active session. Run: analyze <target> first.`,
-        theme.colors.error,
-      );
-      onLine('', undefined);
-      return {};
-    }
-    return { openBrowser: true };
-  }
-
-  // ── analyze — creates a new session ─────────────────────────────────────
+  // ── analyze — read-only scan, prints findings, creates a session ────────
+  // Each v2 verb does ONE thing. analyze never mutates anything and never
+  // routes to a fix UI; use `run --dry-run` to preview changes and
+  // `run --apply` to verify+write.
 
   if (command === 'analyze') {
     onLine(`  Scanning ${absTarget} …`, theme.colors.textDim);
@@ -362,12 +346,13 @@ export async function executeCommand(
     }
     formatAnalysis(analysisResult, onLine);
     onLine('', undefined);
+    onLine(`  Session ${session.id}  —  ${issues.length} pattern(s) found.`, theme.colors.textDim);
     onLine(
-      `  ${theme.symbols.pass}  Session ${session.id}  —  ${issues.length} issues found. Opening browser…`,
+      '  Next: `run --dry-run` to preview changes · `run --apply` to verify + write.',
       theme.colors.textDim,
     );
     onLine('', undefined);
-    return { openBrowser: true };
+    return {};
   }
 
   // ── run — v2 refactor pipeline (analyze → plan → verify → write) ────────
