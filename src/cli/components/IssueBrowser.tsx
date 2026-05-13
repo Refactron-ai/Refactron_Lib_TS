@@ -22,14 +22,16 @@
 import React, { useState, useCallback, useMemo, useEffect } from 'react';
 import { Box, Text, useInput, useStdout } from 'ink';
 import fs from 'fs/promises';
+import path from 'node:path';
 import { theme } from '../../ui/theme.js';
-import { AutoFixEngine } from '../../autofix/engine.js';
-import { VerificationEngine } from '../../verification/engine.js';
-import { BackupManager } from '../../infrastructure/backup.js';
-import { atomicWrite } from '../../verification/atomic-writer.js';
+import { RefactronAnalyzer } from '../../analyze/engine.js';
+import { RefactronRefactorer } from '../../transform/engine.js';
+import { RefactronVerifier } from '../../verify/engine.js';
+import { writeBatchAtomic } from '../../verify/atomic-batch-writer.js';
 import type { CodeIssue, Severity } from '../../core/models.js';
 import type { ILanguageAdapter } from '../../adapters/interface.js';
 import type { RefactronConfig } from '../../core/config.js';
+import type { TransformId, RefactorPlan } from '../../contracts.js';
 
 const SEV_COLOR: Record<Severity, string> = {
   critical: theme.colors.critical,
@@ -125,41 +127,67 @@ export function IssueBrowser({
   const pageEnd = Math.min(filtered.length, pageStart + pageSize);
   const pageIssues = filtered.slice(pageStart, pageEnd);
 
+  // Helper: re-analyze and build a RefactorPlan scoped to the requested files + transforms.
+  // The v2 engines operate per-file; we always re-analyze for fresh cross-file context.
+  const buildPlan = useCallback(
+    async (files: Set<string>, transforms: TransformId[]): Promise<RefactorPlan> => {
+      const analyzer = new RefactronAnalyzer({ confidence: 'low' });
+      const report = await analyzer.analyzeExtended(projectRoot);
+      const filteredReport = {
+        ...report,
+        findings: report.findings.filter((f) => files.has(f.file)),
+      };
+      const refactorer = new RefactronRefactorer({ projectRoot });
+      return refactorer.plan(filteredReport, transforms);
+    },
+    [projectRoot],
+  );
+
   // ── Fix a single issue ─────────────────────────────────────────────────
+  // 'a' applies one finding's transform to its file via the v2 pipeline:
+  // analyze → plan → 3-gate verify → atomic write. 'd' previews the diff
+  // by stopping after plan.
   const fixIssue = useCallback(
     async (issue: CodeIssue, dry: boolean) => {
       if (isWorking) return;
-      if (!issue.fixable) {
-        pushStatus('  Not auto-fixable.', theme.colors.warning);
-        setDiffLines(null);
-        return;
-      }
       setIsWorking(true);
-      setWorkingLabel(dry ? 'dry-run' : 'fixing');
+      setWorkingLabel(dry ? 'planning' : 'fixing');
       setDiffLines(null);
       try {
-        const engine = new AutoFixEngine();
-        const code = await fs.readFile(issue.file, 'utf-8');
-        const transform = await engine.fix(issue.file, code, issue);
-        if (!transform) {
-          pushStatus('  No transform produced.', theme.colors.warning);
+        const transformId = (issue.fixerName ?? issue.type) as TransformId;
+        const plan = await buildPlan(new Set([issue.file]), [transformId]);
+        if (plan.changes.length === 0) {
+          const skip = plan.preconditions.find((p) => !p.satisfied);
+          pushStatus(
+            `  Skipped — ${skip?.reason ?? 'precondition failed or no change needed'}.`,
+            theme.colors.warning,
+          );
           setIsWorking(false);
           setWorkingLabel('');
           return;
         }
+        const change = plan.changes[0]!;
         if (dry) {
-          const diff = adapter.generateDiff(code, transform.transformedCode);
-          const lines = diff.split('\n');
-          setDiffLines(lines.slice(0, 12));
+          const original = await fs.readFile(change.path, 'utf-8');
+          const diff = adapter.generateDiff(original, change.newContent);
+          setDiffLines(diff.split('\n').slice(0, 12));
           pushStatus('  Dry-run preview — nothing written.', theme.colors.textDim);
         } else {
-          const backup = new BackupManager(projectRoot);
-          await backup.backup(issue.file);
-          await atomicWrite(issue.file, transform.transformedCode);
-          setFixedIds((prev) => new Set([...prev, issue.id]));
-          setFixedFiles((prev) => new Set([...prev, issue.file]));
-          const name = issue.file.split('/').pop() ?? issue.file;
-          pushStatus(`  ✔ Fixed ${name}:${issue.line}`, theme.colors.success);
+          const verifier = new RefactronVerifier({ projectRoot });
+          const result = await verifier.verify(plan);
+          if (!result.passed) {
+            const failed = Object.entries(result.gates).find(([, g]) => !g.passed);
+            pushStatus(
+              `  ✘ Verification failed at '${failed?.[0]}' gate. Original untouched.`,
+              theme.colors.error,
+            );
+          } else {
+            await writeBatchAtomic(result.writableChanges);
+            setFixedIds((prev) => new Set([...prev, issue.id]));
+            setFixedFiles((prev) => new Set([...prev, change.path]));
+            const name = change.path.split('/').pop() ?? change.path;
+            pushStatus(`  ✔ Fixed ${name} (3/3 gates passed)`, theme.colors.success);
+          }
         }
       } catch (err) {
         pushStatus(`  Error: ${String(err)}`, theme.colors.error);
@@ -167,54 +195,69 @@ export function IssueBrowser({
       setIsWorking(false);
       setWorkingLabel('');
     },
-    [isWorking, adapter, projectRoot, pushStatus],
+    [isWorking, adapter, projectRoot, pushStatus, buildPlan],
   );
 
   // ── Fix ALL fixable issues in filtered list ────────────────────────────
+  // 'A' bundles every unfixed finding in the current filter into one plan,
+  // verifies once, and atomically writes all-or-nothing.
   const fixAll = useCallback(async () => {
     if (isWorking) return;
-    const fixable = filtered.filter((i) => i.fixable && !fixedIds.has(i.id));
+    const fixable = filtered.filter((i) => !fixedIds.has(i.id));
     if (fixable.length === 0) {
-      pushStatus('  No unfixed fixable issues.', theme.colors.warning);
+      pushStatus('  No unfixed issues.', theme.colors.warning);
       return;
     }
     setIsWorking(true);
-    setWorkingLabel(`fixing 0/${fixable.length}`);
+    setWorkingLabel(`fixing ${fixable.length}`);
     setDiffLines(null);
-    const engine = new AutoFixEngine();
-    const backup = new BackupManager(projectRoot);
-    let applied = 0;
-    let failed = 0;
-    const newFixedIds = new Set(fixedIds);
-    const newFixedFiles = new Set(fixedFiles);
-    for (let i = 0; i < fixable.length; i++) {
-      const issue = fixable[i]!;
-      setWorkingLabel(`fixing ${i + 1}/${fixable.length}`);
-      try {
-        const code = await fs.readFile(issue.file, 'utf-8');
-        const transform = await engine.fix(issue.file, code, issue);
-        if (transform) {
-          await backup.backup(issue.file);
-          await atomicWrite(issue.file, transform.transformedCode);
-          newFixedIds.add(issue.id);
-          newFixedFiles.add(issue.file);
-          applied++;
+    try {
+      const files = new Set(fixable.map((i) => i.file));
+      const transforms = [...new Set(fixable.map((i) => (i.fixerName ?? i.type) as TransformId))];
+      const plan = await buildPlan(files, transforms);
+      if (plan.changes.length === 0) {
+        pushStatus(
+          '  All findings skipped (cross-file preconditions or no diff).',
+          theme.colors.warning,
+        );
+      } else {
+        const verifier = new RefactronVerifier({ projectRoot });
+        const result = await verifier.verify(plan);
+        if (!result.passed) {
+          const failed = Object.entries(result.gates).find(([, g]) => !g.passed);
+          pushStatus(
+            `  ✘ Verification failed at '${failed?.[0]}' gate. Nothing written.`,
+            theme.colors.error,
+          );
+        } else {
+          await writeBatchAtomic(result.writableChanges);
+          const writtenAbs = new Set(result.writableChanges.map((c) => c.path));
+          const newFixedIds = new Set(fixedIds);
+          const newFixedFiles = new Set(fixedFiles);
+          for (const i of fixable) {
+            if (writtenAbs.has(path.resolve(projectRoot, i.file))) {
+              newFixedIds.add(i.id);
+              newFixedFiles.add(i.file);
+            }
+          }
+          setFixedIds(newFixedIds);
+          setFixedFiles(newFixedFiles);
+          pushStatus(
+            `  ✔ Refactored ${result.writableChanges.length} file(s) — ${plan.changes.length} planned, ${plan.preconditions.filter((p) => !p.satisfied).length} skipped.`,
+            theme.colors.success,
+          );
         }
-      } catch {
-        failed++;
       }
+    } catch (err) {
+      pushStatus(`  Error: ${String(err)}`, theme.colors.error);
     }
-    setFixedIds(newFixedIds);
-    setFixedFiles(newFixedFiles);
-    pushStatus(
-      `  ✔ Fixed ${applied}/${fixable.length}${failed > 0 ? `  (${failed} failed)` : ''}`,
-      applied > 0 ? theme.colors.success : theme.colors.warning,
-    );
     setIsWorking(false);
     setWorkingLabel('');
-  }, [isWorking, filtered, fixedIds, fixedFiles, projectRoot, pushStatus]);
+  }, [isWorking, filtered, fixedIds, fixedFiles, projectRoot, pushStatus, buildPlan]);
 
   // ── Verify selected file ───────────────────────────────────────────────
+  // 'v' runs the same 3-gate verifier the apply path uses, but stops before
+  // writing — answers "would Refactron be allowed to refactor this file?"
   const verifyFile = useCallback(
     async (issue: CodeIssue) => {
       if (isWorking) return;
@@ -222,24 +265,32 @@ export function IssueBrowser({
       setWorkingLabel('verifying');
       setDiffLines(null);
       try {
-        const verEngine = new VerificationEngine(adapter);
-        const code = await fs.readFile(issue.file, 'utf-8');
-        const maxBlast = filtered
-          .filter((i) => i.file === issue.file)
-          .reduce(
-            (max, i) => (i.blastRadius.score > max.score ? i.blastRadius : max),
-            issue.blastRadius,
-          );
-        const result = await verEngine.verify(issue.file, code, maxBlast);
-        setVerifiedFiles((prev) => new Map([...prev, [issue.file, result.safeToApply]]));
-        const conf = `${Math.round(result.confidenceScore * 100)}%`;
-        if (result.safeToApply) {
-          pushStatus(`  ✔ Safe to apply  (confidence: ${conf})`, theme.colors.success);
-        } else {
+        const transformsForFile = [
+          ...new Set(
+            filtered
+              .filter((i) => i.file === issue.file)
+              .map((i) => (i.fixerName ?? i.type) as TransformId),
+          ),
+        ];
+        const plan = await buildPlan(new Set([issue.file]), transformsForFile);
+        if (plan.changes.length === 0) {
           pushStatus(
-            `  ✘ Blocked — ${result.blockingReason ?? 'verification failed'}  (${conf})`,
-            theme.colors.error,
+            `  ${issue.file}: no v2 changes proposed (precondition skipped).`,
+            theme.colors.textDim,
           );
+        } else {
+          const verifier = new RefactronVerifier({ projectRoot });
+          const result = await verifier.verify(plan);
+          setVerifiedFiles((prev) => new Map([...prev, [issue.file, result.passed]]));
+          if (result.passed) {
+            pushStatus('  ✔ Safe to apply (3/3 gates passed)', theme.colors.success);
+          } else {
+            const failed = Object.entries(result.gates).find(([, g]) => !g.passed);
+            pushStatus(
+              `  ✘ Blocked at '${failed?.[0]}' gate: ${failed?.[1].blockingReason ?? 'unknown'}`,
+              theme.colors.error,
+            );
+          }
         }
       } catch (err) {
         pushStatus(`  Error: ${String(err)}`, theme.colors.error);
@@ -247,7 +298,7 @@ export function IssueBrowser({
       setIsWorking(false);
       setWorkingLabel('');
     },
-    [isWorking, adapter, filtered, pushStatus],
+    [isWorking, filtered, projectRoot, pushStatus, buildPlan],
   );
 
   // ── Input ──────────────────────────────────────────────────────────────
