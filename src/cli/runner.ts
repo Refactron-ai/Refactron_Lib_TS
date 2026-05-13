@@ -184,8 +184,7 @@ export async function executeCommand(
   onLine: (line: string, color?: string) => void,
   signal: AbortSignal,
 ): Promise<CommandResult> {
-  let { command } = parsed;
-  const { target, flags } = parsed;
+  const { command, target, flags } = parsed;
   const absTarget = path.resolve(target);
 
   // ── Auth commands ────────────────────────────────────────────────────────
@@ -261,48 +260,33 @@ export async function executeCommand(
     }
   }
 
-  // ── Deprecated verb aliases (v2.0) ───────────────────────────────────────
-  // Legacy verbs route to the v2 'run' handler with equivalent flags.
-  const DEPRECATED_ALIASES: Record<
-    string,
-    { newCmd: string; flags?: Record<string, boolean | string> }
-  > = {
-    autofix: { newCmd: 'run', flags: { apply: true } },
-    verify: { newCmd: 'run', flags: { 'dry-run': true } },
-    diff: { newCmd: 'run', flags: { 'dry-run': true } },
-  };
-
-  if (command in DEPRECATED_ALIASES) {
-    const alias = DEPRECATED_ALIASES[command]!;
-    onLine('', undefined);
-    onLine(
-      `  ⚠  '${command}' is deprecated in v2.0. Use '${alias.newCmd}' with the equivalent flags instead.`,
-      theme.colors.warning,
-    );
-    onLine('', undefined);
-    command = alias.newCmd;
-    for (const [k, v] of Object.entries(alias.flags ?? {})) {
-      flags[k] = v;
-    }
-  }
-
   // ── Regular commands ─────────────────────────────────────────────────────
 
   if (command === 'help' || command === '?') {
     onLine('', undefined);
-    onLine('  Commands:', theme.colors.accent);
-    onLine('  analyze  [target]              scan files, create a session', theme.colors.text);
-    onLine('  issues                         open interactive issue browser', theme.colors.text);
+    onLine('  Pipeline:', theme.colors.accent);
     onLine(
-      '  autofix  [--dry-run] [--verify] fix all fixable issues in session',
+      '  analyze  [target]              scan project for transform patterns',
       theme.colors.text,
     );
-    onLine('  verify   [file]                verify files in active session', theme.colors.text);
+    onLine(
+      '  run      [--apply] [--transforms=<list|all>]  plan + verify + apply',
+      theme.colors.text,
+    );
+    onLine(
+      '  document [target]              generate docstrings for verified refactors (Week 6)',
+      theme.colors.text,
+    );
+    onLine('  init     [target]              scaffold .refactronrc.json', theme.colors.text);
+    onLine('', undefined);
+    onLine('  Session + browser:', theme.colors.accent);
+    onLine('  issues                         open interactive issue browser', theme.colors.text);
     onLine('  status                         show active session details', theme.colors.text);
     onLine('  session list                   list all saved sessions', theme.colors.text);
     onLine('  session <id>                   load a previous session', theme.colors.text);
     onLine('  rollback                       restore from last backup', theme.colors.text);
-    onLine('  diff                           show fix diff', theme.colors.text);
+    onLine('', undefined);
+    onLine('  Auth + utilities:', theme.colors.accent);
     onLine('  login                          authenticate with Refactron', theme.colors.text);
     onLine('  logout                         remove stored credentials', theme.colors.text);
     onLine('  auth                           show auth status', theme.colors.text);
@@ -535,6 +519,34 @@ export async function executeCommand(
 
   if (command === 'clear') {
     onLine('\x1Bc', undefined);
+    return {};
+  }
+
+  // ── init — scaffold .refactronrc.json in the project root ───────────────
+  if (command === 'init') {
+    const fs = await import('node:fs/promises');
+    const target = parsed.target ?? ctx.projectRoot;
+    const cfgPath = path.resolve(target, '.refactronrc.json');
+    try {
+      await fs.access(cfgPath);
+      onLine(
+        `  ${theme.symbols.fail}  .refactronrc.json already exists at ${cfgPath}`,
+        theme.colors.error,
+      );
+      return {};
+    } catch {
+      // doesn't exist — proceed
+    }
+    const TEMPLATE = {
+      $schema: 'https://refactron.dev/schema/refactronrc.json',
+      transforms: ['all'],
+      exclude: ['node_modules', 'dist', '.venv', '__pycache__'],
+      testCmd: null,
+      confidence: 'high',
+      dryRun: true,
+    };
+    await fs.writeFile(cfgPath, JSON.stringify(TEMPLATE, null, 2) + '\n');
+    onLine(`  ${theme.symbols.pass}  created ${cfgPath}`, theme.colors.success);
     return {};
   }
 
