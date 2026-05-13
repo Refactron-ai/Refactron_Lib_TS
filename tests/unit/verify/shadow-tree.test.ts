@@ -35,10 +35,12 @@ describe('createShadowTree', () => {
     expect(await fs.readFile(path.join(src, 'b.py'), 'utf8')).toBe('print(2)\n');
   });
 
-  it('excludes node_modules / .git / __pycache__ / dist', async () => {
+  it('excludes build caches (.git / __pycache__ / dist) but symlinks dependency dirs', async () => {
     const src = await fs.mkdtemp(path.join(os.tmpdir(), 'st-skip-'));
+    // dependency-style dir — should be SYMLINKED, not skipped
     await fs.mkdir(path.join(src, 'node_modules', 'x'), { recursive: true });
-    await fs.writeFile(path.join(src, 'node_modules', 'x', 'big.js'), 'huge');
+    await fs.writeFile(path.join(src, 'node_modules', 'x', 'pkg.js'), 'module.exports = 1;');
+    // cache dir — should be skipped entirely
     await fs.mkdir(path.join(src, '__pycache__'), { recursive: true });
     await fs.writeFile(path.join(src, '__pycache__', 'a.pyc'), 'bin');
     await fs.writeFile(path.join(src, 'a.py'), 'print(1)\n');
@@ -47,8 +49,17 @@ describe('createShadowTree', () => {
     cleanups.push(handle.cleanup);
 
     expect(await fs.readFile(path.join(handle.path, 'a.py'), 'utf8')).toBe('print(1)\n');
-    await expect(fs.access(path.join(handle.path, 'node_modules'))).rejects.toThrow();
+    // The cache dir is skipped entirely.
     await expect(fs.access(path.join(handle.path, '__pycache__'))).rejects.toThrow();
+    // node_modules is reachable via the symlink — the test runner needs it.
+    const pkgViaShadow = await fs.readFile(
+      path.join(handle.path, 'node_modules', 'x', 'pkg.js'),
+      'utf8',
+    );
+    expect(pkgViaShadow).toBe('module.exports = 1;');
+    // Confirm it's a symlink rather than a copy.
+    const stat = await fs.lstat(path.join(handle.path, 'node_modules'));
+    expect(stat.isSymbolicLink()).toBe(true);
   });
 
   it('cleanup removes the temp tree', async () => {
