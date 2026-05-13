@@ -5,13 +5,33 @@ import type { GateResult } from '../../contracts.js';
 import type { CheckContext } from '../types.js';
 import { detectRunner } from '../runners/detect.js';
 import { runRunner } from '../runners/run.js';
+import { summarizeVitestFailures } from '../summarize-vitest.js';
 
 const BASELINE_RETRIES = 2; // total attempts = retries + 1 = 3
+const TAIL_BYTES = 4000;
 
 export interface TestsGateOptions {
   testCmd?: string;
   timeoutMs?: number;
   skipBaseline?: boolean;
+}
+
+function formatVitestFailureBlock(stdout: string, stderr: string): string {
+  const combined = `${stdout}\n${stderr}`;
+  const summary = summarizeVitestFailures(combined);
+  const tail = combined.slice(-TAIL_BYTES);
+  if (summary.failures.length === 0) {
+    return `tests fail after refactoring:\n${tail}`;
+  }
+  const lines: string[] = ['tests fail after refactoring:', '', 'Failing tests:'];
+  for (const f of summary.failures) {
+    lines.push(`  ✗ ${f.file} > ${f.testName}`);
+    for (const ml of f.message.split('\n')) {
+      lines.push(`      ${ml}`);
+    }
+  }
+  lines.push('', 'Raw tail:', tail);
+  return lines.join('\n');
 }
 
 export async function testsGate(
@@ -45,8 +65,7 @@ export async function testsGate(
           durationMs: Date.now() - t0,
           blockingReason:
             `baseline tests already fail before refactoring; fix them first.\n${baseline.stdout}\n${baseline.stderr}`.slice(
-              0,
-              4000,
+              -TAIL_BYTES,
             ),
         };
       }
@@ -59,10 +78,7 @@ export async function testsGate(
     return {
       passed: false,
       durationMs: Date.now() - t0,
-      blockingReason: `tests fail after refactoring:\n${mutated.stdout}\n${mutated.stderr}`.slice(
-        0,
-        4000,
-      ),
+      blockingReason: formatVitestFailureBlock(mutated.stdout, mutated.stderr),
     };
   }
   return { passed: true, durationMs: Date.now() - t0 };
