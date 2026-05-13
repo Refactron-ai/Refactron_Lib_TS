@@ -8,7 +8,7 @@ import { RefactronAnalyzer } from '../analyze/engine.js';
 import { RefactronRefactorer } from '../transform/engine.js';
 import { RefactronVerifier } from '../verify/engine.js';
 import { writeBatchAtomic } from '../verify/atomic-batch-writer.js';
-import type { TransformId } from '../contracts.js';
+import type { FileChange, TransformId } from '../contracts.js';
 import { findingsToIssues } from './v2-adapters.js';
 import { persistLastApply } from './last-apply.js';
 import * as fsp from 'node:fs/promises';
@@ -50,6 +50,21 @@ export interface ParsedCommand {
   flags: Record<string, boolean | string>;
 }
 
+// Flags that NEVER take a value. Without this list the parser was eating the
+// next positional token as the flag's value — so `run --apply <path>` parsed
+// as `flags.apply = '<path>'` and `target = '.'`, swallowing the user's path
+// and silently falling through to the dry-run branch (since `apply !== true`).
+const BOOLEAN_FLAGS = new Set([
+  'apply',
+  'dry-run',
+  'json',
+  'no-cache',
+  'no-browser',
+  'no-tui',
+  'verbose',
+  'quiet',
+]);
+
 export function parseInput(raw: string): ParsedCommand {
   const parts = raw.trim().split(/\s+/);
   // Strip leading '/' so /analyze, /help, etc. work like their bare forms
@@ -60,12 +75,26 @@ export function parseInput(raw: string): ParsedCommand {
   for (let i = 1; i < parts.length; i++) {
     const part = parts[i] ?? '';
     if (part.startsWith('--')) {
+      // --flag=value form is always explicit.
+      const eq = part.indexOf('=');
+      if (eq > 2) {
+        flags[part.slice(2, eq)] = part.slice(eq + 1);
+        continue;
+      }
+      const name = part.slice(2);
+      // Known boolean flag: always true, don't consume the next token.
+      if (BOOLEAN_FLAGS.has(name)) {
+        flags[name] = true;
+        continue;
+      }
+      // Unknown flag: peek at the next token. If it looks like another flag or
+      // is absent, treat as boolean; otherwise consume as the value.
       const next = parts[i + 1];
-      if (next && !next.startsWith('--')) {
-        flags[part.slice(2)] = next;
+      if (next !== undefined && !next.startsWith('--')) {
+        flags[name] = next;
         i++;
       } else {
-        flags[part.slice(2)] = true;
+        flags[name] = true;
       }
     } else {
       target = part;
@@ -73,6 +102,22 @@ export function parseInput(raw: string): ParsedCommand {
   }
 
   return { command, target, flags };
+}
+
+// ── Plan scoping ────────────────────────────────────────────────────────────
+// When the user types `run --apply <path>` (or `run <path>`), the planned
+// changes get filtered so only files at or under that path go to verification.
+// Pure helper — exported for unit testing without spinning up the full pipeline.
+export function scopePlanChanges(
+  changes: FileChange[],
+  scopedPath: string,
+  isFileScope: boolean,
+): FileChange[] {
+  return changes.filter((c) => {
+    if (isFileScope) return c.path === scopedPath;
+    const rel = path.relative(scopedPath, c.path);
+    return rel !== '' && !rel.startsWith('..') && !path.isAbsolute(rel);
+  });
 }
 
 // ── Formatters ──────────────────────────────────────────────────────────────
@@ -382,6 +427,26 @@ export async function executeCommand(
             .filter(Boolean) as TransformId[])
         : [];
 
+    // Optional positional target scopes the refactor to a single file or directory
+    // beneath the session's project root. `target === '.'` means no scoping.
+    let scopedPath: string | null = null;
+    let scopedIsFile = false;
+    if (target && target !== '.') {
+      scopedPath = path.isAbsolute(target) ? target : path.resolve(sessionTarget, target);
+      try {
+        const stat = await fsp.stat(scopedPath);
+        scopedIsFile = stat.isFile();
+      } catch {
+        onLine('', undefined);
+        onLine(
+          `  ${theme.symbols.fail}  No such path: ${path.relative(sessionTarget, scopedPath) || scopedPath}`,
+          theme.colors.error,
+        );
+        onLine('', undefined);
+        return {};
+      }
+    }
+
     onLine('', undefined);
     onLine(`  Planning refactor for ${sessionTarget} …`, theme.colors.textDim);
     const analyzer = new RefactronAnalyzer({ confidence: 'high' });
@@ -391,6 +456,15 @@ export async function executeCommand(
     const refactorer = new RefactronRefactorer({ projectRoot: sessionTarget });
     const plan = await refactorer.plan(report, transforms);
     if (signal.aborted) return {};
+
+    if (scopedPath !== null) {
+      const before = plan.changes.length;
+      plan.changes = scopePlanChanges(plan.changes, scopedPath, scopedIsFile);
+      onLine(
+        `  Scoped to ${path.relative(sessionTarget, scopedPath) || scopedPath}: ${plan.changes.length} of ${before} change(s).`,
+        theme.colors.textDim,
+      );
+    }
 
     if (plan.changes.length === 0) {
       onLine('  No changes to apply.', theme.colors.textDim);
