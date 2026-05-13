@@ -7,6 +7,8 @@ import type { RefactronConfig } from '../core/config.js';
 import type { AnalysisResult, Severity } from '../core/models.js';
 import { VerificationEngine } from '../verification/engine.js';
 import { Orchestrator } from '../core/orchestrator.js';
+import { RefactronAnalyzer } from '../analyze/engine.js';
+import { findingsToIssues } from './v2-adapters.js';
 import { WorkSessionManager } from '../session/manager.js';
 import type { WorkSession, WorkSessionVerifyEntry } from '../session/types.js';
 import { theme } from '../ui/theme.js';
@@ -303,33 +305,54 @@ export async function executeCommand(
 
   if (command === 'analyze') {
     onLine(`  Scanning ${absTarget} …`, theme.colors.textDim);
-    const orchestrator = new Orchestrator(ctx.adapter, ctx.config, ctx.projectRoot);
-    const { analysis } = await orchestrator.analyze(absTarget);
+    const startedAt = Date.now();
+    const analyzer = new RefactronAnalyzer({ confidence: 'high' });
+    const report = await analyzer.analyzeExtended(absTarget);
     if (signal.aborted) return {};
 
-    // Build session context from analysis result
+    const issues = findingsToIssues(report.findings);
     const bySeverity: Record<Severity, number> = { critical: 0, high: 0, medium: 0, low: 0 };
-    for (const issue of analysis.issues) bySeverity[issue.severity]++;
-    const fixableCount = analysis.issues.filter((i) => i.fixable).length;
+    for (const issue of issues) bySeverity[issue.severity]++;
+    const fixableCount = issues.filter((i) => i.fixable).length;
+    const filesAnalyzed = report.importGraph.size;
+    const durationMs = Date.now() - startedAt;
+
+    const analysisResult: AnalysisResult = {
+      target: absTarget,
+      filesAnalyzed,
+      filesSkipped: 0,
+      issues,
+      languageBreakdown: {},
+      durationMs,
+      timestamp: report.analyzedAt,
+    };
 
     const session = ctx.sessions.createSession({
-      target: analysis.target,
-      filesAnalyzed: analysis.filesAnalyzed,
-      filesSkipped: analysis.filesSkipped,
-      totalIssues: analysis.issues.length,
+      target: absTarget,
+      filesAnalyzed,
+      filesSkipped: 0,
+      totalIssues: issues.length,
       fixableCount,
       issuesBySeverity: bySeverity,
-      issues: analysis.issues,
-      durationMs: analysis.durationMs,
-      timestamp: analysis.timestamp.toISOString(),
+      issues,
+      durationMs,
+      timestamp: report.analyzedAt.toISOString(),
     });
     ctx.sessions.setActive(session);
     await ctx.sessions.save(session);
 
-    formatAnalysis(analysis, onLine);
+    const transformsHit = [...new Set(report.findings.map((f) => f.transformId))];
+    onLine(
+      `  Scanned ${report.findings.length} pattern(s) in ${filesAnalyzed} file(s).`,
+      theme.colors.success,
+    );
+    if (transformsHit.length > 0) {
+      onLine(`  ${theme.symbols.bullet} ${transformsHit.join(', ')}`, theme.colors.textDim);
+    }
+    formatAnalysis(analysisResult, onLine);
     onLine('', undefined);
     onLine(
-      `  ${theme.symbols.pass}  Session ${session.id}  —  ${analysis.issues.length} issues found. Opening browser…`,
+      `  ${theme.symbols.pass}  Session ${session.id}  —  ${issues.length} issues found. Opening browser…`,
       theme.colors.textDim,
     );
     onLine('', undefined);
