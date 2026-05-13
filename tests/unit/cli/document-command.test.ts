@@ -99,4 +99,51 @@ describe('runDocumentCommand', () => {
       'single transform applied',
     );
   });
+
+  it('routes all output through deps.out when provided (REPL bridge)', async () => {
+    // Regression for the bug where the REPL invoked runDocumentCommand and
+    // the raw process.stdout.write calls vanished into Ink's render buffer.
+    // With deps.out the REPL captures the stream and re-emits via onLine.
+    const root = await mkTmp();
+    const filePath = path.join(root, 'a.py');
+    await fs.writeFile(filePath, 'def f():\n    return 2\n');
+    await persistLastApply({
+      projectRoot: root,
+      verifiedAt: new Date().toISOString(),
+      changes: [
+        {
+          path: filePath,
+          oldContent: 'def f():\n    return 1\n',
+          newContent: 'def f():\n    return 2\n',
+          transformId: 'format_to_fstring',
+        },
+      ],
+    });
+    const captured: Array<{ text: string; stream: 'stdout' | 'stderr' }> = [];
+    const code = await runDocumentCommand([root], {
+      providerOverride: new MockLLMProvider((p) =>
+        p.includes('CHANGELOG') ? '- entry' : 'Return two.',
+      ),
+      out: (text, stream) => captured.push({ text, stream }),
+    });
+    expect(code).toBe(0);
+    // Default process.stdout.write should NOT have been called when out is provided.
+    expect(stdoutSpy).not.toHaveBeenCalled();
+    // The dry-run summary lines all routed through the sink.
+    const stdoutChunks = captured.filter((c) => c.stream === 'stdout').map((c) => c.text);
+    expect(stdoutChunks.some((t) => t.includes('docstring(s) ready'))).toBe(true);
+    expect(stdoutChunks.some((t) => t.includes('CHANGELOG entry'))).toBe(true);
+  });
+
+  it('routes the no-snapshot error through deps.out as stderr', async () => {
+    const root = await mkTmp();
+    const captured: Array<{ text: string; stream: 'stdout' | 'stderr' }> = [];
+    const code = await runDocumentCommand([root], {
+      out: (text, stream) => captured.push({ text, stream }),
+    });
+    expect(code).toBe(8);
+    expect(stderrSpy).not.toHaveBeenCalled();
+    const stderrChunks = captured.filter((c) => c.stream === 'stderr').map((c) => c.text);
+    expect(stderrChunks.some((t) => t.includes('No verified refactor'))).toBe(true);
+  });
 });

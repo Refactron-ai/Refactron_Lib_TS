@@ -27,8 +27,27 @@ import { requireAuth } from './auth-gate.js';
 import { loadRefactronConfig } from './config-loader.js';
 import { loadLastApply } from './last-apply.js';
 
+/** Sink for runDocumentCommand's human-readable output.
+ *  Each call corresponds to one chunk of text already terminated with '\n'
+ *  (matching the existing `process.stdout.write(s + '\n')` shape). The REPL
+ *  passes a sink that splits chunks on newlines and re-emits via onLine; the
+ *  one-shot CLI uses the default which forwards directly to process.stdout /
+ *  process.stderr.
+ *
+ *  Without this seam, the REPL invoked runDocumentCommand and the raw stdout
+ *  writes vanished into Ink's render buffer — `document` looked like it did
+ *  nothing even though CHANGELOG.md was being updated under the hood.
+ */
+export type DocumentOutputSink = (text: string, stream: 'stdout' | 'stderr') => void;
+
+const defaultOutputSink: DocumentOutputSink = (text, stream) => {
+  if (stream === 'stderr') process.stderr.write(text);
+  else process.stdout.write(text);
+};
+
 export interface RunDocumentCommandDeps {
   providerOverride?: LLMProvider;
+  out?: DocumentOutputSink;
 }
 
 interface ParsedFlags {
@@ -104,12 +123,13 @@ export async function runDocumentCommand(
   argv: string[],
   deps: RunDocumentCommandDeps = {},
 ): Promise<number> {
+  const out = deps.out ?? defaultOutputSink;
   let flags: ParsedFlags;
   try {
     flags = parseFlags(argv);
   } catch (err) {
     if (err instanceof DocumentFlagError) {
-      process.stderr.write(`refactron document: ${err.message}\n`);
+      out(`refactron document: ${err.message}\n`, 'stderr');
       return 10;
     }
     throw err;
@@ -122,8 +142,9 @@ export async function runDocumentCommand(
 
   const snapshot = await loadLastApply(target);
   if (snapshot === null) {
-    process.stderr.write(
+    out(
       "refactron document: No verified refactor in this project — run 'run --apply' first.\n",
+      'stderr',
     );
     return 8;
   }
@@ -133,7 +154,7 @@ export async function runDocumentCommand(
     config = await loadRefactronConfig(target);
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    process.stderr.write(`refactron document: ${msg}\n`);
+    out(`refactron document: ${msg}\n`, 'stderr');
     return 10;
   }
 
@@ -155,7 +176,7 @@ export async function runDocumentCommand(
       provider = pickProvider(providerConfig, process.env);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      process.stderr.write(`refactron document: ${msg}\n`);
+      out(`refactron document: ${msg}\n`, 'stderr');
       return 9;
     }
   }
@@ -193,18 +214,18 @@ export async function runDocumentCommand(
 
   // ── Output / apply ────────────────────────────────────────────────────────
   if (flags.json) {
-    process.stdout.write(JSON.stringify(patch, null, 2) + '\n');
+    out(JSON.stringify(patch, null, 2) + '\n', 'stdout');
     return 0;
   }
 
   if (!flags.apply) {
-    process.stdout.write(`refactron document: ${patch.docstrings.length} docstring(s) ready\n`);
+    out(`refactron document: ${patch.docstrings.length} docstring(s) ready\n`, 'stdout');
     for (const d of patch.docstrings) {
-      process.stdout.write(`  - ${path.relative(target, d.file)} :: ${d.symbol}\n`);
+      out(`  - ${path.relative(target, d.file)} :: ${d.symbol}\n`, 'stdout');
     }
-    process.stdout.write('\nCHANGELOG entry:\n');
-    process.stdout.write(`${patch.changelogEntry}\n`);
-    process.stdout.write('\nRe-run with --apply to write docstrings and CHANGELOG.md.\n');
+    out('\nCHANGELOG entry:\n', 'stdout');
+    out(`${patch.changelogEntry}\n`, 'stdout');
+    out('\nRe-run with --apply to write docstrings and CHANGELOG.md.\n', 'stdout');
     return 0;
   }
 
@@ -243,8 +264,9 @@ export async function runDocumentCommand(
   const newChangelog = appendChangelog(existingChangelog, [patch.changelogEntry], today);
   await writeAtomic(changelogPath, newChangelog);
 
-  process.stdout.write(
+  out(
     `refactron document: wrote ${patch.docstrings.length} docstring(s) and updated CHANGELOG.md\n`,
+    'stdout',
   );
   return 0;
 }

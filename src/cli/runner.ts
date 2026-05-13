@@ -606,12 +606,25 @@ export async function executeCommand(
     if (typeof providerFlag === 'string') argv.push('--provider', providerFlag);
     const modelFlag = flags['model'];
     if (typeof modelFlag === 'string') argv.push('--model', modelFlag);
-    const code = await runDocumentCommand(argv);
-    if (code === 8) {
-      onLine('No verified refactor in this project — run `run --apply` first.', theme.colors.error);
-    } else if (code === 7) {
+    // Bridge runDocumentCommand's stdout/stderr stream into the REPL's onLine
+    // callback. Without this seam, raw process.stdout.write calls vanish into
+    // Ink's render buffer — `document` looked like it did nothing even though
+    // CHANGELOG.md was being updated under the hood.
+    const code = await runDocumentCommand(argv, {
+      out: (text, stream) => {
+        const color = stream === 'stderr' ? theme.colors.error : undefined;
+        // The CLI writes chunks already terminated with '\n'. Split on \n so
+        // each line becomes its own onLine call; drop the trailing empty
+        // produced by the terminating newline.
+        const lines = text.split('\n');
+        if (lines.length > 0 && lines[lines.length - 1] === '') lines.pop();
+        for (const line of lines) onLine(line, color);
+      },
+    });
+    if (code === 7) {
       onLine('Not authenticated. Run `refactron login` first.', theme.colors.error);
-    } else if (code !== 0) {
+    } else if (code !== 0 && code !== 8) {
+      // exit 8 (no last-apply snapshot) already produced its own stderr line via the sink
       onLine(`document exited ${code}`, theme.colors.error);
     }
     return {};
