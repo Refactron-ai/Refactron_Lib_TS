@@ -11,6 +11,11 @@ import { writeBatchAtomic } from '../verify/atomic-batch-writer.js';
 import type { FileChange, TransformId } from '../contracts.js';
 import { findingsToIssues } from './v2-adapters.js';
 import { persistLastApply } from './last-apply.js';
+import {
+  formatGateProgress,
+  formatVerifySuccess,
+  formatVerifyFailure,
+} from './format-verify.js';
 import * as fsp from 'node:fs/promises';
 import { WorkSessionManager } from '../session/manager.js';
 import type { WorkSession } from '../session/types.js';
@@ -500,23 +505,25 @@ export async function executeCommand(
     }
 
     onLine(`  Verifying ${plan.changes.length} change(s) …`, theme.colors.textDim);
-    const verifier = new RefactronVerifier({ projectRoot: sessionTarget });
+    let capturedShadowRoot: string | null = null;
+    const verifier = new RefactronVerifier({
+      projectRoot: sessionTarget,
+      onGateComplete: (gate, gateResult) => {
+        for (const line of formatGateProgress(gate, gateResult)) {
+          onLine(line.text, line.color);
+        }
+      },
+      onShadowRoot: (p) => {
+        capturedShadowRoot = p;
+      },
+    });
     const result = await verifier.verify(plan);
     if (signal.aborted) return {};
 
     if (!result.passed) {
-      const failed = (
-        Object.entries(result.gates) as Array<
-          [string, { passed: boolean; blockingReason?: string }]
-        >
-      ).find(([, g]) => !g.passed);
-      onLine(
-        `  ${theme.symbols.fail}  Verification failed at gate '${failed?.[0] ?? 'unknown'}': ${
-          failed?.[1].blockingReason ?? 'unknown'
-        }`,
-        theme.colors.error,
-      );
-      onLine('', undefined);
+      for (const line of formatVerifyFailure(result, plan, sessionTarget, capturedShadowRoot)) {
+        onLine(line.text, line.color);
+      }
       return {};
     }
 
@@ -531,11 +538,9 @@ export async function executeCommand(
         transformId: c.transformId,
       })),
     });
-    onLine(
-      `  ${theme.symbols.pass}  ${result.writableChanges.length} file(s) refactored and verified.`,
-      theme.colors.success,
-    );
-    onLine('', undefined);
+    for (const line of formatVerifySuccess(result, plan, sessionTarget)) {
+      onLine(line.text, line.color);
+    }
     return {};
   }
 
