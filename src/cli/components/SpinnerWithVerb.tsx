@@ -114,17 +114,22 @@ const SpinnerAnimationRow = memo(function SpinnerAnimationRow({
 });
 
 // ── Hints shown while running ───────────────────────────────────────────────
+// Refactron v2 surface: four verbs (analyze, run, document, init) + a small
+// set of session/auth helpers. Hints cover the safety story, the verbs, and
+// CI usage. No legacy/browser references.
 const HINTS = [
-  "use 'd' in the browser to preview a diff before applying",
+  'each refactor passes 3 gates (syntax · imports · tests) before any byte is written',
+  "run 'run --dry-run' first to preview the diff, then 'run --apply' to commit",
+  "scope a refactor with --transforms=format_to_fstring,class_to_dataclass (or 'all')",
+  'cross-file callers / test mocks are detected — unsafe transforms safely skip themselves',
+  'use --confidence=high|medium|low to control which findings the analyzer surfaces',
+  'failed verification leaves your originals untouched — there is nothing to roll back',
   'press Ctrl+C to cancel the current operation',
-  "run 'session list' to see all previous sessions",
-  "use 'A' in the issue browser to fix all issues at once",
-  'after analyzing, the issue browser opens automatically',
-  "use '/' in the browser to filter by file, message or severity",
-  "run 'rollback' to undo the last autofix",
-  "use 'j'/'k' or ↑/↓ to navigate issues in the browser",
-  "run 'status' to see details of the active session",
-  "press 'g' / 'G' to jump to first or last issue",
+  "run 'status' to see details of the active session, 'session list' for history",
+  'set REFACTRON_TOKEN in CI to authenticate without an interactive login',
+  "run 'init' to scaffold a .refactronrc.json with project defaults",
+  '10 deterministic AST transforms — 5 Python (via LibCST) + 5 TypeScript (via ts-morph)',
+  'atomic batch write: either every file commits or none — no half-applied refactors',
 ];
 
 // ── HintRow — rotates every 4s, self-managing ───────────────────────────────
