@@ -11,10 +11,15 @@ async function tmp(content: string): Promise<string> {
   return p;
 }
 
+// Forward-slash the path so the inlined Python string doesn't interpret
+// Windows backslashes as escape sequences (e.g. `\a`, `\t`). Python on
+// Windows accepts forward slashes in paths.
+const PY_DIR = path.resolve('src/transform/transforms/python/_py').replace(/\\/g, '/');
+
 // A stub sidecar inlined for the test — just echoes source unchanged with empty preconditions.
 const STUB = `
 import sys
-sys.path.insert(0, '${path.resolve('src/transform/transforms/python/_py')}')
+sys.path.insert(0, '${PY_DIR}')
 from _base import read_source, emit
 emit(ok=True, new_content=read_source(sys.argv[1]), preconditions=[])
 `;
