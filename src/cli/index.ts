@@ -57,6 +57,11 @@ if (cmd === 'run') {
   process.exit(code);
 }
 
+if (cmd === 'init') {
+  const { runInitCommand } = await import('./init-command.js');
+  process.exit(await runInitCommand(process.argv.slice(3)));
+}
+
 if (cmd === 'login' && process.argv.includes('--print-token')) {
   const { runLoginFlow } = await import('../auth/device-auth.js');
   const { creds } = await runLoginFlow(false, () => {});
@@ -66,8 +71,8 @@ if (cmd === 'login' && process.argv.includes('--print-token')) {
 
 // v2.0 subcommands not yet wired into the CLI. Reject them deterministically so
 // platforms whose stdin EOF makes the REPL fallback exit 0 don't mask the gap.
-// `document` lands in Week 6; `init` in Week 5.
-const V2_PENDING = new Set(['document', 'init']);
+// `document` lands in Week 6.
+const V2_PENDING = new Set(['document']);
 if (cmd !== undefined && V2_PENDING.has(cmd)) {
   process.stderr.write(`refactron: subcommand '${cmd}' is not yet implemented in this build.\n`);
   process.exit(13);
