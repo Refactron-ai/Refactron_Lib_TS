@@ -1,0 +1,80 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`refactron golden e2e > run --apply produces verified, behavior-preserving output on python-legacy-mini 1`] = `
+"Index: formatting.py
+===================================================================
+--- formatting.py	
++++ formatting.py	
+@@ -6,9 +6,9 @@
+ 
+ def greet(name):
+     # Old percent-formatting style.
+-    return "hello %s" % name
++    return f"hello {name}"
+ 
+ 
+ def format_value(x):
+     # Old str.format style.
+-    return "value is {}".format(x)
++    return f"value is {x}"
+
+Index: models.py
+===================================================================
+--- models.py	
++++ models.py	
+@@ -1,15 +1,17 @@
++from dataclasses import dataclass
++from typing import Any
+ """Legacy data-holder classes with trivial __init__ assignments."""
+ 
+ 
++@dataclass
+ class User:
+-    def __init__(self, id, name, email):
+-        self.id = id
+-        self.name = name
+-        self.email = email
++    id: Any
++    name: Any
++    email: Any
+ 
+ 
++@dataclass
+ class Address:
+-    def __init__(self, street, city, zip):
+-        self.street = street
+-        self.city = city
+-        self.zip = zip
++    street: Any
++    city: Any
++    zip: Any
+
+Index: typecheck.py
+===================================================================
+--- typecheck.py	
++++ typecheck.py	
+@@ -1,16 +1,18 @@
++from dataclasses import dataclass
++from typing import Any
+ """Legacy isinstance-chain dispatch over a small shape hierarchy."""
+ 
+ import math
+ 
+ 
++@dataclass
+ class Circle:
+-    def __init__(self, radius):
+-        self.radius = radius
++    radius: Any
+ 
+ 
++@dataclass
+ class Square:
+-    def __init__(self, side):
+-        self.side = side
++    side: Any
+ 
+ 
+ def area(shape):
+"
+`;
