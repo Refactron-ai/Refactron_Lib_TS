@@ -6,16 +6,16 @@ const NODE_GLOBALS_RE = /\b(__dirname|__filename)\b/;
 // `require(` not followed by a string literal — i.e. dynamic require.
 const DYNAMIC_REQUIRE_RE = /require\(\s*(?!['"`])/;
 
-const MODULE_EXPORTS_DEFAULT_RE =
-  /^module\.exports\s*=\s*([A-Za-z_$][\w$]*)\s*;?\s*$/;
-const MODULE_EXPORTS_OBJECT_RE =
-  /^module\.exports\s*=\s*\{([^}]*)\}\s*;?\s*$/;
-const EXPORTS_NAMED_RE =
-  /^exports\.([A-Za-z_$][\w$]*)\s*=\s*([\s\S]+?);?\s*$/;
+const MODULE_EXPORTS_DEFAULT_RE = /^module\.exports\s*=\s*([A-Za-z_$][\w$]*)\s*;?\s*$/;
+const MODULE_EXPORTS_OBJECT_RE = /^module\.exports\s*=\s*\{([^}]*)\}\s*;?\s*$/;
+const EXPORTS_NAMED_RE = /^exports\.([A-Za-z_$][\w$]*)\s*=\s*([\s\S]+?);?\s*$/;
 
 function parseShorthandObject(inner: string): string[] | null {
   // Accept only shorthand identifier members `{ a, b, c }`.
-  const parts = inner.split(',').map((p) => p.trim()).filter((p) => p.length > 0);
+  const parts = inner
+    .split(',')
+    .map((p) => p.trim())
+    .filter((p) => p.length > 0);
   const names: string[] = [];
   for (const p of parts) {
     if (!/^[A-Za-z_$][\w$]*$/.test(p)) return null;

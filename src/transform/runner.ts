@@ -24,10 +24,11 @@ export async function runPythonTransform(
     } catch {
       return {
         ok: false,
-        error: `sidecar returned non-JSON output (exit ${r.exitCode}): ${r.stderr || r.stdout}`.slice(
-          0,
-          500,
-        ),
+        error:
+          `sidecar returned non-JSON output (exit ${r.exitCode}): ${r.stderr || r.stdout}`.slice(
+            0,
+            500,
+          ),
       };
     }
   } catch (err) {

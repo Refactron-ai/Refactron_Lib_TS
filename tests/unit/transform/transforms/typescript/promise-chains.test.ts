@@ -1,7 +1,10 @@
 import { describe, it, expect } from 'vitest';
 import { transform } from '../../../../../src/transform/transforms/typescript/promise-chains.js';
 
-async function run(src: string, name = 'f.ts'): Promise<{
+async function run(
+  src: string,
+  name = 'f.ts',
+): Promise<{
   newContent: string | null;
   preconditions: { id: string; satisfied: boolean; reason?: string }[];
 }> {

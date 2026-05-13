@@ -1,7 +1,10 @@
 import { describe, it, expect } from 'vitest';
 import { transform } from '../../../../../src/transform/transforms/typescript/var-to-const-let.js';
 
-async function run(src: string, name = 'f.ts'): Promise<{
+async function run(
+  src: string,
+  name = 'f.ts',
+): Promise<{
   newContent: string | null;
   preconditions: { id: string; satisfied: boolean; reason?: string }[];
 }> {
@@ -24,8 +27,7 @@ describe('var_to_const_let (typescript)', () => {
   });
 
   it('rewrites a reassigned var to let', async () => {
-    const src =
-      'var counter = 0;\nfor (let i = 0; i < 3; i++) counter = counter + 1;\n';
+    const src = 'var counter = 0;\nfor (let i = 0; i < 3; i++) counter = counter + 1;\n';
     const r = await run(src);
     expect(r.newContent).not.toBeNull();
     expect(r.newContent).toContain('let counter = 0');

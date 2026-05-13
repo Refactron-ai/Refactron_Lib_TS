@@ -112,7 +112,10 @@ function getBodyBlockText(fn: FunctionLike): string | null {
   if (!body) return null;
   if (!Node.isBlock(body)) return null;
   // Return only the statements text, not the surrounding braces.
-  const inner = body.getStatements().map((s) => s.getText()).join('\n');
+  const inner = body
+    .getStatements()
+    .map((s) => s.getText())
+    .join('\n');
   return inner;
 }
 
@@ -131,9 +134,7 @@ export async function transform(ctx: TransformContext): Promise<TransformResult>
       ...sf.getFunctions(),
       ...sf.getDescendants().filter((n) => {
         return (
-          Node.isArrowFunction(n) ||
-          Node.isFunctionExpression(n) ||
-          Node.isMethodDeclaration(n)
+          Node.isArrowFunction(n) || Node.isFunctionExpression(n) || Node.isMethodDeclaration(n)
         );
       }),
     ] as FunctionLike[];

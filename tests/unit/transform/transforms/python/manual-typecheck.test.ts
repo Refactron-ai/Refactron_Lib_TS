@@ -24,9 +24,7 @@ describe('manual_typecheck_to_hints (python)', () => {
     expect(r.newContent).not.toBeNull();
     expect(r.newContent).toContain('def handle(x: Union[int, str])');
     expect(r.newContent).toContain('from typing import Union');
-    expect(
-      r.preconditions.some((c) => c.satisfied && /annotated:handle:x/.test(c.id)),
-    ).toBe(true);
+    expect(r.preconditions.some((c) => c.satisfied && /annotated:handle:x/.test(c.id))).toBe(true);
   });
 
   it('fails preconditions when the parameter is already annotated', async () => {

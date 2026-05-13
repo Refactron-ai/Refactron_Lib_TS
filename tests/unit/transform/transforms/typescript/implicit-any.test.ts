@@ -29,14 +29,11 @@ describe('implicit_any (typescript)', () => {
     const src = "export function id(x) { return x; }\nid(1);\nid('a');\n";
     const r = await run(src);
     expect(r.newContent).toBeNull();
-    expect(
-      r.preconditions.some((p) => p.id.startsWith('diverging-types:id:x')),
-    ).toBe(true);
+    expect(r.preconditions.some((p) => p.id.startsWith('diverging-types:id:x'))).toBe(true);
   });
 
   it('leaves already-annotated parameters alone and only annotates the bare ones', async () => {
-    const src =
-      'export function f(a: number, b) { return a + b; }\nf(1, 2);\n';
+    const src = 'export function f(a: number, b) { return a + b; }\nf(1, 2);\n';
     const r = await run(src);
     expect(r.newContent).not.toBeNull();
     // `a: number` should remain (unchanged), `b` should now be annotated `number`.

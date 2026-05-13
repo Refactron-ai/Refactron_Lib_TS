@@ -1,9 +1,4 @@
-import {
-  Node,
-  type CallExpression,
-  type FunctionDeclaration,
-  type SourceFile,
-} from 'ts-morph';
+import { Node, type CallExpression, type FunctionDeclaration, type SourceFile } from 'ts-morph';
 import type { TransformContext, TransformResult, TransformImpl } from '../../types.js';
 import { withProject, type TsPrecondition } from './_shared.js';
 
