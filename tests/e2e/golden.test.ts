@@ -99,15 +99,19 @@ describe('refactron golden e2e', () => {
     //    make `callback_to_async_await` and `deprecated_api_requests_to_httpx`
     //    safely skip themselves on files referenced from test code, rather than
     //    producing broken output. The other transforms apply as before.
-    const cli = await execa(
-      'node',
-      [cliPath, 'run', '--apply', '--transforms=all', scratch],
-      {
-        reject: false,
-        timeout: 90_000,
-        input: '',
+    // Week 5 added a hard auth gate on the one-shot CLI path. The e2e test runs
+    // without a local `~/.refactron/credentials.json`, so we provide a dummy
+    // REFACTRON_TOKEN — the gate accepts any non-empty env-supplied token (env
+    // creds skip the expiry check by design). CI overrides via its own secret.
+    const cli = await execa('node', [cliPath, 'run', '--apply', '--transforms=all', scratch], {
+      reject: false,
+      timeout: 90_000,
+      input: '',
+      env: {
+        ...process.env,
+        REFACTRON_TOKEN: process.env.REFACTRON_TOKEN ?? 'sk_test_e2e_dummy',
       },
-    );
+    });
 
     // 5. CLI gate — Week 4 closes the pipeline; this assertion now expects success.
     expect(
