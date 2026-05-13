@@ -143,7 +143,8 @@ export async function formatPlanAsDryRun(
     const shown = diffLines.slice(0, maxDiffLines);
     for (const line of shown) {
       const color = colorForDiffLine(line);
-      const rendered: RenderedLine = color === undefined ? { text: `  ${line}` } : { text: `  ${line}`, color };
+      const rendered: RenderedLine =
+        color === undefined ? { text: `  ${line}` } : { text: `  ${line}`, color };
       out.push(rendered);
     }
     if (diffLines.length > maxDiffLines) {
