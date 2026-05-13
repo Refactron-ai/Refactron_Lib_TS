@@ -10,6 +10,8 @@ import { RefactronVerifier } from '../verify/engine.js';
 import { writeBatchAtomic } from '../verify/atomic-batch-writer.js';
 import type { TransformId } from '../contracts.js';
 import { findingsToIssues } from './v2-adapters.js';
+import { persistLastApply } from './last-apply.js';
+import * as fsp from 'node:fs/promises';
 import { WorkSessionManager } from '../session/manager.js';
 import type { WorkSession } from '../session/types.js';
 import { theme } from '../ui/theme.js';
@@ -409,6 +411,20 @@ export async function executeCommand(
       return {};
     }
 
+    // Capture pre-write content for each planned path so the documentation
+    // engine (or any post-apply consumer) can reconstruct old → new diffs
+    // after writeBatchAtomic has replaced the on-disk contents.
+    const originalsBeforeWrite = new Map<string, string>();
+    for (const change of plan.changes) {
+      try {
+        const buf = await fsp.readFile(change.path, 'utf8');
+        originalsBeforeWrite.set(change.path, buf);
+      } catch {
+        // Missing/unreadable file — skip; documentation will simply not
+        // generate for this path.
+      }
+    }
+
     onLine(`  Verifying ${plan.changes.length} change(s) …`, theme.colors.textDim);
     const verifier = new RefactronVerifier({ projectRoot: sessionTarget });
     const result = await verifier.verify(plan);
@@ -431,6 +447,16 @@ export async function executeCommand(
     }
 
     await writeBatchAtomic(result.writableChanges);
+    await persistLastApply({
+      projectRoot: sessionTarget,
+      verifiedAt: new Date().toISOString(),
+      changes: result.writableChanges.map((c) => ({
+        path: c.path,
+        oldContent: originalsBeforeWrite.get(c.path) ?? '',
+        newContent: c.newContent,
+        transformId: c.transformId,
+      })),
+    });
     onLine(
       `  ${theme.symbols.pass}  ${result.writableChanges.length} file(s) refactored and verified.`,
       theme.colors.success,
