@@ -10,7 +10,8 @@ const passingGate: GateResult = { passed: true, durationMs: 42 };
 const failingGate: GateResult = {
   passed: false,
   durationMs: 1234,
-  blockingReason: 'tests fail after refactoring:\n\nFailing tests:\n  ✗ tests/unit/foo.test.ts > my test\n      AssertionError: 1 !== 2\n\nRaw tail:\nfoo bar',
+  blockingReason:
+    'tests fail after refactoring:\n\nFailing tests:\n  ✗ tests/unit/foo.test.ts > my test\n      AssertionError: 1 !== 2\n\nRaw tail:\nfoo bar',
 };
 
 const plan: RefactorPlan = {

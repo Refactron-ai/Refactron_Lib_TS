@@ -12,6 +12,32 @@ import { requireAuth } from './auth-gate.js';
 import { loadRefactronConfig } from './config-loader.js';
 import { persistLastApply } from './last-apply.js';
 import { scopePlanChanges } from './runner.js';
+import { formatGateProgress, formatVerifySuccess, formatVerifyFailure } from './format-verify.js';
+import { theme } from '../ui/theme.js';
+
+// Minimal hex → basic ANSI mapping. Headless or NO_COLOR environments get
+// plain text; otherwise we tint a handful of semantic colors. This is
+// intentionally tiny — full theme fidelity in the one-shot CLI isn't worth
+// pulling chalk for.
+const ANSI_RESET = '\x1b[0m';
+// Note: theme.colors.accent and theme.colors.brand share the same hex; we
+// pick one ANSI mapping per hex value. theme.colors.text is left unmapped
+// so default terminal foreground wins.
+const HEX_TO_ANSI: Record<string, string> = {};
+HEX_TO_ANSI[theme.colors.success] = '\x1b[32m'; // green
+HEX_TO_ANSI[theme.colors.error] = '\x1b[31m'; // red
+HEX_TO_ANSI[theme.colors.warning] = '\x1b[33m'; // yellow
+HEX_TO_ANSI[theme.colors.accent] = '\x1b[36m'; // cyan
+HEX_TO_ANSI[theme.colors.textDim] = '\x1b[90m'; // gray
+
+function applyColor(text: string, color?: string): string {
+  if (color === undefined) return text;
+  if (process.env['NO_COLOR']) return text;
+  if (!process.stdout.isTTY) return text;
+  const code = HEX_TO_ANSI[color];
+  if (!code) return text;
+  return `${code}${text}${ANSI_RESET}`;
+}
 
 // Markers that identify a project root. Walked up from a file argument to find
 // the right directory to hand to the analyzer/refactorer/verifier.
@@ -256,15 +282,33 @@ export async function runRunCommand(argv: string[]): Promise<number> {
     }
   }
 
-  const verifierOpts: { projectRoot: string; testCmd?: string } = { projectRoot };
+  let capturedShadowRoot: string | null = null;
+  const verifierOpts: {
+    projectRoot: string;
+    testCmd?: string;
+    onGateComplete: (
+      gate: 'syntax' | 'imports' | 'tests',
+      g: import('../contracts.js').GateResult,
+    ) => void;
+    onShadowRoot: (p: string) => void;
+  } = {
+    projectRoot,
+    onGateComplete: (gate, g) => {
+      for (const line of formatGateProgress(gate, g)) {
+        process.stdout.write(applyColor(line.text, line.color) + '\n');
+      }
+    },
+    onShadowRoot: (p) => {
+      capturedShadowRoot = p;
+    },
+  };
   if (testCmd) verifierOpts.testCmd = testCmd;
   const verifier = new RefactronVerifier(verifierOpts);
   const result = await verifier.verify(plan);
   if (!result.passed) {
-    const failed = Object.entries(result.gates).find(([, g]) => !g.passed);
-    process.stderr.write(
-      `refactron run: verification failed at gate '${failed?.[0] ?? 'unknown'}': ${failed?.[1].blockingReason ?? 'unknown'}\n`,
-    );
+    for (const line of formatVerifyFailure(result, plan, projectRoot, capturedShadowRoot)) {
+      process.stderr.write(applyColor(line.text, line.color) + '\n');
+    }
     return 1;
   }
   await writeBatchAtomic(result.writableChanges);
@@ -278,8 +322,8 @@ export async function runRunCommand(argv: string[]): Promise<number> {
       transformId: c.transformId,
     })),
   });
-  process.stdout.write(
-    `refactron run: ${result.writableChanges.length} file(s) refactored and verified\n`,
-  );
+  for (const line of formatVerifySuccess(result, plan, projectRoot)) {
+    process.stdout.write(applyColor(line.text, line.color) + '\n');
+  }
   return 0;
 }

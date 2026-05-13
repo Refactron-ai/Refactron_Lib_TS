@@ -11,11 +11,7 @@ import { writeBatchAtomic } from '../verify/atomic-batch-writer.js';
 import type { FileChange, TransformId } from '../contracts.js';
 import { findingsToIssues } from './v2-adapters.js';
 import { persistLastApply } from './last-apply.js';
-import {
-  formatGateProgress,
-  formatVerifySuccess,
-  formatVerifyFailure,
-} from './format-verify.js';
+import { formatGateProgress, formatVerifySuccess, formatVerifyFailure } from './format-verify.js';
 import * as fsp from 'node:fs/promises';
 import { WorkSessionManager } from '../session/manager.js';
 import type { WorkSession } from '../session/types.js';
