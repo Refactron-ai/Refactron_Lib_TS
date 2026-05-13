@@ -3,6 +3,71 @@ import type { TransformContext, TransformResult, TransformImpl } from '../../typ
 import { withProject, type TsPrecondition } from './_shared.js';
 
 const NODE_GLOBALS_RE = /\b(__dirname|__filename)\b/;
+
+// Node.js builtin modules. ESM requires the `node:` prefix to disambiguate
+// builtins from user modules of the same name. Sourced from
+// require('module').builtinModules (Node 20). Kept inline so the transform
+// has no runtime dependency on `module`.
+const NODE_BUILTINS = new Set([
+  'assert',
+  'async_hooks',
+  'buffer',
+  'child_process',
+  'cluster',
+  'console',
+  'constants',
+  'crypto',
+  'dgram',
+  'diagnostics_channel',
+  'dns',
+  'domain',
+  'events',
+  'fs',
+  'fs/promises',
+  'http',
+  'http2',
+  'https',
+  'inspector',
+  'module',
+  'net',
+  'os',
+  'path',
+  'path/posix',
+  'path/win32',
+  'perf_hooks',
+  'process',
+  'punycode',
+  'querystring',
+  'readline',
+  'readline/promises',
+  'repl',
+  'stream',
+  'stream/consumers',
+  'stream/promises',
+  'stream/web',
+  'string_decoder',
+  'sys',
+  'timers',
+  'timers/promises',
+  'tls',
+  'trace_events',
+  'tty',
+  'url',
+  'util',
+  'util/types',
+  'v8',
+  'vm',
+  'wasi',
+  'worker_threads',
+  'zlib',
+]);
+
+function esmSpec(spec: string): string {
+  // Builtins get the `node:` prefix per modern ESM convention. Relative and
+  // package specifiers pass through unchanged.
+  if (NODE_BUILTINS.has(spec) && !spec.startsWith('node:')) return `node:${spec}`;
+  return spec;
+}
 // `require(` not followed by a string literal — i.e. dynamic require.
 const DYNAMIC_REQUIRE_RE = /require\(\s*(?!['"`])/;
 
@@ -74,9 +139,10 @@ export async function transform(ctx: TransformContext): Promise<TransformResult>
       if (arg === undefined || !Node.isStringLiteral(arg)) continue;
       const moduleSpec = arg.getLiteralValue();
 
+      const importSpec = esmSpec(moduleSpec);
       const nameNode = decl.getNameNode();
       if (Node.isIdentifier(nameNode)) {
-        vs.replaceWithText(`import ${nameNode.getText()} from '${moduleSpec}';`);
+        vs.replaceWithText(`import ${nameNode.getText()} from '${importSpec}';`);
         changed = true;
       } else if (Node.isObjectBindingPattern(nameNode)) {
         const names: string[] = [];
@@ -101,7 +167,7 @@ export async function transform(ctx: TransformContext): Promise<TransformResult>
           });
           continue;
         }
-        vs.replaceWithText(`import { ${names.join(', ')} } from '${moduleSpec}';`);
+        vs.replaceWithText(`import { ${names.join(', ')} } from '${importSpec}';`);
         changed = true;
       }
     }

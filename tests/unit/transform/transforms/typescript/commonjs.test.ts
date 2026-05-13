@@ -26,17 +26,32 @@ describe('commonjs_to_esm (typescript)', () => {
     ].join('\n');
     const r = await run(src);
     expect(r.newContent).not.toBeNull();
-    expect(r.newContent).toContain("import path from 'path';");
+    // Node builtins get the `node:` prefix per modern ESM convention.
+    expect(r.newContent).toContain("import path from 'node:path';");
     expect(r.newContent).toContain('export { joinPath };');
     expect(r.newContent).not.toMatch(/module\.exports/);
     expect(r.newContent).not.toMatch(/=\s*require\(/);
   });
 
-  it('rewrites destructured require to named import', async () => {
+  it('rewrites destructured require to named import (with node: prefix for builtins)', async () => {
     const src = "const { join } = require('path');\n";
     const r = await run(src);
     expect(r.newContent).not.toBeNull();
-    expect(r.newContent).toContain("import { join } from 'path';");
+    expect(r.newContent).toContain("import { join } from 'node:path';");
+  });
+
+  it('leaves user-module specifiers unprefixed', async () => {
+    const src = "const x = require('./utils');\nmodule.exports = x;\n";
+    const r = await run(src);
+    expect(r.newContent).not.toBeNull();
+    expect(r.newContent).toContain("import x from './utils';");
+  });
+
+  it('leaves package specifiers unprefixed', async () => {
+    const src = "const lodash = require('lodash');\nmodule.exports = lodash;\n";
+    const r = await run(src);
+    expect(r.newContent).not.toBeNull();
+    expect(r.newContent).toContain("import lodash from 'lodash';");
   });
 
   it('rewrites module.exports = identifier to export default', async () => {
