@@ -1,13 +1,46 @@
 import os
+import re
 import sys
 
 sys.path.insert(0, os.path.dirname(__file__))
 from _base import read_source, emit  # noqa: E402
+from _cross_file import load_cross_file  # noqa: E402
 
 import libcst as cst  # noqa: E402
 import libcst.matchers as m  # noqa: E402
 
 MAPPING = {"requests": "httpx"}
+
+
+def module_name_from_path(rel_path):
+    """`legacy_http.py` -> `legacy_http`. `pkg/foo.py` -> `pkg.foo`. Drops `__init__`."""
+    no_ext = rel_path[:-3] if rel_path.endswith(".py") else rel_path
+    parts = no_ext.replace("\\", "/").split("/")
+    if parts and parts[-1] == "__init__":
+        parts = parts[:-1]
+    return ".".join(parts)
+
+
+def find_external_string_refs(this_rel_path, deprecated_module_name, cross_file):
+    """Return external relpaths that reference `<this_module>.<deprecated_module>` in any
+    context — attribute access, string literal inside `patch(...)`, anything. Conservative
+    string scan; over-skip beats under-skip.
+    """
+    if not cross_file:
+        return []
+    this_mod = module_name_from_path(this_rel_path)
+    if not this_mod:
+        return []
+    pattern = re.compile(
+        r"\b" + re.escape(this_mod) + r"\." + re.escape(deprecated_module_name) + r"\b"
+    )
+    refs = []
+    for rel, content in (cross_file.get("files") or {}).items():
+        if rel == this_rel_path:
+            continue
+        if pattern.search(content):
+            refs.append(rel)
+    return refs
 
 
 def _name_to_str(node) -> str:
@@ -114,15 +147,23 @@ class RewriteCalls(cst.CSTTransformer):
 
 def main():
     if len(sys.argv) < 2:
-        emit(ok=False, error="usage: deprecated_api.py <file>")
+        emit(ok=False, error="usage: deprecated_api.py <file> [cross_file_json]")
         return
     path = sys.argv[1]
+    cross_file = load_cross_file(2)
     src = read_source(path)
     try:
         module = cst.parse_module(src)
     except cst.ParserSyntaxError as e:
         emit(ok=False, error=f"parse error: {e}")
         return
+
+    # Determine this file's project-relative path from the cross-file context.
+    this_rel = None
+    if cross_file:
+        root = cross_file.get("projectRoot") or ""
+        if root and path.startswith(root):
+            this_rel = os.path.relpath(path, root).replace(os.sep, "/")
 
     aliases = collect_aliases(module)
     # Also detect from-imports of deprecated modules (they don't introduce module aliases
@@ -157,6 +198,24 @@ def main():
                 }
             )
             blocked = True
+
+    # Cross-file precondition: if any external file references `<this_module>.<deprecated_module>`
+    # (attribute access, string literal in `patch(...)`, etc.), refuse to rewrite.
+    if this_rel and cross_file:
+        for deprecated_module in MAPPING.keys():
+            refs = find_external_string_refs(this_rel, deprecated_module, cross_file)
+            if refs:
+                preconditions.append(
+                    {
+                        "id": f"external-string-refs:{deprecated_module}",
+                        "satisfied": False,
+                        "reason": (
+                            f"module {deprecated_module} referenced from "
+                            f"{len(refs)} external file(s): {','.join(refs[:3])}"
+                        ),
+                    }
+                )
+                blocked = True
 
     if blocked:
         emit(ok=True, new_content="", preconditions=preconditions)
