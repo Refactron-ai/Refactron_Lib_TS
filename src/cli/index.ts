@@ -57,6 +57,13 @@ if (cmd === 'run') {
   process.exit(code);
 }
 
+if (cmd === 'login' && process.argv.includes('--print-token')) {
+  const { runLoginFlow } = await import('../auth/device-auth.js');
+  const { creds } = await runLoginFlow(false, () => {});
+  process.stdout.write((creds?.access_token ?? '') + '\n');
+  process.exit(creds?.access_token ? 0 : 1);
+}
+
 // v2.0 subcommands not yet wired into the CLI. Reject them deterministically so
 // platforms whose stdin EOF makes the REPL fallback exit 0 don't mask the gap.
 // `document` lands in Week 6; `init` in Week 5.
