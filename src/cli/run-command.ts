@@ -13,31 +13,7 @@ import { loadRefactronConfig } from './config-loader.js';
 import { persistLastApply } from './last-apply.js';
 import { scopePlanChanges } from './runner.js';
 import { formatGateProgress, formatVerifySuccess, formatVerifyFailure } from './format-verify.js';
-import { theme } from '../ui/theme.js';
-
-// Minimal hex → basic ANSI mapping. Headless or NO_COLOR environments get
-// plain text; otherwise we tint a handful of semantic colors. This is
-// intentionally tiny — full theme fidelity in the one-shot CLI isn't worth
-// pulling chalk for.
-const ANSI_RESET = '\x1b[0m';
-// Note: theme.colors.accent and theme.colors.brand share the same hex; we
-// pick one ANSI mapping per hex value. theme.colors.text is left unmapped
-// so default terminal foreground wins.
-const HEX_TO_ANSI: Record<string, string> = {};
-HEX_TO_ANSI[theme.colors.success] = '\x1b[32m'; // green
-HEX_TO_ANSI[theme.colors.error] = '\x1b[31m'; // red
-HEX_TO_ANSI[theme.colors.warning] = '\x1b[33m'; // yellow
-HEX_TO_ANSI[theme.colors.accent] = '\x1b[36m'; // cyan
-HEX_TO_ANSI[theme.colors.textDim] = '\x1b[90m'; // gray
-
-function applyColor(text: string, color?: string): string {
-  if (color === undefined) return text;
-  if (process.env['NO_COLOR']) return text;
-  if (!process.stdout.isTTY) return text;
-  const code = HEX_TO_ANSI[color];
-  if (!code) return text;
-  return `${code}${text}${ANSI_RESET}`;
-}
+import { applyColor } from './apply-color.js';
 
 // Markers that identify a project root. Walked up from a file argument to find
 // the right directory to hand to the analyzer/refactorer/verifier.
