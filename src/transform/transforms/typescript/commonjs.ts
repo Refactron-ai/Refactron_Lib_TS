@@ -1,4 +1,4 @@
-import { Node, type SourceFile } from 'ts-morph';
+import { Node, SyntaxKind, type SourceFile } from 'ts-morph';
 import type { TransformContext, TransformResult, TransformImpl } from '../../types.js';
 import { withProject, type TsPrecondition } from './_shared.js';
 
@@ -57,7 +57,9 @@ export async function transform(ctx: TransformContext): Promise<TransformResult>
     let changed = false;
 
     // Pass 1: rewrite `const x = require('y')` and `const { a, b } = require('y')`.
-    for (const vs of sf.getVariableStatements()) {
+    // Use getDescendantsOfKind so we catch require() calls inside functions/blocks
+    // too — getVariableStatements() is top-level only.
+    for (const vs of sf.getDescendantsOfKind(SyntaxKind.VariableStatement)) {
       const decls = vs.getDeclarations();
       if (decls.length !== 1) continue;
       const decl = decls[0];

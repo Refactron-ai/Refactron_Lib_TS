@@ -158,10 +158,10 @@ export function IssueBrowser({
         const plan = await buildPlan(new Set([issue.file]), [transformId]);
         if (plan.changes.length === 0) {
           const skip = plan.preconditions.find((p) => !p.satisfied);
-          pushStatus(
-            `  Skipped — ${skip?.reason ?? 'precondition failed or no change needed'}.`,
-            theme.colors.warning,
-          );
+          const msg = skip?.reason
+            ? `Skipped — ${skip.reason}.`
+            : `No diff produced — the v2 transform may not yet handle this finding's context (e.g. nested expression, top-level-only LibCST command). Detector saw a pattern; transform declined to rewrite.`;
+          pushStatus(`  ${msg}`, theme.colors.warning);
           setIsWorking(false);
           setWorkingLabel('');
           return;
