@@ -3,7 +3,7 @@
 // and documenter option types. HTTP plumbing, retries, timeouts live inside
 // each provider implementation.
 
-export type ProviderName = 'ollama' | 'openai' | 'anthropic' | 'mock';
+export type ProviderName = 'ollama' | 'openai' | 'anthropic' | 'groq' | 'mock';
 
 export interface GenerateOptions {
   model: string;

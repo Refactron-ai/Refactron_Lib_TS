@@ -7,9 +7,10 @@ import type { LLMProvider } from '../types.js';
 import { OllamaProvider } from './ollama.js';
 import { OpenAIProvider } from './openai.js';
 import { AnthropicProvider } from './anthropic.js';
+import { GroqProvider } from './groq.js';
 
 export interface ProviderConfig {
-  provider: 'ollama' | 'openai' | 'anthropic';
+  provider: 'ollama' | 'openai' | 'anthropic' | 'groq';
   model: string;
   endpoint: string | null;
 }
@@ -27,6 +28,14 @@ export function pickProvider(cfg: ProviderConfig, env: NodeJS.ProcessEnv): LLMPr
       throw new Error("documentation.provider='openai' requires OPENAI_API_KEY in the environment");
     }
     return new OpenAIProvider({ apiKey });
+  }
+
+  if (cfg.provider === 'groq') {
+    const apiKey = env.GROQ_API_KEY;
+    if (!apiKey) {
+      throw new Error("documentation.provider='groq' requires GROQ_API_KEY in the environment");
+    }
+    return new GroqProvider(cfg.endpoint ? { apiKey, endpoint: cfg.endpoint } : { apiKey });
   }
 
   // anthropic

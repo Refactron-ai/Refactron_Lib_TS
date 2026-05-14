@@ -65,4 +65,36 @@ describe('pickProvider', () => {
       ),
     ).toThrow(/ANTHROPIC_API_KEY/);
   });
+
+  it('returns GroqProvider when configured + GROQ_API_KEY set', () => {
+    process.env.GROQ_API_KEY = 'gsk_test';
+    const p = pickProvider(
+      { provider: 'groq', model: 'llama-3.3-70b-versatile', endpoint: null },
+      process.env,
+    );
+    expect(p.name).toBe('groq');
+  });
+
+  it('throws when groq configured without GROQ_API_KEY', () => {
+    delete process.env.GROQ_API_KEY;
+    expect(() =>
+      pickProvider(
+        { provider: 'groq', model: 'llama-3.3-70b-versatile', endpoint: null },
+        process.env,
+      ),
+    ).toThrow(/GROQ_API_KEY/);
+  });
+
+  it('GroqProvider honors a custom endpoint when supplied (e.g. for proxies)', () => {
+    process.env.GROQ_API_KEY = 'gsk_test';
+    const p = pickProvider(
+      {
+        provider: 'groq',
+        model: 'llama-3.3-70b-versatile',
+        endpoint: 'https://my-proxy.example.com/openai/v1/chat/completions',
+      },
+      process.env,
+    );
+    expect(p.name).toBe('groq');
+  });
 });
