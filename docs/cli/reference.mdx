@@ -1,0 +1,255 @@
+---
+title: CLI Reference
+description: Every Refactron command, flag, and exit code.
+---
+
+Refactron is a single binary, `refactron`, with two execution modes:
+
+- **One-shot:** `refactron <command> [flags]` runs the command and exits.
+- **Interactive REPL:** `refactron` (no command) drops you into a `❯` prompt that accepts the same verb names.
+
+The verbs in this reference work in both modes unless noted otherwise.
+
+## `analyze`
+
+```bash
+refactron analyze [target] [flags]
+```
+
+Read-only scan. Detects transform patterns across the project, prints findings, creates a session under `.refactron/work-sessions/`, and exits. Never mutates anything.
+
+| Flag | Type | Default | Description |
+|---|---|---|---|
+| `--json` | bool | false | Emit findings as JSON to stdout instead of the formatted report. |
+| `--confidence` | `high \| medium \| low` | `high` | Minimum analyzer confidence to surface. Lower = noisier. |
+| `--fail-on` | `high \| medium \| low` | none | Exit non-zero if any finding meets or exceeds this confidence. |
+| `--graph=<path>` | path | none | Also write the analysis report (with import/call graphs) as JSON to `<path>`. |
+
+<CodeGroup>
+```bash one-shot
+refactron analyze src/
+refactron analyze . --json > report.json
+refactron analyze . --fail-on high   # CI gate
+```
+
+```bash REPL
+❯ analyze .
+❯ analyze src/
+```
+</CodeGroup>
+
+**Exit codes:** `0` clean; `1` `--fail-on` matched; `2` flag parse error.
+
+---
+
+## `run`
+
+```bash
+refactron run [target] [flags]
+```
+
+Plan + verify + (optionally) apply transforms. Without `--apply`, runs as a dry-run and prints unified diffs.
+
+| Flag | Type | Default | Description |
+|---|---|---|---|
+| `--apply` | bool | false | After verification passes, write the changes atomically. |
+| `--dry-run` | bool | true | Show the diff without writing. Mutually exclusive with `--apply`. |
+| `--transforms=<list>` | csv or `all` | `all` | Limit to specific [transform IDs](/transforms). |
+| `--confidence` | `high \| medium \| low` | `high` | Analyzer confidence threshold (overrides `.refactronrc.json`). |
+| `--test-cmd` | string | auto-detect | Override the test runner used by Gate 3 (overrides `.refactronrc.json`). |
+| `--diff-context=<n>` | int | 30 | Context lines per file in dry-run output. |
+| `--files=<glob>` | glob | none | Scope the dry-run preview to a subset of planned changes. |
+| `--json` | bool | false | Emit `{ mode, plan }` as JSON. |
+
+<CodeGroup>
+```bash one-shot
+refactron run --dry-run                       # see what would change
+refactron run --apply                          # verify + write
+refactron run --transforms=var_to_const_let,implicit_any --apply
+refactron run src/auth/ --apply                # scoped to a directory
+```
+
+```bash REPL
+❯ run                  # dry-run
+❯ run --apply
+❯ run --transforms=callback_to_async_await --apply
+```
+</CodeGroup>
+
+**Exit codes:** `0` plan applied (or dry-run printed); `1` verification failed (gate rejected); `2` flag parse error or missing path.
+
+---
+
+## `document`
+
+```bash
+refactron document [target] [flags]
+```
+
+Reads `.refactron/last-apply.json` (the snapshot from the most recent `run --apply`), generates docstrings + a CHANGELOG entry via the configured LLM provider, and either prints (`--dry-run`, default) or writes (`--apply`).
+
+This is the only command that touches an LLM, and it operates **only on already-verified diffs** — the worst-case is a wrong docstring, never broken code.
+
+| Flag | Type | Default | Description |
+|---|---|---|---|
+| `--apply` | bool | false | Insert generated docstrings into source files; append CHANGELOG.md. |
+| `--no-cache` | bool | false | Bypass the prompt/response cache under `.refactron/cache/llm/`. |
+| `--json` | bool | false | Emit the `DocPatch` as JSON. |
+| `--provider=<name>` | `backend \| ollama \| openai \| anthropic \| groq` | `backend` | Override `.refactronrc.json`'s `documentation.provider`. |
+| `--model=<name>` | string | provider default | Override the model name. |
+
+<CodeGroup>
+```bash one-shot
+refactron document                  # dry-run, prints DocPatch
+refactron document --apply          # write docstrings + CHANGELOG
+refactron document --provider=ollama --model=qwen2.5-coder:7b --apply
+```
+
+```bash REPL
+❯ document
+❯ document --apply
+```
+</CodeGroup>
+
+**Exit codes:** `0` success (dry-run or apply); `7` not authenticated; `8` no `.refactron/last-apply.json` snapshot — run `run --apply` first; `9` provider configuration error (missing API key, factory threw); `10` flag parse error or internal error.
+
+---
+
+## `init`
+
+```bash
+refactron init [target]
+```
+
+Scaffold a `.refactronrc.json` template into the target directory (default: `.`). Errors if a config already exists.
+
+| Flag | Type | Default | Description |
+|---|---|---|---|
+| `[target]` | path | `.` | Directory to write `.refactronrc.json` into. |
+
+<CodeGroup>
+```bash one-shot
+refactron init
+refactron init my-project/
+```
+
+```bash REPL
+❯ init
+```
+</CodeGroup>
+
+**Exit codes:** `0` created; `1` config already exists.
+
+---
+
+## `login`
+
+```bash
+refactron login
+```
+
+Open the OAuth 2.0 Device Authorization flow in the browser. On success, credentials are written to `~/.refactron/credentials.json`.
+
+REPL only (also runs automatically when an unauthenticated user invokes any auth-gated command).
+
+---
+
+## `logout`
+
+```bash
+refactron logout
+```
+
+Remove `~/.refactron/credentials.json`. The next auth-gated command will prompt for re-login.
+
+---
+
+## `auth`
+
+```bash
+refactron auth
+```
+
+Print authentication status — current account, token age, refresh-token presence — without modifying anything.
+
+---
+
+## `status`
+
+```bash
+❯ status
+```
+
+Print the active session's summary (id, target, finding count, severity histogram, age). If no session is active in this REPL, falls back to the most recent saved session under `.refactron/work-sessions/`.
+
+REPL only.
+
+---
+
+## `session`
+
+```bash
+❯ session list
+❯ session <id>
+```
+
+`session list` prints all saved sessions newest-first. `session <id>` loads a previously-saved session and makes it active in this REPL — subsequent `run` / `document` calls operate against it.
+
+REPL only.
+
+---
+
+## `rollback`
+
+```bash
+❯ rollback
+```
+
+Print rollback guidance — Refactron's atomic batch writes don't keep an in-CLI undo log; use `git checkout` to restore. The command exists as a discoverable hint surface.
+
+REPL only.
+
+---
+
+## `help` / `?`
+
+```bash
+❯ help
+❯ ?
+```
+
+Print the inline help table for all REPL verbs.
+
+REPL only.
+
+---
+
+## `clear`
+
+```bash
+❯ clear
+```
+
+Clear the terminal viewport.
+
+REPL only.
+
+---
+
+## `exit` / `quit`
+
+```bash
+❯ exit
+❯ quit
+```
+
+Leave the REPL.
+
+---
+
+## Global behaviour
+
+- **`refactron --version` / `-v`** — print the version and exit (fast path, < 10ms target).
+- **`refactron --help` / `-h`** — print the top-level command list and exit.
+- Authentication is required for `analyze`, `run`, `document`, `init` — these commands return exit code `7` and prompt for login when credentials are missing or expired.
+- A `.refactronrc.json` in the project root is auto-loaded; CLI flags always override its values.

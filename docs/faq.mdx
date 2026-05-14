@@ -1,0 +1,100 @@
+---
+title: FAQ
+description: Frequently-asked questions about Refactron — what it is, what it isn't, and why.
+---
+
+## Why not Cursor or Copilot?
+
+Both are LLM-driven and non-deterministic — the same input may yield a different output, and neither verifies its proposed change against your tests before suggesting it. NYU's 2022 study found ~40% of Copilot suggestions across MITRE Top-25 CWE scenarios contained an exploitable vulnerability.
+
+Refactron is the opposite: a deterministic engine where every change passes [three verification gates](/concepts/safety-model) before a single byte is written. You don't have to trust it — you can read the same plan twice and get the same diff.
+
+See [Why No LLM](/concepts/why-no-llm) for the full case.
+
+---
+
+## Why no Rust / Go / Ruby support?
+
+Each new language is a fully-implemented adapter — parser, detector, refactorer, verifier path. Picking Python and TypeScript first gives one engine team broad coverage: TypeScript reaches the entire JavaScript world; Python covers most of the data / scripting / ML surface.
+
+Adding more languages is a roadmap question of demand and contributor bandwidth. If you'd use Refactron in a Go monorepo, [open an issue](https://github.com/Refactron-ai/Refactron_Lib_TS/issues) — concrete demand moves it up the priority list.
+
+---
+
+## Doesn't ESLint / Pyflakes already do this?
+
+ESLint and Pyflakes **report** issues. A handful have `--fix` modes, but they don't verify the fix against your test suite before writing.
+
+Refactron **transforms and verifies** — every change is parsed, re-imported, and tested in a shadow tree before disk gets touched. The two are complementary: keep your linter for style; add Refactron for legacy-pattern migration with safety guarantees.
+
+---
+
+## What about Comby?
+
+[Comby](https://comby.dev/) is excellent for structural search-and-replace. It works on parse trees, not regex — that's a real advantage over `sed`. But it has no type information and no verification gate. If your replacement breaks an import or fails a test, you find out at runtime.
+
+Refactron's transforms know the type of each parameter (TypeScript) or import target (Python) and refuse to apply when the rewrite would invalidate a downstream caller.
+
+---
+
+## How is this different from jscodeshift?
+
+Same AST-codemod tradition, different priorities. jscodeshift gives you a programmatic API to write your own transforms — Refactron ships ten verified transforms with cross-file precondition checks and a baked-in test gate.
+
+Meta archived active development on jscodeshift in 2024 ([issue #587](https://github.com/facebook/jscodeshift/issues/587)). The library still works, but it's no longer maintained by its original team.
+
+---
+
+## What about OpenRewrite?
+
+[OpenRewrite](https://docs.openrewrite.org/) is the gold standard in the JVM world — Java-first, Maven / Gradle integration, recipe ecosystem. But it's heavy (Java runtime, Spring-style configuration) and Python / TypeScript adoption has lagged.
+
+Refactron is positioned for Python and TypeScript codebases where OpenRewrite isn't a fit.
+
+---
+
+## Why no LLM in the engine itself?
+
+LLMs are great at fluent natural language. They are not yet reliable at formal correctness:
+
+- ~40% of Copilot suggestions contain vulnerabilities (NYU 2022).
+- 92.45% of LLM-generated tests fail when there's no existing suite (ACM AST 2024).
+- 19.7% of LLM-recommended packages are fabricated (UTSA / VTech / UOklahoma 2024).
+
+Refactoring is a formal-correctness problem. We use the LLM only in the [`document` command](/cli/reference#document), which generates docstrings and CHANGELOG text on top of an already-verified diff. The worst-case is a wrong sentence — never a broken build.
+
+Full citations on the [Why No LLM](/concepts/why-no-llm) page.
+
+---
+
+## Can I write my own transform?
+
+A public extension API is on the roadmap for v0.3+. For v0.2, the supported path is to fork the repository and add your transform under `src/transform/transforms/<lang>/`, following the existing patterns (and tests under `tests/unit/transform/transforms/`).
+
+If you have a transform you'd want maintained upstream, open an issue with the before/after examples — we triage these case-by-case.
+
+---
+
+## Does it work on monorepos?
+
+Yes. The verification gate runs in the package being refactored — Gate 3 detects the local test runner via config-file presence (`vitest.config.*`, `jest.config.*`, `pyproject.toml` / `pytest.ini`), and you can override per-package via `.refactronrc.json` `testCmd`.
+
+The cross-file precondition checks scan the import graph rooted at the file being transformed, which works correctly across package boundaries inside the same repo.
+
+---
+
+## What's the perf?
+
+Refactron tracks performance via the `bench/` infrastructure in the repo. On a 4,465-file, ~100k-LOC project, `analyze` runs in ~20 seconds on an Apple M2 (median of 5 runs). `run --apply` adds the verification gate cost — typically dominated by your own test suite's wall-clock.
+
+---
+
+## Why MIT?
+
+At v0.2, wide adoption matters more than monetization. MIT removes friction for evaluation, internal tooling, and downstream forks.
+
+---
+
+## Why 0.2 and not 1.0?
+
+The engine has only had one round of self-gauntlet validation (Refactron refactoring its own codebase under load). 1.0 will land after we've seen the patterns of bug reports from external usage and addressed them. Show HN feedback informs that timeline.

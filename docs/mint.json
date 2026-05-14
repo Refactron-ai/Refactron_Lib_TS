@@ -46,12 +46,14 @@
   ],
   "navigation": [
     {
-      "group": "Getting Started",
-      "pages": ["introduction", "quickstart", "configuration"]
+      "group": "Get Started",
+      "pages": ["introduction", "quickstart"]
     },
     {
-      "group": "Core Concepts",
+      "group": "Concepts",
       "pages": [
+        "concepts/safety-model",
+        "concepts/why-no-llm",
         "concepts/blast-radius",
         "concepts/verification",
         "concepts/sessions",
@@ -59,8 +61,25 @@
       ]
     },
     {
+      "group": "Transforms",
+      "pages": [
+        "transforms/index",
+        "transforms/callback-to-async-await",
+        "transforms/format-to-fstring",
+        "transforms/manual-typecheck-to-hints",
+        "transforms/deprecated-api-requests-to-httpx",
+        "transforms/class-to-dataclass",
+        "transforms/var-to-const-let",
+        "transforms/promise-chains-to-async",
+        "transforms/implicit-any",
+        "transforms/commonjs-to-esm",
+        "transforms/promise-constructor-to-async"
+      ]
+    },
+    {
       "group": "CLI",
       "pages": [
+        "cli/reference",
         "cli/overview",
         "cli/analyze",
         "cli/issue-browser",
@@ -71,8 +90,16 @@
       ]
     },
     {
+      "group": "Configuration",
+      "pages": ["configuration", "configuration/refactronrc"]
+    },
+    {
       "group": "Languages",
       "pages": ["languages/python", "languages/typescript"]
+    },
+    {
+      "group": "FAQ",
+      "pages": ["faq"]
     },
     {
       "group": "API Reference",
