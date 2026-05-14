@@ -258,6 +258,33 @@ Extend `BaseFixer` from `src/autofix/fixers/base.ts`, declare `supportedIssueTyp
 
 ---
 
+## Known Limitations
+
+### Running Refactron on the Refactron repo (self-test paradox)
+
+If you `git clone` Refactron and run `refactron run --apply` on the repo
+itself, the test gate **will** fail and **no files will be written**.
+
+That's working as designed. Refactron's own test suite includes meta-tests
+that exercise the transforms on `fixtures/python-legacy-mini/` and
+`fixtures/ts-legacy-mini/` — fixtures that are deliberately full of legacy
+patterns. Running the transforms on those fixtures produces refactored code,
+which then no longer matches what the meta-tests expect as input. The
+verification engine catches the regression and refuses to write — exactly
+what would happen on any project where a refactor breaks downstream tests.
+
+To self-analyze without triggering this, exclude the fixtures via
+`.refactronrc.json`:
+
+```json
+{ "exclude": ["fixtures/**"] }
+```
+
+`refactron analyze .` then returns `No findings.` and `run --apply .`
+becomes a no-op.
+
+---
+
 ## Contributing
 
 See [CONTRIBUTING.md](./CONTRIBUTING.md).
