@@ -45,9 +45,23 @@ async function loadGitignore(root: string): Promise<ReturnType<typeof ignore>> {
   return ig;
 }
 
-export async function* walkProject(root: string): AsyncIterable<FileRecord> {
+export interface WalkOptions {
+  /** Additional gitignore-style patterns merged on top of .gitignore.
+   *  Sourced from .refactronrc.json's `exclude` field. The `ignore` package
+   *  treats them with gitignore semantics — `fixtures/**` excludes everything
+   *  under fixtures, `*.generated.ts` excludes by basename, etc. */
+  excludeGlobs?: string[];
+}
+
+export async function* walkProject(
+  root: string,
+  opts: WalkOptions = {},
+): AsyncIterable<FileRecord> {
   const absRoot = path.resolve(root);
   const ig = await loadGitignore(absRoot);
+  if (opts.excludeGlobs && opts.excludeGlobs.length > 0) {
+    ig.add(opts.excludeGlobs);
+  }
 
   async function* walk(dir: string): AsyncIterable<FileRecord> {
     const entries = await fs.readdir(dir, { withFileTypes: true });

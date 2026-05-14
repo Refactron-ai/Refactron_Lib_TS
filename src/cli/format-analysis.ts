@@ -113,6 +113,10 @@ function groupByFile(findings: DetectorFinding[]): Map<string, DetectorFinding[]
       out.set(f.file, [f]);
     }
   }
+  // Sort each bucket by line so findings within a file render top-to-bottom
+  // matching the source order. Without this, findings appear in detector-
+  // emission order which is detector-by-detector — confusing on read-through.
+  for (const bucket of out.values()) bucket.sort((a, b) => a.line - b.line);
   return out;
 }
 

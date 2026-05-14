@@ -18,7 +18,9 @@ async function collect(
   it: AsyncIterable<{ relPath: string; lang: 'python' | 'typescript' }>,
 ): Promise<Array<{ relPath: string; lang: string }>> {
   const out: Array<{ relPath: string; lang: string }> = [];
-  for await (const r of it) out.push({ relPath: r.relPath, lang: r.lang });
+  // Normalize to forward slashes so assertions stay portable across
+  // Windows (where path.relative emits 'fixtures\legacy\a.py') and POSIX.
+  for await (const r of it) out.push({ relPath: r.relPath.replace(/\\/g, '/'), lang: r.lang });
   return out.sort((a, b) => a.relPath.localeCompare(b.relPath));
 }
 
@@ -64,5 +66,33 @@ describe('walkProject', () => {
     const root = await project({ 'big.py': '#' + 'x'.repeat(2_000_000) });
     const out = await collect(walkProject(root));
     expect(out).toEqual([]);
+  });
+  it('honors excludeGlobs from .refactronrc.json (gauntlet G1)', async () => {
+    const root = await project({
+      'src/main.py': '',
+      'fixtures/legacy/a.py': '',
+      'fixtures/legacy/b.py': '',
+      'tests/test_main.py': '',
+    });
+    // Without exclude: discovers all four files.
+    const all = await collect(walkProject(root));
+    expect(all.map((r) => r.relPath).sort()).toEqual([
+      'fixtures/legacy/a.py',
+      'fixtures/legacy/b.py',
+      'src/main.py',
+      'tests/test_main.py',
+    ]);
+    // With exclude: drops fixtures/**.
+    const filtered = await collect(walkProject(root, { excludeGlobs: ['fixtures/**'] }));
+    expect(filtered.map((r) => r.relPath).sort()).toEqual(['src/main.py', 'tests/test_main.py']);
+  });
+  it('excludeGlobs accepts gitignore-style basename patterns', async () => {
+    const root = await project({
+      'a.generated.ts': '',
+      'b.ts': '',
+      'sub/c.generated.ts': '',
+    });
+    const out = await collect(walkProject(root, { excludeGlobs: ['*.generated.ts'] }));
+    expect(out.map((r) => r.relPath).sort()).toEqual(['b.ts']);
   });
 });

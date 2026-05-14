@@ -131,4 +131,49 @@ describe('formatAnalysisReport', () => {
     expect(text).toMatch(/2 high/);
     expect(text).toMatch(/1 medium/);
   });
+
+  it('sorts findings within a file by line number (gauntlet G2)', async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'fa-'));
+    tmp.push(root);
+    // Three lines, one finding per line, supplied in non-source order (16, 9, 12)
+    // — the formatter must reorder them ascending so the user reads top-to-bottom.
+    await fs.writeFile(
+      path.join(root, 'a.py'),
+      Array.from({ length: 20 }, (_, i) => `# line ${i + 1}`).join('\n'),
+    );
+    const report = synthReport(root, [
+      {
+        id: '1',
+        file: 'a.py',
+        line: 16,
+        transformId: 'callback_to_async_await',
+        remediationMinutes: 7,
+        confidence: 'high',
+      },
+      {
+        id: '2',
+        file: 'a.py',
+        line: 9,
+        transformId: 'callback_to_async_await',
+        remediationMinutes: 7,
+        confidence: 'high',
+      },
+      {
+        id: '3',
+        file: 'a.py',
+        line: 12,
+        transformId: 'format_to_fstring',
+        remediationMinutes: 1,
+        confidence: 'high',
+      },
+    ]);
+    const lines = await formatAnalysisReport(report, { projectRoot: root });
+    const text = lines.map((l) => l.text).join('\n');
+    // Match the formatter's specific "transform: X · line N" header line
+    // (avoids matching "# line N" content inside the source excerpts below).
+    const lineRefs = [...text.matchAll(/transform: \S+\s+·\s+line (\d+)/g)].map((m) =>
+      Number(m[1]),
+    );
+    expect(lineRefs).toEqual([9, 12, 16]);
+  });
 });
