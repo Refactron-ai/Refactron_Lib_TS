@@ -1,9 +1,10 @@
 import * as fs from 'node:fs/promises';
 import { RefactronAnalyzer } from '../analyze/engine.js';
-import { renderTerminal } from '../analyze/format/terminal.js';
+import { formatAnalysisReport } from './format-analysis.js';
 import { toJson } from '../analyze/format/json.js';
 import type { Confidence } from '../analyze/detectors/types.js';
 import { requireAuth } from './auth-gate.js';
+import { applyColor } from './apply-color.js';
 import { loadRefactronConfig } from './config-loader.js';
 
 interface ParsedFlags {
@@ -104,7 +105,14 @@ export async function runAnalyzeCommand(argv: string[]): Promise<number> {
   if (flags.graphPath) {
     await fs.writeFile(flags.graphPath, toJson(report), 'utf8');
   }
-  process.stdout.write(flags.json ? toJson(report) + '\n' : renderTerminal(report));
+  if (flags.json) {
+    process.stdout.write(toJson(report) + '\n');
+  } else {
+    const lines = await formatAnalysisReport(report, { projectRoot: flags.target });
+    for (const line of lines) {
+      process.stdout.write(applyColor(line.text, line.color) + '\n');
+    }
+  }
   if (flags.failOn) {
     const threshold = CONFIDENCE_RANK[flags.failOn];
     const offending = report.findings.filter((f) => CONFIDENCE_RANK[f.confidence] >= threshold);

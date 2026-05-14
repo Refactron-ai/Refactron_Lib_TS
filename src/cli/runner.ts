@@ -3,7 +3,7 @@
 import path from 'path';
 import type { ILanguageAdapter } from '../adapters/interface.js';
 import type { RefactronConfig } from '../core/config.js';
-import type { AnalysisResult, Severity } from '../core/models.js';
+import type { Severity } from '../core/models.js';
 import { RefactronAnalyzer } from '../analyze/engine.js';
 import { RefactronRefactorer } from '../transform/engine.js';
 import { RefactronVerifier } from '../verify/engine.js';
@@ -11,6 +11,9 @@ import { writeBatchAtomic } from '../verify/atomic-batch-writer.js';
 import type { FileChange, TransformId } from '../contracts.js';
 import { findingsToIssues } from './v2-adapters.js';
 import { persistLastApply } from './last-apply.js';
+import { formatAnalysisReport } from './format-analysis.js';
+import { formatGateProgress, formatVerifySuccess, formatVerifyFailure } from './format-verify.js';
+import { formatPlanAsDryRun } from './format-plan.js';
 import * as fsp from 'node:fs/promises';
 import { WorkSessionManager } from '../session/manager.js';
 import type { WorkSession } from '../session/types.js';
@@ -121,69 +124,6 @@ export function scopePlanChanges(
 }
 
 // ── Formatters ──────────────────────────────────────────────────────────────
-
-function severityColor(s: Severity): string {
-  return theme.severityColors[s];
-}
-
-function blastBadge(level: string): string {
-  const map: Record<string, string> = {
-    trivial: 'trivial',
-    low: 'low',
-    medium: 'med',
-    high: 'HIGH',
-    critical: 'CRIT',
-  };
-  return map[level] ?? level;
-}
-
-function formatAnalysis(
-  result: AnalysisResult,
-  onLine: (line: string, color?: string) => void,
-): void {
-  const bySeverity: Record<Severity, typeof result.issues> = {
-    critical: [],
-    high: [],
-    medium: [],
-    low: [],
-  };
-  for (const issue of result.issues) bySeverity[issue.severity].push(issue);
-
-  for (const sev of ['critical', 'high', 'medium', 'low'] as Severity[]) {
-    const group = bySeverity[sev];
-    if (group.length === 0) continue;
-    onLine('', undefined);
-    onLine(`  ${sev.toUpperCase()} (${group.length})`, severityColor(sev));
-    for (const issue of group.slice(0, 20)) {
-      const blast = blastBadge(issue.blastRadius.level);
-      const file = issue.file.split('/').slice(-2).join('/');
-      const fixTag = issue.fixable ? ' [fixable]' : '';
-      onLine(
-        `  ${theme.symbols.bullet} ${issue.message.slice(0, 55).padEnd(57)} ${file}:${issue.line}  blast:${blast}${fixTag}`,
-        theme.colors.text,
-      );
-    }
-    if (group.length > 20) onLine(`    … and ${group.length - 20} more`, theme.colors.textDim);
-  }
-
-  onLine('', undefined);
-  const fixable = result.issues.filter((i) => i.fixable).length;
-  const {
-    critical: c,
-    high: h,
-    medium: m,
-    low: l,
-  } = {
-    critical: bySeverity.critical.length,
-    high: bySeverity.high.length,
-    medium: bySeverity.medium.length,
-    low: bySeverity.low.length,
-  };
-  onLine(
-    `  ${c} critical  ${h} high  ${m} medium  ${l} low  —  ${fixable} fixable  |  ${result.filesAnalyzed} files  ${result.durationMs}ms`,
-    c > 0 ? theme.colors.critical : h > 0 ? theme.colors.high : theme.colors.textDim,
-  );
-}
 
 function printSessionCard(
   session: WorkSession,
@@ -359,16 +299,6 @@ export async function executeCommand(
     const filesAnalyzed = report.importGraph.size;
     const durationMs = Date.now() - startedAt;
 
-    const analysisResult: AnalysisResult = {
-      target: absTarget,
-      filesAnalyzed,
-      filesSkipped: 0,
-      issues,
-      languageBreakdown: {},
-      durationMs,
-      timestamp: report.analyzedAt,
-    };
-
     const session = ctx.sessions.createSession({
       target: absTarget,
       filesAnalyzed,
@@ -391,7 +321,8 @@ export async function executeCommand(
     if (transformsHit.length > 0) {
       onLine(`  ${theme.symbols.bullet} ${transformsHit.join(', ')}`, theme.colors.textDim);
     }
-    formatAnalysis(analysisResult, onLine);
+    const renderedLines = await formatAnalysisReport(report, { projectRoot: absTarget });
+    for (const line of renderedLines) onLine(line.text, line.color);
     onLine('', undefined);
     onLine(`  Session ${session.id}  —  ${issues.length} pattern(s) found.`, theme.colors.textDim);
     onLine(
@@ -473,14 +404,21 @@ export async function executeCommand(
     }
 
     if (!apply) {
-      onLine(`  Dry-run: ${plan.changes.length} file(s) would change.`, theme.colors.accent);
+      // New dry-run surface: per-file unified diff with truncation + a Summary
+      // block. The legacy "N file(s) would change" bullet list is gone; the
+      // formatter prints its own summary.
+      const originals = new Map<string, string>();
       for (const c of plan.changes) {
-        onLine(
-          `  ${theme.symbols.bullet} ${path.relative(sessionTarget, c.path)}`,
-          theme.colors.textDim,
-        );
+        try {
+          originals.set(c.path, await fsp.readFile(c.path, 'utf8'));
+        } catch {
+          // missing/unreadable — formatter treats as empty (all additions)
+        }
       }
-      onLine('  Re-run with --apply to verify and write changes.', theme.colors.textDim);
+      const dryRunLines = await formatPlanAsDryRun(plan, originals, {
+        projectRoot: sessionTarget,
+      });
+      for (const line of dryRunLines) onLine(line.text, line.color);
       onLine('', undefined);
       return {};
     }
@@ -500,23 +438,25 @@ export async function executeCommand(
     }
 
     onLine(`  Verifying ${plan.changes.length} change(s) …`, theme.colors.textDim);
-    const verifier = new RefactronVerifier({ projectRoot: sessionTarget });
+    let capturedShadowRoot: string | null = null;
+    const verifier = new RefactronVerifier({
+      projectRoot: sessionTarget,
+      onGateComplete: (gate, gateResult) => {
+        for (const line of formatGateProgress(gate, gateResult)) {
+          onLine(line.text, line.color);
+        }
+      },
+      onShadowRoot: (p) => {
+        capturedShadowRoot = p;
+      },
+    });
     const result = await verifier.verify(plan);
     if (signal.aborted) return {};
 
     if (!result.passed) {
-      const failed = (
-        Object.entries(result.gates) as Array<
-          [string, { passed: boolean; blockingReason?: string }]
-        >
-      ).find(([, g]) => !g.passed);
-      onLine(
-        `  ${theme.symbols.fail}  Verification failed at gate '${failed?.[0] ?? 'unknown'}': ${
-          failed?.[1].blockingReason ?? 'unknown'
-        }`,
-        theme.colors.error,
-      );
-      onLine('', undefined);
+      for (const line of formatVerifyFailure(result, plan, sessionTarget, capturedShadowRoot)) {
+        onLine(line.text, line.color);
+      }
       return {};
     }
 
@@ -531,11 +471,9 @@ export async function executeCommand(
         transformId: c.transformId,
       })),
     });
-    onLine(
-      `  ${theme.symbols.pass}  ${result.writableChanges.length} file(s) refactored and verified.`,
-      theme.colors.success,
-    );
-    onLine('', undefined);
+    for (const line of formatVerifySuccess(result, plan, sessionTarget)) {
+      onLine(line.text, line.color);
+    }
     return {};
   }
 

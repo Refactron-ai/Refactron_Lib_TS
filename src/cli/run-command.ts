@@ -5,13 +5,15 @@ import { RefactronAnalyzer } from '../analyze/engine.js';
 import { RefactronRefactorer } from '../transform/engine.js';
 import { RefactronVerifier } from '../verify/engine.js';
 import { writeBatchAtomic } from '../verify/atomic-batch-writer.js';
-import { generateUnifiedDiff } from '../infrastructure/diff.js';
 import type { Confidence } from '../analyze/detectors/types.js';
 import type { TransformId } from '../contracts.js';
 import { requireAuth } from './auth-gate.js';
 import { loadRefactronConfig } from './config-loader.js';
 import { persistLastApply } from './last-apply.js';
 import { scopePlanChanges } from './runner.js';
+import { formatGateProgress, formatVerifySuccess, formatVerifyFailure } from './format-verify.js';
+import { formatPlanAsDryRun } from './format-plan.js';
+import { applyColor } from './apply-color.js';
 
 // Markers that identify a project root. Walked up from a file argument to find
 // the right directory to hand to the analyzer/refactorer/verifier.
@@ -71,6 +73,12 @@ export interface ParsedFlags {
   confidence: Confidence | null;
   testCmd: string | null;
   json: boolean;
+  // Per-file diff context window AND truncation cap for dry-run output.
+  // Threaded into both `generateUnifiedDiff` (real context lines) and the
+  // formatter's max-lines guard. `null` → formatter default (30).
+  diffContext: number | null;
+  // Optional glob to scope the dry-run preview to a subset of plan.changes.
+  filesGlob: string | null;
 }
 
 function asConfidence(v: string | undefined): Confidence | null {
@@ -101,6 +109,8 @@ export function parseFlags(argv: string[]): ParsedFlags {
   let confidence: Confidence | null = null;
   let testCmd: string | null = null;
   let json = false;
+  let diffContext: number | null = null;
+  let filesGlob: string | null = null;
 
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i]!;
@@ -135,6 +145,20 @@ export function parseFlags(argv: string[]): ParsedFlags {
       testCmd = v;
       continue;
     }
+    if (a === '--diff-context' || a.startsWith('--diff-context=')) {
+      const v = a.includes('=') ? a.slice('--diff-context='.length) : argv[++i];
+      if (!v || Number.isNaN(Number(v))) {
+        throw new RunFlagError('--diff-context requires an integer');
+      }
+      diffContext = Number(v);
+      continue;
+    }
+    if (a === '--files' || a.startsWith('--files=')) {
+      const v = a.includes('=') ? a.slice('--files='.length) : argv[++i];
+      if (!v) throw new RunFlagError('--files requires a glob value');
+      filesGlob = v;
+      continue;
+    }
     if (a.startsWith('-')) throw new RunFlagError(`unknown flag: ${a}`);
     if (target !== null) throw new RunFlagError(`unexpected extra argument: ${a}`);
     target = a;
@@ -149,6 +173,8 @@ export function parseFlags(argv: string[]): ParsedFlags {
     confidence,
     testCmd,
     json,
+    diffContext,
+    filesGlob,
   };
 }
 
@@ -232,13 +258,24 @@ export async function runRunCommand(argv: string[]): Promise<number> {
     if (flags.json) {
       process.stdout.write(JSON.stringify({ mode: 'dry-run', plan }, null, 2) + '\n');
     } else {
+      const originals = new Map<string, string>();
       for (const c of plan.changes) {
-        const original = await fs.readFile(c.path, 'utf8');
-        process.stdout.write(generateUnifiedDiff(c.path, original, c.newContent) + '\n');
+        try {
+          originals.set(c.path, await fs.readFile(c.path, 'utf8'));
+        } catch {
+          // missing — formatter renders as all-additions
+        }
       }
-      process.stdout.write(
-        `refactron run --dry-run: ${plan.changes.length} file(s) would change\n`,
-      );
+      const planOpts: import('./format-plan.js').FormatPlanOptions = { projectRoot };
+      if (flags.diffContext !== null) {
+        planOpts.maxDiffLines = flags.diffContext;
+        planOpts.diffContext = flags.diffContext;
+      }
+      if (flags.filesGlob !== null) planOpts.filesGlob = flags.filesGlob;
+      const lines = await formatPlanAsDryRun(plan, originals, planOpts);
+      for (const line of lines) {
+        process.stdout.write(applyColor(line.text, line.color) + '\n');
+      }
     }
     return 0;
   }
@@ -256,15 +293,33 @@ export async function runRunCommand(argv: string[]): Promise<number> {
     }
   }
 
-  const verifierOpts: { projectRoot: string; testCmd?: string } = { projectRoot };
+  let capturedShadowRoot: string | null = null;
+  const verifierOpts: {
+    projectRoot: string;
+    testCmd?: string;
+    onGateComplete: (
+      gate: 'syntax' | 'imports' | 'tests',
+      g: import('../contracts.js').GateResult,
+    ) => void;
+    onShadowRoot: (p: string) => void;
+  } = {
+    projectRoot,
+    onGateComplete: (gate, g) => {
+      for (const line of formatGateProgress(gate, g)) {
+        process.stdout.write(applyColor(line.text, line.color) + '\n');
+      }
+    },
+    onShadowRoot: (p) => {
+      capturedShadowRoot = p;
+    },
+  };
   if (testCmd) verifierOpts.testCmd = testCmd;
   const verifier = new RefactronVerifier(verifierOpts);
   const result = await verifier.verify(plan);
   if (!result.passed) {
-    const failed = Object.entries(result.gates).find(([, g]) => !g.passed);
-    process.stderr.write(
-      `refactron run: verification failed at gate '${failed?.[0] ?? 'unknown'}': ${failed?.[1].blockingReason ?? 'unknown'}\n`,
-    );
+    for (const line of formatVerifyFailure(result, plan, projectRoot, capturedShadowRoot)) {
+      process.stderr.write(applyColor(line.text, line.color) + '\n');
+    }
     return 1;
   }
   await writeBatchAtomic(result.writableChanges);
@@ -278,8 +333,8 @@ export async function runRunCommand(argv: string[]): Promise<number> {
       transformId: c.transformId,
     })),
   });
-  process.stdout.write(
-    `refactron run: ${result.writableChanges.length} file(s) refactored and verified\n`,
-  );
+  for (const line of formatVerifySuccess(result, plan, projectRoot)) {
+    process.stdout.write(applyColor(line.text, line.color) + '\n');
+  }
   return 0;
 }

@@ -4,10 +4,23 @@ import { syntaxGate } from './gates/syntax.js';
 import { importsGate } from './gates/imports.js';
 import { testsGate, type TestsGateOptions } from './gates/tests.js';
 
+export type GateName = 'syntax' | 'imports' | 'tests';
+
 export interface RefactronVerifierOptions {
   projectRoot: string;
   testCmd?: string;
   timeoutMs?: number;
+  /**
+   * Streaming hook: invoked once per gate as it finishes (including skipped
+   * gates produced after an earlier gate fails). Lets the CLI render
+   * per-gate progress without changing the locked Verifier surface.
+   */
+  onGateComplete?: (gate: GateName, result: GateResult) => void;
+  /**
+   * Fires exactly once with the absolute path of the shadow tree, immediately
+   * after creation. The CLI uses this for the "reproduce locally" hint.
+   */
+  onShadowRoot?: (path: string) => void;
 }
 
 export class RefactronVerifier implements Verifier {
@@ -15,13 +28,16 @@ export class RefactronVerifier implements Verifier {
 
   async verify(plan: RefactorPlan): Promise<VerificationResult> {
     const handle = await createShadowTree(this.opts.projectRoot, plan.changes);
+    this.opts.onShadowRoot?.(handle.path);
     try {
       const ctx = { shadowRoot: handle.path, changes: plan.changes };
 
       const syntax = await syntaxGate(ctx, this.opts.projectRoot);
+      this.opts.onGateComplete?.('syntax', syntax);
       if (!syntax.passed) return this.fail({ syntax });
 
       const imports = await importsGate(ctx, this.opts.projectRoot);
+      this.opts.onGateComplete?.('imports', imports);
       if (!imports.passed) return this.fail({ syntax, imports });
 
       const testsOpts: TestsGateOptions = {
@@ -29,6 +45,7 @@ export class RefactronVerifier implements Verifier {
         ...(this.opts.timeoutMs !== undefined ? { timeoutMs: this.opts.timeoutMs } : {}),
       };
       const tests = await testsGate(ctx, this.opts.projectRoot, testsOpts);
+      this.opts.onGateComplete?.('tests', tests);
       if (!tests.passed) return this.fail({ syntax, imports, tests });
 
       return {
@@ -47,13 +64,19 @@ export class RefactronVerifier implements Verifier {
       durationMs: 0,
       blockingReason: 'skipped (earlier gate failed)',
     };
+    const resolved = {
+      syntax: gates.syntax ?? skipped,
+      imports: gates.imports ?? skipped,
+      tests: gates.tests ?? skipped,
+    };
+    // Emit a synthetic onGateComplete for any gates that were skipped because
+    // a previous gate failed — the caller expects exactly three notifications
+    // (syntax → imports → tests) regardless of where failure happened.
+    if (!gates.imports) this.opts.onGateComplete?.('imports', resolved.imports);
+    if (!gates.tests) this.opts.onGateComplete?.('tests', resolved.tests);
     return {
       passed: false,
-      gates: {
-        syntax: gates.syntax ?? skipped,
-        imports: gates.imports ?? skipped,
-        tests: gates.tests ?? skipped,
-      },
+      gates: resolved,
       writableChanges: [],
     };
   }
