@@ -21,6 +21,7 @@ vitest.config*
 coverage/
 .nyc_output/
 node_modules/
+tape/
 
 # Env & secrets
 .env
