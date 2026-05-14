@@ -15,6 +15,10 @@ async function project(files: Record<string, string>): Promise<string> {
 }
 
 describe('checkTypescriptImports', () => {
+  // 30s per-test timeout: ts-morph's first-run on a cold Windows CI runner
+  // does a non-trivial amount of work (project init, module-resolution
+  // cache warmup) that exceeds vitest's default 5s. The check itself is
+  // fast once the project is loaded — the 30s only matters on cold-start.
   it('passes when relative import resolves', async () => {
     const root = await project({
       'tsconfig.json':
@@ -23,7 +27,7 @@ describe('checkTypescriptImports', () => {
       'b.ts': 'export const b = 1;\n',
     });
     expect((await checkTypescriptImports(root, [path.join(root, 'a.ts')])).passed).toBe(true);
-  });
+  }, 30_000);
   it('fails on missing relative import', async () => {
     const root = await project({
       'tsconfig.json':
@@ -33,5 +37,5 @@ describe('checkTypescriptImports', () => {
     const r = await checkTypescriptImports(root, [path.join(root, 'a.ts')]);
     expect(r.passed).toBe(false);
     expect(r.blockingReason).toMatch(/missing/);
-  });
+  }, 30_000);
 });

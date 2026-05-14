@@ -18,10 +18,18 @@ import type { VerificationResult } from '../../src/contracts.js';
 
 const tmp: string[] = [];
 afterEach(async () => {
-  for (const d of tmp.splice(0)) await fs.rm(d, { recursive: true, force: true });
+  // Windows: write-file-atomic uses temp+rename and may briefly hold file
+  // handles after writeFile resolves. fs.rm with maxRetries reties the rmdir
+  // a few times if it hits ENOTEMPTY/EBUSY before failing the test cleanup.
+  for (const d of tmp.splice(0)) {
+    await fs.rm(d, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+  }
 });
 
 describe('document flow', () => {
+  // 30s per-test timeout: the doc engine spins up + chunker + provider call
+  // + write-file-atomic round-trip; on a cold Windows CI runner this exceeds
+  // vitest's default 5s. Comfortable headroom + still fast on macOS/Linux.
   it('produces a DocPatch that, when applied, makes the file self-documenting', async () => {
     const root = await fs.mkdtemp(path.join(os.tmpdir(), 'df-'));
     tmp.push(root);
@@ -77,5 +85,5 @@ describe('document flow', () => {
     expect(await fs.readFile(path.join(root, 'CHANGELOG.md'), 'utf8')).toContain(
       'old-style formatting',
     );
-  });
+  }, 30_000);
 });
