@@ -24,7 +24,7 @@ aborts ship until fixed.
 - [ ] `pip install -e refactron-py/` works locally in a fresh venv
 - [ ] README renders cleanly on GitHub mobile (HN traffic skews mobile)
 - [ ] `vhs tape/demo.tape` rendered → `docs/assets/demo.gif` exists, under 5 MB, under 30s, no audio
-- [ ] Docs site live at refactron.dev/docs
+- [ ] Docs site live at docs.refactron.dev
 - [ ] Git tag `v0.2.0` ready to push (`git tag v0.2.0`; do not `push origin v0.2.0` until Day 56 T-1h)
 - [ ] PyPI `refactron` namespace owner has authorized Om's account for upload
   (legacy v1.0.15 owner — confirm before T-1h or PyPI publish blocks)

@@ -23,4 +23,4 @@ refactron run --apply
 refactron document --apply
 ```
 
-Full docs: https://refactron.dev
+Full docs: https://docs.refactron.dev

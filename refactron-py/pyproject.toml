@@ -25,5 +25,5 @@ refactron = "refactron.cli:main"
 
 [project.urls]
 Homepage = "https://github.com/Refactron-ai/Refactron_Lib_TS"
-Documentation = "https://refactron.dev/docs"
+Documentation = "https://docs.refactron.dev"
 Issues = "https://github.com/Refactron-ai/Refactron_Lib_TS/issues"

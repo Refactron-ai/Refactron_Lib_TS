@@ -94,7 +94,7 @@ Run it yourself: `bash bench/run-bench.sh`.
 
 ## Documentation
 
-Full documentation: [refactron.dev/docs](https://refactron.dev/docs) (or [`docs/`](docs/) in this repo).
+Full documentation: [docs.refactron.dev](https://docs.refactron.dev) (or [`docs/`](docs/) in this repo).
 
 ---
 
