@@ -2,6 +2,7 @@
   "name": "refactron",
   "version": "0.1.0-beta.2",
   "description": "Safety-first refactoring — finds, fixes, and verifies changes are safe before touching the filesystem",
+  "author": "Om Sherikar <omsherikar0229@gmail.com>",
   "bin": {
     "refactron": "./dist/cli/index.js"
   },
@@ -60,6 +61,10 @@
     "LICENSE",
     "CHANGELOG.md"
   ],
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
   "dependencies": {
     "ajv": "^8.20.0",
     "chalk": "^5.0.0",
