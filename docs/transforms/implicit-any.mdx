@@ -1,0 +1,59 @@
+---
+title: implicit_any
+description: Annotate untyped parameters when call-site inference yields a single primitive.
+---
+
+**Transform ID:** `implicit_any`
+**Language:** TypeScript
+
+## What it does
+
+Finds parameters and return positions where ts-morph reports `getType().isAny()` (i.e. an implicit any). For each such parameter, the transform looks at every call site of the enclosing function and annotates **only** when every call site passes the same primitive type (`number`, `string`, `boolean`).
+
+## Detector pattern
+
+The detector at `src/analyze/detectors/typescript/implicit-any-detector.ts` enumerates ts-morph `ParameterDeclaration` nodes whose `getType().isAny()` returns true and have no explicit type node.
+
+## Preconditions
+
+1. The function has at least one call site in the project.
+2. Every call site passes a value of the **same** primitive type for the target parameter.
+3. The parameter doesn't already have a type annotation.
+4. The function isn't a class method overridden by a subclass with a different signature (would change the public contract).
+
+## Before / after
+
+<CodeGroup>
+```ts before.ts
+// Implicit-any parameters.
+export function add(a, b) {
+  return a + b;
+}
+
+// Single call site elsewhere in the project:
+//   const r = add(1, 2);
+```
+
+```ts after.ts
+// Implicit-any parameters.
+export function add(a: number, b: number) {
+  return a + b;
+}
+
+// Single call site elsewhere in the project:
+//   const r = add(1, 2);
+```
+</CodeGroup>
+
+## Edge cases handled
+
+- Mixed already-annotated and bare parameters in the same signature — only bare ones are touched.
+- Multiple call sites passing the same primitive (e.g. `add(1, 2)` and `add(3, 4)` both → `number`).
+- Returns are also annotated when ts-morph infers a single concrete type from the body.
+
+## Edge cases NOT handled (skip via precondition)
+
+- Call sites pass diverging primitives (e.g. `id(1); id('a');` → precondition `diverging-types:id:x`).
+- The function has zero call sites in the project (no signal to infer from).
+- Call site passes a complex object / generic type (only primitives are considered safe).
+- Parameter is destructured (`function f({ x, y })`).

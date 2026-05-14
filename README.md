@@ -1,287 +1,110 @@
 # Refactron
 
-> **Alpha — do not use in production.**
-> Refactron is mid-rebuild on the v2.0 architecture. The npm package on the registry is the older blast-radius engine; the `main` branch is the in-flight v2.0 surface. The golden end-to-end test is intentionally red until the Week 4 refactoring engine lands.
-
-> Safety-first refactoring — finds, fixes, and verifies code changes are safe before touching the filesystem.
+Refactron finds legacy patterns in your Python and TypeScript code, refactors them deterministically, and proves nothing broke before writing a single byte.
 
 [![npm version](https://img.shields.io/npm/v/refactron)](https://www.npmjs.com/package/refactron)
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](./LICENSE)
+[![npm downloads](https://img.shields.io/npm/dm/refactron)](https://www.npmjs.com/package/refactron)
 [![Node.js](https://img.shields.io/badge/node-%3E%3D18.0.0-brightgreen)](https://nodejs.org)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](./LICENSE)
+[![CI](https://github.com/Refactron-ai/Refactron_Lib_TS/actions/workflows/ci.yml/badge.svg)](https://github.com/Refactron-ai/Refactron_Lib_TS/actions/workflows/ci.yml)
+
+![Refactron in action](docs/assets/demo.gif)
 
 ---
 
-## What is Refactron?
-
-Refactron is a TypeScript CLI that analyzes your codebase for issues, automatically fixes what it can, and **verifies every change is safe before writing a single byte to disk**.
-
-The core differentiator: **Blast Radius**. Every issue carries a mandatory impact score (0–100) computed from transitive import and call graphs. The verification engine scales its strictness based on this score — a one-liner fix in an isolated utility gets a quick syntax check, while a change to a widely-imported core module triggers syntax + import + full test suite verification.
-
-```
-refactron analyze src/
-refactron autofix . --verify
-```
-
----
-
-## Features
-
-- **Blast Radius Scoring** — every issue gets a 0–100 impact score across 5 levels (trivial → critical), computed from transitive import and call graphs
-- **Verification Gate** — changes are verified (syntax, imports, tests) before being written; strictness scales with blast radius
-- **Atomic Writes** — all file writes use temp-file-then-rename; partial writes never happen
-- **Backup & Rollback** — every session is backed up; `refactron rollback` restores the previous state
-- **14 Auto-fixers** — unused imports, trailing whitespace, dead code, missing type hints, sort imports, and more
-- **7 Analyzers** — security (SQL injection, eval, hardcoded secrets), complexity, code smell, dead code, type hints, dependencies, performance
-- **Python + TypeScript** — language-agnostic engine with pluggable `ILanguageAdapter`
-- **Ink Terminal UI** — interactive issue browser with blast radius graph, diff view, and verification progress
-
----
-
-## Installation
+## Install + first refactor
 
 ```bash
-npm install -g refactron
+npm install -g refactron@0.2.0
+cd your-project && refactron login
+refactron analyze .
+refactron run --apply
 ```
 
-Requires Node.js 18+ and (for Python analysis) Python 3.8+.
+Or via PyPI: `pip install refactron` (Python wrapper around the npm package).
 
 ---
 
-## Quick Start
+## The 3-gate safety model
 
-```bash
-# Analyze your project
-refactron analyze src/
-
-# Preview fixes without writing anything
-refactron autofix . --dry-run
-
-# Fix with full verification gate
-refactron autofix . --verify
-
-# Check session status
-refactron status
-
-# Undo last applied fixes
-refactron rollback
+```mermaid
+flowchart LR
+  Plan[RefactorPlan] --> G1{Gate 1<br/>Syntax}
+  G1 -- pass --> G2{Gate 2<br/>Imports}
+  G2 -- pass --> G3{Gate 3<br/>Tests}
+  G3 -- pass --> AW[Atomic batch write]
+  G1 -- fail --> Reject[✗ Reject — your tree untouched]
+  G2 -- fail --> Reject
+  G3 -- fail --> Reject
 ```
+
+Every refactor passes three gates before any byte is written: (1) the new content re-parses cleanly; (2) all imports resolve; (3) your project's full test suite passes on a shadow tree. Atomic write or rollback — never partial state. See [`docs/concepts/safety-model.mdx`](docs/concepts/safety-model.mdx) for the full breakdown.
 
 ---
 
-## Commands
+## Transform catalog
 
-| Command | Description |
-|---|---|
-| `analyze [target]` | Scan files and report issues with blast radius scores |
-| `autofix [target]` | Fix issues with verification before writing |
-| `verify [file]` | Verify a specific file is safe to modify |
-| `status` | Show current session state and fix counts |
-| `rollback` | Restore files from last session backup |
-| `diff [target]` | Display unified diff for a pending fix |
-
-### Options
-
-| Flag | Description |
-|---|---|
-| `--fail-on <level>` | Exit non-zero if issues at `critical`, `high`, `medium`, or `low` found |
-| `--dry-run` | Preview fixes without writing to disk |
-| `--verify` | Require verification gate before applying any fix |
-| `--format <fmt>` | Output format: `terminal` (default), `json`, `sarif` |
-
----
-
-## How Blast Radius Works
-
-Every `CodeIssue` carries a mandatory `BlastRadius` object:
-
-```typescript
-interface BlastRadius {
-  affectedFiles: string[];       // files transitively depending on the changed file
-  affectedFunctions: string[];   // functions in the call chain
-  affectedTestFiles: string[];   // test files that cover affected code
-  score: number;                 // 0–100 weighted impact score
-  level: BlastLevel;             // trivial | low | medium | high | critical
-}
-```
-
-**Score formula:** `files (40%) + functions (40%) + test coverage gap (20%)`
-
-**Verification escalation by blast level:**
-
-| Level | Score | Checks Run |
+| Transform | Language | Description |
 |---|---|---|
-| trivial | 0 | syntax only |
-| low | 1–19 | syntax + imports + tests (45s timeout) |
-| medium | 20–49 | syntax + imports + tests (45s timeout) |
-| high | 50–74 | syntax + imports + tests (45s timeout) |
-| critical | 75–100 | syntax + imports + tests (120s timeout) |
+| [`callback_to_async_await`](docs/transforms/callback-to-async-await.mdx) | Python | Convert trailing-callback functions into async functions that return the result |
+| [`format_to_fstring`](docs/transforms/format-to-fstring.mdx) | Python | Convert old-style `%`-formatting and `.format()` calls into f-strings |
+| [`class_to_dataclass`](docs/transforms/class-to-dataclass.mdx) | Python | Promote pure data-holder classes (trivial `__init__`) to `@dataclass` |
+| [`manual_typecheck_to_hints`](docs/transforms/manual-typecheck-to-hints.mdx) | Python | Promote `isinstance`-chain dispatch into a `Union[...]` annotation on the parameter |
+| [`deprecated_api_requests_to_httpx`](docs/transforms/deprecated-api-requests-to-httpx.mdx) | Python | Migrate the `requests` library to the modern `httpx` equivalent |
+| [`promise_chains_to_async`](docs/transforms/promise-chains-to-async.mdx) | TypeScript | Convert `.then()` chains into async/await with named bindings per stage |
+| [`promise_constructor_to_async`](docs/transforms/promise-constructor-to-async.mdx) | TypeScript | Replace `new Promise((resolve) => resolve(value))` with an async function returning the value |
+| [`var_to_const_let`](docs/transforms/var-to-const-let.mdx) | TypeScript | Replace `var` declarations with `const` (or `let` if reassigned) per binding |
+| [`commonjs_to_esm`](docs/transforms/commonjs-to-esm.mdx) | TypeScript | Migrate CommonJS `require` / `module.exports` to ES module `import` / `export` |
+| [`implicit_any`](docs/transforms/implicit-any.mdx) | TypeScript | Annotate untyped parameters when call-site inference yields a single primitive |
 
 ---
 
-## Analyzers
+## Honest limitations
 
-| Analyzer | Issues Detected |
-|---|---|
-| Security | SQL injection, `eval()`, hardcoded secrets, `exec()` |
-| Complexity | Cyclomatic complexity above threshold (default: 10) |
-| Code Smell | Long methods, god objects |
-| Dead Code | Unreachable code after `return`/`raise`/`break` |
-| Type Hints | Missing return type annotations, explicit `any` |
-| Dependencies | Unused imports |
-| Performance | List concatenation in loops, `await` inside loops |
+- Python and TypeScript only at v0.2; no Ruby/Go/Rust adapters yet.
+- Documentation engine requires a reachable LLM provider (graceful skip otherwise — refactor still ships).
+- Self-analysis on Refactron's own repo fails the test gate by design (mutating the bundled fixtures breaks meta-tests). See [Self-test paradox](#self-test-paradox) below.
+- Public extension API for custom transforms is post-launch.
+- Test gate is bound by your project's own suite — runs `npm test` / `pytest` in a shadow tree.
 
----
+### Self-test paradox
 
-## Auto-fixers
+If you `git clone` Refactron and run `refactron run --apply` on the repo itself, the test gate **will** fail and **no files will be written**. That's working as designed — the meta-tests exercise transforms on `fixtures/python-legacy-mini/` and `fixtures/ts-legacy-mini/`, which are deliberately full of legacy patterns. Refactoring them invalidates the tests' expected inputs, the verification engine catches the regression, and the write is refused — exactly what would happen on any project where a refactor breaks downstream tests.
 
-| Fixer | What it fixes |
-|---|---|
-| `unused-imports` | Removes unused import statements |
-| `trailing-whitespace` | Strips trailing whitespace from all lines |
-| `dead-code` | Removes unreachable code |
-| `sort-imports` | Sorts imports alphabetically |
-| `normalize-quotes` | Normalizes quote style |
-| `type-hints` | Adds `-> None` return type annotations |
-| `docstrings` | Inserts placeholder docstrings |
-| `simplify-boolean` | Simplifies `x == True` → `x` |
-| `unused-variables` | Removes unused variable declarations |
-| `fix-indentation` | Converts tabs to 4-space indentation |
-| `missing-commas` | Adds missing trailing commas |
-| `remove-debug` | Removes debug/print statements |
-| `magic-numbers` | Flags magic numbers for manual review |
-| `convert-fstring` | Flags `%`-format strings for manual conversion |
-
----
-
-## Architecture
-
-```
-src/
-├── core/
-│   ├── models.ts          # All types — LOCKED (CodeIssue, BlastRadius, etc.)
-│   ├── config.ts          # RefactronConfig + YAML loader
-│   └── orchestrator.ts    # Full pipeline coordinator
-├── adapters/
-│   ├── interface.ts       # ILanguageAdapter — LOCKED
-│   ├── registry.ts        # Language auto-detection
-│   ├── python/            # Python adapter (subprocess)
-│   └── typescript/        # TypeScript adapter (compiler API)
-├── analysis/
-│   ├── blast-radius.ts    # Transitive impact scoring
-│   ├── import-graph.ts    # File-level reverse import graph
-│   ├── call-graph.ts      # Function-level call graph
-│   ├── temporal.ts        # Git history intelligence
-│   ├── engine.ts          # Analysis orchestrator
-│   └── analyzers/         # 7 language-agnostic analyzers
-├── verification/
-│   ├── engine.ts          # Blast-radius-aware check selection
-│   ├── atomic-writer.ts   # Temp → rename safe writes
-│   └── checks/            # syntax, imports, test-gate
-├── autofix/
-│   ├── engine.ts          # AutoFix orchestrator
-│   └── fixers/            # 14 fixers
-├── pipeline/
-│   ├── session.ts         # State machine
-│   ├── store.ts           # .refactron/ persistence
-│   └── queue.ts           # Fix queue management
-├── infrastructure/
-│   ├── backup.ts          # Pre-write backup + rollback
-│   ├── diff.ts            # Unified diff generation
-│   └── git.ts             # Git log + co-change analysis
-├── cli/
-│   ├── index.ts           # Fast-path dispatcher (<10ms for --version)
-│   ├── app.tsx            # Command router
-│   └── commands/          # 6 Ink command components
-└── ui/                    # Ink terminal UI components
-```
-
----
-
-## Configuration
-
-Create a `refactron.yaml` in your project root:
-
-```yaml
-version: 2
-analyzers:
-  complexity:
-    enabled: true
-    threshold: 10        # cyclomatic complexity limit
-  security:
-    enabled: true
-  code_smell:
-    enabled: true
-    max_method_lines: 50
-  dead_code:
-    enabled: true
-  type_hints:
-    enabled: true
-  dependencies:
-    enabled: true
-  performance:
-    enabled: true
-verification:
-  timeout_seconds: 45
-  critical_timeout_seconds: 120
-autofix:
-  dry_run: false
-  require_verification: true
-output:
-  format: terminal         # terminal | json | sarif
-  fail_on: null            # critical | high | medium | low | null
-```
-
----
-
-## Development
-
-```bash
-git clone https://github.com/Refactron-ai/Refactron_Lib_TS.git
-cd Refactron_Lib_TS
-npm install
-
-npm run build          # compile TypeScript
-npm test               # run 45 tests
-npm run typecheck      # type check only
-npm run lint           # ESLint
-npm run format         # Prettier
-npm run test:watch     # watch mode
-```
-
-### Adding a Language Adapter
-
-Implement `ILanguageAdapter` from `src/adapters/interface.ts` and register it in `src/adapters/registry.ts`. The interface is locked — all language-specific logic must stay inside the adapter.
-
-### Adding a Fixer
-
-Extend `BaseFixer` from `src/autofix/fixers/base.ts`, declare `supportedIssueTypes`, implement `fix()`, and register it in `src/autofix/engine.ts`.
-
----
-
-## Known Limitations
-
-### Running Refactron on the Refactron repo (self-test paradox)
-
-If you `git clone` Refactron and run `refactron run --apply` on the repo
-itself, the test gate **will** fail and **no files will be written**.
-
-That's working as designed. Refactron's own test suite includes meta-tests
-that exercise the transforms on `fixtures/python-legacy-mini/` and
-`fixtures/ts-legacy-mini/` — fixtures that are deliberately full of legacy
-patterns. Running the transforms on those fixtures produces refactored code,
-which then no longer matches what the meta-tests expect as input. The
-verification engine catches the regression and refuses to write — exactly
-what would happen on any project where a refactor breaks downstream tests.
-
-To self-analyze without triggering this, exclude the fixtures via
-`.refactronrc.json`:
+To self-analyze without triggering this, exclude the fixtures via `.refactronrc.json`:
 
 ```json
 { "exclude": ["fixtures/**"] }
 ```
 
-`refactron analyze .` then returns `No findings.` and `run --apply .`
-becomes a no-op.
+---
+
+## Performance
+
+Reproducible benchmark on Apple M2, Node 24:
+
+| Tree size | Files | Median analyze | Range |
+|---|---|---|---|
+| 10k LOC | 448 | 1.31s | 1.16s – 1.64s |
+| 100k LOC | 4,465 | 20.58s | 14.99s – 38.65s |
+
+Run it yourself: `bash bench/run-bench.sh`.
+
+---
+
+## Documentation
+
+Full documentation: [docs.refactron.dev](https://docs.refactron.dev) (or [`docs/`](docs/) in this repo).
+
+---
+
+## Citations
+
+- Opdyke 1992 — *Refactoring Object-Oriented Frameworks* (UIUC PhD thesis) — academic foundation for behavior-preserving refactoring
+- Brunsfeld 2018 — *Tree-sitter: a new parsing system for programming tools* (Strange Loop) — analysis layer
+- Instagram engineering — [LibCST](https://github.com/Instagram/LibCST) — Python codemod foundation
+- Microsoft / TypeScript team — [ts-morph](https://github.com/dsherret/ts-morph) — TypeScript AST transforms
+- Wang et al. ICSE 2018 — *Towards Refactoring-Aware Regression Test Selection* — coverage-of-changed-surface insight
 
 ---
 

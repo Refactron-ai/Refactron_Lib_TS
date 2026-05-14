@@ -30,3 +30,8 @@ __pycache__/
 *.pyc
 .pytest_cache/
 bench/*-loc/
+
+# Python wrapper build artifacts (refactron-py)
+refactron-py/dist/
+refactron-py/build/
+refactron-py/**/*.egg-info/

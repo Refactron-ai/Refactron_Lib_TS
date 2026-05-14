@@ -1,0 +1,63 @@
+---
+title: format_to_fstring
+description: Convert old-style %-formatting and .format() calls into f-strings.
+---
+
+**Transform ID:** `format_to_fstring`
+**Language:** Python
+
+## What it does
+
+Rewrites legacy string-formatting expressions to PEP 498 f-strings. Both the `%` operator (`"hello %s" % name`) and `str.format()` calls (`"hello {}".format(name)`) are converted in place.
+
+## Detector pattern
+
+The detector at `src/analyze/detectors/python/format-detector.ts` finds `BinaryOperator(left=String, op='%', right=...)` and `Call(func=Attribute(value=String, attr='format'), ...)` nodes via LibCST.
+
+## Preconditions
+
+1. The expression is one of the two recognised forms above.
+2. The substituted values are simple references (names or attribute accesses) — LibCST's `ConvertFormatStringCommand` skips patterns it cannot losslessly inline.
+3. The string literal is not an existing f-string.
+
+## Before / after
+
+<CodeGroup>
+```python before.py
+def greet(name):
+    # Old percent-formatting style.
+    return "hello %s" % name
+
+
+def format_value(x):
+    # Old str.format style.
+    return "value is {}".format(x)
+```
+
+```python after.py
+def greet(name):
+    # Old percent-formatting style.
+    return f"hello {name}"
+
+
+def format_value(x):
+    # Old str.format style.
+    return f"value is {x}"
+```
+</CodeGroup>
+
+## Edge cases handled
+
+- Both `%` and `.format()` styles in the same file.
+- Returns `null` (no change) for plain strings without format operators.
+- Survives complex `.format()` patterns that the underlying `ConvertFormatStringCommand` cannot handle — the file is left unchanged rather than crashed.
+
+## Edge cases NOT handled (skip via precondition)
+
+- Nested `.format()` calls inside dict/list literals (per ADR-006, complex shapes may be skipped by LibCST's converter).
+- Format strings with chained attribute access in the substitution slot (e.g. `"{}".format(a.b.c)`).
+- Conditional formats (`format` called via `getattr` or aliased).
+
+<Note>
+When the underlying converter cannot safely produce an equivalent f-string, the transform reports preconditions but leaves the source untouched — it never emits a half-converted file.
+</Note>

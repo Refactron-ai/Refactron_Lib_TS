@@ -1,0 +1,74 @@
+---
+title: class_to_dataclass
+description: Promote pure data-holder classes (trivial __init__) to @dataclass.
+---
+
+**Transform ID:** `class_to_dataclass`
+**Language:** Python
+
+## What it does
+
+Detects classes whose `__init__` method only does `self.<name> = <name>` assignments and rewrites them as `@dataclass`. Each former init parameter becomes a typed field (`Any` when the original parameter has no annotation).
+
+## Detector pattern
+
+The detector at `src/analyze/detectors/python/dataclass-detector.ts` walks `ClassDef` nodes, accepts only those with a single `__init__` method, and verifies every body statement is an `Assign(targets=[Attribute(self, name)], value=Name(name))` shape.
+
+## Preconditions
+
+1. The class has exactly one method, and it is `__init__`.
+2. The `__init__` body is purely `self.<name> = <name>` lines (no defaults, no transformations like `self.x = x * 2`).
+3. The class has **no `__slots__`** declaration.
+4. The class does **not inherit** from a parent with a custom `__init__`.
+5. Init parameter names match the assignment target names (no `self.public = _private` redirection).
+
+## Before / after
+
+<CodeGroup>
+```python before.py
+class User:
+    def __init__(self, id, name, email):
+        self.id = id
+        self.name = name
+        self.email = email
+
+
+class Address:
+    def __init__(self, street, city, zip):
+        self.street = street
+        self.city = city
+        self.zip = zip
+```
+
+```python after.py
+from dataclasses import dataclass
+from typing import Any
+
+
+@dataclass
+class User:
+    id: Any
+    name: Any
+    email: Any
+
+
+@dataclass
+class Address:
+    street: Any
+    city: Any
+    zip: Any
+```
+</CodeGroup>
+
+## Edge cases handled
+
+- Adds `from dataclasses import dataclass` and `from typing import Any` if missing.
+- Preserves class docstrings and decorators that precede the class.
+- Multiple convertible classes per file are all converted in one pass.
+
+## Edge cases NOT handled (skip via precondition)
+
+- Class has any method besides `__init__` (the transform refuses to promote — a dataclass with custom methods is fine in principle, but inferring `eq`/`hash`/`repr` interactions safely is out of scope for v0.2).
+- Init body contains expressions (`self.id = id * 2`, `self.full_name = first + " " + last`).
+- Init has default arguments (`def __init__(self, x=0)`) — supported by dataclass via `field(default=…)` but not auto-inferred here.
+- Class uses `__slots__`.

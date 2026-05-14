@@ -1,0 +1,74 @@
+---
+title: var_to_const_let
+description: Replace var declarations with const (or let if reassigned) per binding.
+---
+
+**Transform ID:** `var_to_const_let`
+**Language:** TypeScript
+
+## What it does
+
+For every `var` declaration in the file, decide per binding:
+
+- **`const`** if the binding is never reassigned after initialization.
+- **`let`** if the binding is reassigned at least once.
+
+Each binding is judged independently — multiple `var` statements in one file may map to a mix of `const` and `let`.
+
+## Detector pattern
+
+The detector at `src/analyze/detectors/typescript/var-detector.ts` collects all `VariableStatement` nodes with the `var` keyword via ts-morph and then walks the surrounding scope to count reassignments per binding name.
+
+## Preconditions
+
+1. No binding in the file is **referenced before its declaration** (relying on `var` hoisting). If hoisting is used anywhere, the entire file is skipped — the transform refuses to break working hoisted code.
+2. No `var` is declared inside a `with` statement (legacy scope rules differ from `let`/`const`).
+3. The file contains at least one `var` statement.
+
+## Before / after
+
+<CodeGroup>
+```ts before.ts
+// Legacy var-style declarations.
+export function sumTo(n) {
+  var counter = 0;
+  for (var i = 1; i <= n; i++) {
+    counter = counter + i;
+  }
+  return counter;
+}
+
+export function makeGreeting(name) {
+  var greeting = 'hi';
+  return greeting + ', ' + name;
+}
+```
+
+```ts after.ts
+// Legacy var-style declarations.
+export function sumTo(n) {
+  let counter = 0;
+  for (let i = 1; i <= n; i++) {
+    counter = counter + i;
+  }
+  return counter;
+}
+
+export function makeGreeting(name) {
+  const greeting = 'hi';
+  return greeting + ', ' + name;
+}
+```
+</CodeGroup>
+
+## Edge cases handled
+
+- Mixed const/let outcomes inside a single file based on each binding's mutability.
+- Multiple independent `var`s in one file (`var a = 1; var b = 2; b = b + 1;` → `const a = 1; let b = 2; b = b + 1;`).
+- `for (var i = 0; ...)` becomes `for (let i = 0; ...)` when `i` is mutated by the loop step.
+
+## Edge cases NOT handled (skip via precondition)
+
+- File relies on hoisting (e.g. `console.log(x); var x = 1;`).
+- `var` declared inside a `with` block.
+- `.cjs` files (handled by [`commonjs_to_esm`](/transforms/commonjs-to-esm) when relevant; `var` inside CommonJS modules has different historical patterns).

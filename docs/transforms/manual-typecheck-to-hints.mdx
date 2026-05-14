@@ -1,0 +1,87 @@
+---
+title: manual_typecheck_to_hints
+description: Promote isinstance-chain dispatch into a Union[...] type annotation on the parameter.
+---
+
+**Transform ID:** `manual_typecheck_to_hints`
+**Language:** Python
+
+## What it does
+
+Detects `isinstance(x, T1) / elif isinstance(x, T2) / ...` chains where every branch discriminates the **same** parameter `x`, then annotates the parameter with `Union[T1, T2, ...]` and adds `from typing import Union` if needed. The chain itself is preserved (the runtime check still runs); only the parameter signature is enriched.
+
+## Detector pattern
+
+The detector at `src/analyze/detectors/python/typecheck-detector.ts` walks `If` / `Elif` chains looking for `Call(func=Name("isinstance"), args=[Name(param), Name(type)])` shapes and groups by parameter name.
+
+## Preconditions
+
+1. The function has at least one parameter without an existing type annotation.
+2. Every `isinstance` branch in the chain discriminates the **same single parameter**.
+3. The chain effectively dispatches the function body — i.e. the bare-`else` is either absent or raises.
+4. The parameter is not already annotated.
+5. The chain references at least two distinct types (a single `isinstance` is not informative enough to be worth annotating).
+
+## Before / after
+
+<CodeGroup>
+```python before.py
+import math
+
+
+class Circle:
+    def __init__(self, radius):
+        self.radius = radius
+
+
+class Square:
+    def __init__(self, side):
+        self.side = side
+
+
+def area(shape):
+    if isinstance(shape, Circle):
+        return math.pi * shape.radius * shape.radius
+    elif isinstance(shape, Square):
+        return shape.side * shape.side
+    else:
+        raise TypeError("unknown shape: %r" % shape)
+```
+
+```python after.py
+import math
+from typing import Union
+
+
+class Circle:
+    def __init__(self, radius):
+        self.radius = radius
+
+
+class Square:
+    def __init__(self, side):
+        self.side = side
+
+
+def area(shape: Union[Circle, Square]):
+    if isinstance(shape, Circle):
+        return math.pi * shape.radius * shape.radius
+    elif isinstance(shape, Square):
+        return shape.side * shape.side
+    else:
+        raise TypeError("unknown shape: %r" % shape)
+```
+</CodeGroup>
+
+## Edge cases handled
+
+- Adds `from typing import Union` when not already imported.
+- Preserves the runtime `isinstance` chain — purely additive in semantics.
+- Records satisfied preconditions as `annotated:<fn>:<param>` for traceability.
+
+## Edge cases NOT handled (skip via precondition)
+
+- Parameter is already annotated (`def handle(x: int)`).
+- Chain discriminates more than one parameter (e.g. `isinstance(x, int)` then `isinstance(y, str)`).
+- Chain contains a single type only.
+- The discriminated parameter doesn't exist in the function signature (defensive check).

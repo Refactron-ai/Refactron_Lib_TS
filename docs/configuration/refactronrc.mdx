@@ -1,0 +1,84 @@
+---
+title: .refactronrc.json
+description: Project-level configuration file. CLI flags always override values here.
+---
+
+All Refactron CLI configuration lives in `.refactronrc.json` at your project root. Every field is optional — defaults are applied when a key is missing, and any key the CLI flag explicitly sets wins over the file.
+
+Run `refactron init` to scaffold a starter file.
+
+## Schema
+
+| Field | Type | Default | Description |
+|---|---|---|---|
+| `transforms` | `string[]` | `["all"]` | `["all"]` enables every transform, or list specific [transform IDs](/transforms). |
+| `exclude` | `string[]` | `[]` | Gitignore-style globs to skip during analysis (e.g. `["dist", "node_modules"]`). |
+| `testCmd` | `string \| null` | `null` (auto-detect) | Override the test runner Gate 3 invokes. Auto-detection looks for `vitest.config.*`, `jest.config.*`, `pytest.ini`, or a `[tool.pytest.*]` block in `pyproject.toml`. |
+| `confidence` | `"high" \| "medium" \| "low"` | `"high"` | Minimum analyzer confidence to surface findings. Lower = noisier. |
+| `dryRun` | `boolean` | `true` | Default mode for `run` when neither `--apply` nor `--dry-run` is passed. |
+| `documentation.provider` | `"backend" \| "ollama" \| "openai" \| "anthropic" \| "groq"` | `"backend"` | LLM provider for the `document` command. `"backend"` uses your stored Refactron credentials (Pro plan); the others are opt-in. |
+| `documentation.model` | `string` | `"llama-3.3-70b-versatile"` | Model name passed to the provider. |
+| `documentation.endpoint` | `string \| null` | `null` | Override the provider URL (e.g. self-hosted Ollama or a custom OpenAI-compatible gateway). |
+| `documentation.tokenBudget` | `integer (256-32000)` | `4000` | Max tokens per LLM call. Lower = cheaper, more truncation. |
+| `documentation.redactPatterns` | `string[]` | `[]` | Extra regex patterns to strip from prompts before they leave your machine. The built-in set already covers AWS keys, OpenAI / Anthropic / GitHub tokens, JWTs, and generic `.env` style assignments. |
+| `documentation.cache` | `boolean` | `true` | Cache prompt → response under `.refactron/cache/llm/`. Bypass once with `--no-cache`. |
+
+## Example
+
+<CodeGroup>
+```json .refactronrc.json
+{
+  "$schema": "https://refactron.dev/schema/refactronrc.json",
+  "transforms": ["all"],
+  "exclude": ["node_modules", "dist", ".venv", "__pycache__"],
+  "testCmd": null,
+  "confidence": "high",
+  "dryRun": true,
+  "documentation": {
+    "provider": "backend",
+    "model": "llama-3.3-70b-versatile",
+    "endpoint": null,
+    "tokenBudget": 4000,
+    "redactPatterns": [],
+    "cache": true
+  }
+}
+```
+
+```json minimal.json
+{
+  "transforms": ["var_to_const_let", "implicit_any"],
+  "exclude": ["dist"]
+}
+```
+
+```json local-ollama.json
+{
+  "transforms": ["all"],
+  "documentation": {
+    "provider": "ollama",
+    "model": "qwen2.5-coder:7b",
+    "endpoint": "http://localhost:11434"
+  }
+}
+```
+</CodeGroup>
+
+## File search order
+
+Refactron uses [cosmiconfig](https://github.com/cosmiconfig/cosmiconfig) and looks for, in order:
+
+1. `.refactronrc`
+2. `.refactronrc.json`
+3. `.refactronrc.yaml`
+4. `refactron.config.js`
+
+The first match wins. We recommend `.refactronrc.json` for editor JSON-schema support.
+
+## Validation
+
+Configs are validated against a JSON Schema 7 schema with [Ajv 8](https://ajv.js.org/). Unknown fields, wrong types, and out-of-range values cause the CLI to exit with code `2` and a clear error message — no silent ignoring.
+
+<Note>
+The legacy `refactron.yaml` ([Configuration overview](/configuration)) is still parsed for backwards compatibility but new keys land here in `.refactronrc.json`. The two files are merged when both exist; flags override either.
+</Note>
