@@ -1,12 +1,26 @@
 // src/cli/REPL.tsx
-// Layout (all in Ink live tree — no Static — so SessionHeader stays fixed):
-//   SessionHeader           — always visible at top
-//   lines.map(...)          — session output, grows downward
-//   EmptyState              — shown when lines is empty
-//   SpinnerWithVerb | PromptInput  (separated from output by a top border)
-//   StatusLine
+// Layout (split between Ink's <Static> and live tree — fixes whole-screen
+// flicker on long sessions in DOM-renderer terminals like VS Code's):
+//
+//   <Static items={[header, ...lines]}>            ← emitted once each, never
+//     {SessionHeader | output line}                   re-rendered. Stays in
+//   </Static>                                         scrollback above the
+//                                                    live tree.
+//   <Box flexDirection="column">                   ← live tree, only the
+//     EmptyState                                      small dynamic UI.
+//     SpinnerWithVerb | PromptInput                   Re-renders on every
+//     CtrlCWarning                                    spinner tick are now
+//   </Box>                                            cheap (4-5 elements,
+//                                                    not hundreds).
+//
+// Before this change: every 120ms spinner tick caused Ink to walk the
+// entire layout tree including ~300 output lines after a typical
+// analyze+dry-run session. VS Code's xterm.js DOM renderer redrew the
+// whole alt-screen each time, producing visible whole-terminal flicker.
+// After: <Static> emits each line exactly once; spinner ticks only redraw
+// the live tree (4-5 elements). No flicker even on long sessions.
 import React, { useState, useCallback, useRef, useEffect } from 'react';
-import { Box, Text, useApp, useInput } from 'ink';
+import { Box, Static, Text, useApp, useInput } from 'ink';
 import { theme } from '../ui/theme.js';
 import { parseInput, executeCommand, type CommandContext, type CommandResult } from './runner.js';
 import { SessionHeader } from './components/SessionHeader.js';
@@ -167,74 +181,91 @@ export function REPL({ ctx, version, email, plan }: REPLProps): React.ReactEleme
     { isActive: process.stdin.isTTY === true },
   );
 
+  // Build the Static item list: a synthetic '__header' marker first so the
+  // SessionHeader renders once at the top of scrollback, then each output
+  // line. Static emits new items as they appear and never re-renders existing
+  // ones, killing the per-spinner-tick whole-screen repaint.
+  type StaticItem =
+    | { kind: 'header'; key: string }
+    | { kind: 'line'; key: number; line: MessageLine };
+  const staticItems: StaticItem[] = [
+    { kind: 'header', key: '__header' },
+    ...lines.map<StaticItem>((line) => ({ kind: 'line', key: line.id, line })),
+  ];
+
   return (
-    <Box flexDirection="column">
-      {/* ── Session header — always anchored at top ────────────────────────── */}
-      <SessionHeader
-        version={version}
-        adapterName={ctx.adapter.displayName}
-        email={email}
-        plan={plan}
-      />
+    <>
+      {/* ── Append-only history — emitted once per item, never re-rendered ── */}
+      <Static items={staticItems}>
+        {(item) =>
+          item.kind === 'header' ? (
+            <SessionHeader
+              key={item.key}
+              version={version}
+              adapterName={ctx.adapter.displayName}
+              email={email}
+              plan={plan}
+            />
+          ) : item.line.color !== undefined ? (
+            <Text key={item.key} color={item.line.color}>
+              {item.line.text}
+            </Text>
+          ) : (
+            <Text key={item.key}>{item.line.text}</Text>
+          )
+        }
+      </Static>
 
-      {/* ── Output history — rendered in live tree so header stays fixed ───── */}
-      {lines.map((line) =>
-        line.color !== undefined ? (
-          <Text key={line.id} color={line.color}>
-            {line.text}
-          </Text>
+      {/* ── Live tree — small dynamic UI, re-renders cheaply on every tick ── */}
+      <Box flexDirection="column">
+        {/* Empty state — disappears after first command */}
+        {lines.length === 0 && !isRunning && (
+          <Box paddingLeft={2} paddingBottom={1} flexDirection="column">
+            <Box gap={1}>
+              <Text color={theme.colors.brand}>{OUTPUT_CIRCLE}</Text>
+              <Text dimColor>
+                {'Type '}
+                <Text color={theme.colors.brand}>help</Text>
+                {' to see available commands.'}
+              </Text>
+            </Box>
+            <Box gap={1}>
+              <Text color={theme.colors.brand}>{OUTPUT_CIRCLE}</Text>
+              <Text dimColor>
+                {'Try: '}
+                <Text color={theme.colors.text}>{'analyze .'}</Text>
+                {' to scan this project.'}
+              </Text>
+            </Box>
+          </Box>
+        )}
+
+        {isRunning ? (
+          /* Spinner while running */
+          <SpinnerWithVerb
+            verb={runningCmd.split(' ')[0] ?? 'working'}
+            isActive={isRunning}
+            lastProgressTime={lastProgressTime}
+          />
         ) : (
-          <Text key={line.id}>{line.text}</Text>
-        ),
-      )}
+          /* Normal prompt */
+          <PromptInput
+            onSubmit={(v) => void handleSubmit(v)}
+            isActive={!isRunning}
+            isRunning={isRunning}
+            history={history}
+          />
+        )}
 
-      {/* Empty state — disappears after first command */}
-      {lines.length === 0 && !isRunning && (
-        <Box paddingLeft={2} paddingBottom={1} flexDirection="column">
-          <Box gap={1}>
-            <Text color={theme.colors.brand}>{OUTPUT_CIRCLE}</Text>
-            <Text dimColor>
-              {'Type '}
-              <Text color={theme.colors.brand}>help</Text>
-              {' to see available commands.'}
-            </Text>
+        {/* Ctrl+C warning — live, dismisses on any keypress */}
+        {ctrlCPending && (
+          <Box paddingLeft={2}>
+            <Text color={theme.colors.textDim}>Press </Text>
+            <Text color={theme.colors.warning}>Ctrl+C</Text>
+            <Text color={theme.colors.textDim}> again to exit</Text>
           </Box>
-          <Box gap={1}>
-            <Text color={theme.colors.brand}>{OUTPUT_CIRCLE}</Text>
-            <Text dimColor>
-              {'Try: '}
-              <Text color={theme.colors.text}>{'analyze .'}</Text>
-              {' to scan this project.'}
-            </Text>
-          </Box>
-        </Box>
-      )}
-
-      {isRunning ? (
-        /* Spinner while running */
-        <SpinnerWithVerb
-          verb={runningCmd.split(' ')[0] ?? 'working'}
-          isActive={isRunning}
-          lastProgressTime={lastProgressTime}
-        />
-      ) : (
-        /* Normal prompt */
-        <PromptInput
-          onSubmit={(v) => void handleSubmit(v)}
-          isActive={!isRunning}
-          isRunning={isRunning}
-          history={history}
-        />
-      )}
-
-      {/* Ctrl+C warning — live, dismisses on any keypress */}
-      {ctrlCPending && (
-        <Box paddingLeft={2}>
-          <Text color={theme.colors.textDim}>Press </Text>
-          <Text color={theme.colors.warning}>Ctrl+C</Text>
-          <Text color={theme.colors.textDim}> again to exit</Text>
-        </Box>
-      )}
-    </Box>
+        )}
+      </Box>
+    </>
   );
 }
