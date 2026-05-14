@@ -66,7 +66,10 @@ jobs:
           registry-url: 'https://registry.npmjs.org'
       - run: npm ci
       - run: npm run build
-      - run: npm publish --provenance --access public
+      # --ignore-scripts skips prepublishOnly (full test gate). We already
+      # ran the equivalent in test-before-release; re-running here would
+      # require Python+libcst on this minimal runner for no extra signal.
+      - run: npm publish --provenance --access public --ignore-scripts
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
