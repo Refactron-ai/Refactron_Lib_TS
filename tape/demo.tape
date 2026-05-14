@@ -16,21 +16,33 @@ Enter
 Sleep 500ms
 Show
 
-Type "refactron analyze ."
+# `refactron login` boots the app. If you're not authenticated it shows the
+# OAuth device-flow UI; if you are (as on this host), it skips straight to
+# the REPL. From the REPL the verbs are bare (analyze, run, document), no
+# `refactron ` prefix.
+Type "refactron login"
+Enter
+Sleep 3s
+
+Type "analyze ."
 Enter
 Sleep 4s
 
-Type "refactron run --dry-run ."
+Type "run --dry-run ."
 Enter
 Sleep 5s
 
-Type "refactron run --apply ."
+Type "run --apply ."
 Enter
 Sleep 6s
 
-Type "refactron document --apply"
+Type "document --apply"
 Enter
 Sleep 4s
+
+Type "exit"
+Enter
+Sleep 500ms
 
 # Clean up before the recording ends so subsequent reruns from the same
 # checkout don't see the mutated fixture.
