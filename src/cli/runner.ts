@@ -551,7 +551,23 @@ export async function executeCommand(
 
   if (command === 'document') {
     const { runDocumentCommand } = await import('./document-command.js');
-    const argv: string[] = [ctx.projectRoot];
+    // Pick the document target the SAME WAY `run --apply` picks where to
+    // persist last-apply.json: prefer the active session's analyze target.
+    // Falling back to ctx.projectRoot (the dir the REPL was launched in)
+    // would read a STALE .refactron/last-apply.json from a previous,
+    // unrelated session — bug surfaced when refactoring a Python fixture
+    // pulled docstrings from an old TypeScript-fixture apply.
+    const activeForDoc = ctx.sessions.getActive();
+    const sessionTarget = activeForDoc?.analysis.target;
+    let documentTarget: string;
+    if (target && target !== '.') {
+      documentTarget = path.isAbsolute(target) ? target : path.resolve(ctx.projectRoot, target);
+    } else if (sessionTarget) {
+      documentTarget = sessionTarget;
+    } else {
+      documentTarget = ctx.projectRoot;
+    }
+    const argv: string[] = [documentTarget];
     if (flags['apply'] === true) argv.push('--apply');
     if (flags['no-cache'] === true) argv.push('--no-cache');
     if (flags['json'] === true) argv.push('--json');
