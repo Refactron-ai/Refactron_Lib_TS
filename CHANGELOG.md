@@ -7,6 +7,51 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [0.2.0] — 2026-05-15
+
+First public release of the v2.0 deterministic-refactoring rebuild.
+
+### Added
+- **Engine** — 10 deterministic AST transforms (5 Python via LibCST, 5 TypeScript via ts-morph) with cross-file preconditions
+- **3-gate verification** — syntax + imports + tests on a shadow tree, atomic batch write or rollback (PRs #7, #8, #11, #13, #15)
+- **Documentation engine** — Step 4 of the pipeline; the only LLM-touching component, runs only on already-verified diffs (PR #15)
+- **5 LLM providers** for `document`: Ollama (local default — for the trust-conscious), Groq (BYOK fast), OpenAI, Anthropic, Backend (managed via api.refactron.dev for Pro users) (PR #22)
+- **CLI output redesign** — by-file findings with code excerpts (analyze), per-file unified diffs (run --dry-run), gate-by-gate progress + structured failure surface (run --apply) (PR #19)
+- **Authentication** — OAuth device flow with `REFACTRON_TOKEN` env var support; long-lived API keys for stay-logged-in semantics (PRs #13, #25)
+- **`.refactronrc.json` config** — cosmiconfig + ajv schema validation; `transforms`, `exclude`, `testCmd`, `confidence`, `dryRun`, `documentation` (PRs #13, #20, #22)
+- **Performance** — per-file parallelization in plan step, 3× speedup on python-legacy-mini (PR #23)
+- **Mintlify documentation site** with full transform catalog, safety model diagram, FAQ, citations
+- **Reproducible perf bench** infrastructure at `bench/`
+
+### Changed
+- REPL output history rendered via Ink `<Static>` to eliminate whole-screen flicker (PR #24)
+- Spinner reduced from 80ms tick + per-char shimmer to 250ms tick + single brand color (~50 → ~4 ANSI escapes/sec) (PR #24)
+- `RefactronRc.documentation.provider` defaults to `'backend'` so authenticated Pro users get LLM docs out-of-the-box (PR #22)
+
+### Fixed
+- REPL `clear` now wipes the terminal viewport, not just React state (PR #24)
+- REPL `document` defaults to the active session's analyze target (was reading stale `last-apply.json` from cwd) (PR #22)
+- `RefactronRc.exclude` field is now wired into discovery (was dead code since Week 5) (PR #20)
+- Run `--apply <file>` parser stops eating the path argument (PR #17)
+- REPL `document` output no longer vanishes into Ink's render buffer (PR #18)
+- Verify failure surface no longer drops vitest's FAIL section (was front-slicing 4000 chars) (PR #19)
+- Findings rendered in source order within each file, not detector-emission order (PR #20)
+- CHANGELOG written next to the changed files' project marker, not to cwd (PR #22)
+- Cross-platform: Windows path separators normalized in formatters; Node 18 execa.timedOut wall-clock derivation (PR #19, #20)
+
+### Documentation
+- SECURITY.md with disclosure policy + threat model
+- 30-second demo GIF in README
+- 13 docs site pages (Safety Model, 10 transform pages, CLI Reference, Configuration, FAQ, Why No LLM)
+- ADRs 1–10 covering every weekly architecture decision
+
+### Honest limitations
+- No Ruby / Go / Rust adapters in 0.2; multi-language is post-launch
+- Documentation engine requires a reachable LLM provider (graceful skip otherwise)
+- Self-analysis on Refactron's own repo fails the test gate by design (mutating fixtures breaks meta-tests) — see `docs/known-limitations`
+
+---
+
 ## [0.1.0-beta.2] — 2026-04-05
 
 ### Added
