@@ -107,10 +107,7 @@ export class RefactronRefactorer implements Refactorer {
       preconditions: Precondition[];
     } | null>(work.length);
 
-    async function processFile(
-      this: RefactronRefactorer,
-      idx: number,
-    ): Promise<void> {
+    async function processFile(this: RefactronRefactorer, idx: number): Promise<void> {
       const { relPath, findings: fileFindings } = work[idx]!;
       const absPath = path.resolve(this.opts.projectRoot, relPath);
       let originalText: string;
