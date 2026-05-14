@@ -20,6 +20,7 @@ import writeAtomic from 'write-file-atomic';
 import type { LLMProvider, DocumenterOptions } from '../document/types.js';
 import { MockLLMProvider } from '../document/provider/mock.js';
 import { pickProvider, type ProviderConfig } from '../document/provider/factory.js';
+import { loadCredentials } from '../auth/credentials.js';
 import { RefactronDocumenter } from '../document/engine.js';
 import { insertDocstring, appendChangelog } from '../document/apply.js';
 import type { VerificationResult } from '../contracts.js';
@@ -119,6 +120,87 @@ function detectLanguage(filePath: string): 'python' | 'typescript' | null {
   return null;
 }
 
+// The engine sets changelogEntry to "Documentation skipped: <reason>." when
+// the LLM provider is unreachable / rate-limited / returns garbage. We use
+// this prefix as a sentinel to distinguish a real LLM failure from a
+// zero-symbols-to-document outcome (engine ran fine, chunker just had no
+// functions or classes to operate on — common after commonjs_to_esm,
+// var_to_const_let, or any module-level transform).
+const SKIPPED_MARKER = 'Documentation skipped:';
+
+function isProviderSkip(changelogEntry: string): boolean {
+  return changelogEntry.startsWith(SKIPPED_MARKER);
+}
+
+const PROJECT_ROOT_MARKERS = [
+  'package.json',
+  'pyproject.toml',
+  '.git',
+  '.refactronrc.json',
+  '.refactronrc',
+];
+
+async function pathExists(p: string): Promise<boolean> {
+  try {
+    await fs.access(p);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** Walk up from `start` looking for a project marker (package.json,
+ *  pyproject.toml, .git, .refactronrc.json). Capped at `boundary` so we
+ *  never escape the snapshot's projectRoot. Returns `start` if no marker
+ *  is found within bounds.
+ */
+async function walkUpForProjectMarker(start: string, boundary: string): Promise<string> {
+  const absStart = path.resolve(start);
+  const absBoundary = path.resolve(boundary);
+  let dir = absStart;
+  for (;;) {
+    for (const marker of PROJECT_ROOT_MARKERS) {
+      if (await pathExists(path.join(dir, marker))) return dir;
+    }
+    const parent = path.dirname(dir);
+    if (parent === dir) return absStart;
+    if (path.relative(absBoundary, parent).startsWith('..')) return absStart;
+    dir = parent;
+  }
+}
+
+/** Common-ancestor directory of all paths. POSIX semantics on the
+ *  resolved absolute paths; on Windows path.relative + path.dirname
+ *  Just Work because we only use them, not the separator directly.
+ */
+function commonAncestor(paths: string[]): string {
+  if (paths.length === 0) return process.cwd();
+  const dirs = paths.map((p) => path.dirname(path.resolve(p)).split(path.sep));
+  const head = dirs[0]!;
+  let i = 0;
+  while (i < head.length) {
+    const seg = head[i];
+    if (!dirs.every((d) => d[i] === seg)) break;
+    i++;
+  }
+  return dirs[0]!.slice(0, i).join(path.sep) || path.sep;
+}
+
+/** Where to write CHANGELOG.md. Computed as the common ancestor of all
+ *  changed files, then walked up to the nearest project marker (capped
+ *  at the snapshot's projectRoot). Avoids the bug where document was
+ *  writing CHANGELOG.md to the user's *cwd* — which on a Refactron-self
+ *  test was Refactron's own repo root, polluting it with fixture entries.
+ */
+async function pickChangelogDir(
+  changes: ReadonlyArray<{ path: string }>,
+  snapshotProjectRoot: string,
+): Promise<string> {
+  if (changes.length === 0) return path.resolve(snapshotProjectRoot);
+  const ancestor = commonAncestor(changes.map((c) => c.path));
+  return walkUpForProjectMarker(ancestor, snapshotProjectRoot);
+}
+
 export async function runDocumentCommand(
   argv: string[],
   deps: RunDocumentCommandDeps = {},
@@ -173,7 +255,12 @@ export async function runDocumentCommand(
         model: effectiveModel,
         endpoint: config.documentation.endpoint,
       };
-      provider = pickProvider(providerConfig, process.env);
+      // The 'backend' provider needs Refactron credentials (api_key OR
+      // access_token) — we already loaded them via requireAuth above, but
+      // the factory takes the raw object so pass it through here. Safe to
+      // call again; loadCredentials reads a small JSON file or an env var.
+      const creds = await loadCredentials();
+      provider = pickProvider(providerConfig, process.env, creds);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       out(`refactron document: ${msg}\n`, 'stderr');
@@ -218,7 +305,44 @@ export async function runDocumentCommand(
     return 0;
   }
 
+  // Distinguish three outcomes the user needs to act on differently:
+  //   (a) provider unreachable / errored — engine fell back to canned
+  //       changelog. Don't pretend there's anything to apply.
+  //   (b) provider OK but the chunker found no documentable symbols
+  //       (module-level transform, no functions / classes touched).
+  //   (c) real success — at least one docstring ready.
+  const providerSkipped = isProviderSkip(patch.changelogEntry);
+  const noSymbols = !providerSkipped && patch.docstrings.length === 0;
+
   if (!flags.apply) {
+    if (providerSkipped) {
+      const reason = patch.changelogEntry.replace(SKIPPED_MARKER, '').trim();
+      out(
+        `refactron document: skipped — could not reach the LLM provider\n` +
+          `  Reason: ${reason}\n` +
+          `  Your refactor remains applied and verified. Nothing was written.\n` +
+          `\n` +
+          `  To enable doc generation, set one in .refactronrc.json:\n` +
+          `    • provider: 'backend'  (Pro plan, recommended; uses your refactron.dev account)\n` +
+          `    • provider: 'groq'     (free tier, BYOK via GROQ_API_KEY)\n` +
+          `    • provider: 'ollama'   (local, free; install with \`brew install ollama && ollama serve\`)\n`,
+        'stderr',
+      );
+      return 0;
+    }
+    if (noSymbols) {
+      const transformsApplied = [...new Set(snapshot.changes.map((c) => c.transformId))].sort();
+      out(
+        `refactron document: no documentable symbols in the last refactor\n` +
+          `  Transforms applied: ${transformsApplied.join(', ')}\n` +
+          `  These changes don't touch a function or class signature, so the\n` +
+          `  LLM has nothing to describe — there are no docstrings to insert.\n` +
+          `  Try a refactor that affects callable units (e.g. callback_to_async_await,\n` +
+          `  class_to_dataclass, format_to_fstring). Nothing was written.\n`,
+        'stdout',
+      );
+      return 0;
+    }
     out(`refactron document: ${patch.docstrings.length} docstring(s) ready\n`, 'stdout');
     for (const d of patch.docstrings) {
       out(`  - ${path.relative(target, d.file)} :: ${d.symbol}\n`, 'stdout');
@@ -226,6 +350,29 @@ export async function runDocumentCommand(
     out('\nCHANGELOG entry:\n', 'stdout');
     out(`${patch.changelogEntry}\n`, 'stdout');
     out('\nRe-run with --apply to write docstrings and CHANGELOG.md.\n', 'stdout');
+    return 0;
+  }
+
+  // --apply path
+  if (providerSkipped) {
+    const reason = patch.changelogEntry.replace(SKIPPED_MARKER, '').trim();
+    out(
+      `refactron document: skipped — could not reach the LLM provider\n` +
+        `  Reason: ${reason}\n` +
+        `  Nothing was written. Configure a provider in .refactronrc.json (see` +
+        ` 'document --dry-run' for options) and re-run.\n`,
+      'stderr',
+    );
+    return 0;
+  }
+  if (noSymbols) {
+    const transformsApplied = [...new Set(snapshot.changes.map((c) => c.transformId))].sort();
+    out(
+      `refactron document: no documentable symbols in the last refactor\n` +
+        `  Transforms applied: ${transformsApplied.join(', ')}\n` +
+        `  Nothing to write — these transforms don't touch function/class signatures.\n`,
+      'stdout',
+    );
     return 0;
   }
 
@@ -253,7 +400,12 @@ export async function runDocumentCommand(
     await writeAtomic(file, source);
   }
 
-  const changelogPath = path.join(target, 'CHANGELOG.md');
+  // Write CHANGELOG next to the actually-changed files, NOT next to the
+  // user's cwd. Previously this defaulted to `path.join(target, ...)` which
+  // on a Refactron-self test put fixture-CHANGELOG entries into Refactron's
+  // own repo CHANGELOG.md.
+  const changelogDir = await pickChangelogDir(snapshot.changes, snapshot.projectRoot);
+  const changelogPath = path.join(changelogDir, 'CHANGELOG.md');
   let existingChangelog = '';
   try {
     existingChangelog = await fs.readFile(changelogPath, 'utf8');
@@ -265,7 +417,7 @@ export async function runDocumentCommand(
   await writeAtomic(changelogPath, newChangelog);
 
   out(
-    `refactron document: wrote ${patch.docstrings.length} docstring(s) and updated CHANGELOG.md\n`,
+    `refactron document: wrote ${patch.docstrings.length} docstring(s) and updated ${path.relative(target, changelogPath) || changelogPath}\n`,
     'stdout',
   );
   return 0;

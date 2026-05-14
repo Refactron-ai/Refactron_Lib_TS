@@ -119,6 +119,103 @@ describe('redesigned runner output streams', () => {
   }, 180_000);
 });
 
+describe('REPL document target picks the active session, not ctx.projectRoot', () => {
+  let prevToken: string | undefined;
+  let prevMock: string | undefined;
+  let oldProject: string;
+  let newProject: string;
+
+  beforeAll(async () => {
+    prevToken = process.env.REFACTRON_TOKEN;
+    prevMock = process.env.REFACTRON_DOCUMENT_MOCK;
+    process.env.REFACTRON_TOKEN = 'sk_test_integration';
+    process.env.REFACTRON_DOCUMENT_MOCK = '1'; // deterministic provider
+    oldProject = await fs.mkdtemp(path.join(os.tmpdir(), 'refactron-doctgt-old-'));
+    newProject = await fs.mkdtemp(path.join(os.tmpdir(), 'refactron-doctgt-new-'));
+    // Stale snapshot in the old project (looks like a stale TS apply).
+    const oldFile = path.join(oldProject, 'stale-vars.ts');
+    await fs.writeFile(oldFile, 'export function staleSym() {\n  return 1;\n}\n');
+    await fs.mkdir(path.join(oldProject, '.refactron'), { recursive: true });
+    await fs.writeFile(
+      path.join(oldProject, '.refactron', 'last-apply.json'),
+      JSON.stringify({
+        projectRoot: oldProject,
+        verifiedAt: new Date(0).toISOString(),
+        changes: [
+          {
+            path: oldFile,
+            oldContent: 'export function staleSym() {\n  return 1;\n}\n',
+            newContent: 'export function staleSym() {\n  return 2;\n}\n',
+            transformId: 'var_to_const_let',
+          },
+        ],
+      }),
+    );
+    // Fresh snapshot in the new project (the one the user just refactored).
+    const newFile = path.join(newProject, 'fresh.py');
+    await fs.writeFile(newFile, 'def freshSym():\n    return 2\n');
+    await fs.mkdir(path.join(newProject, '.refactron'), { recursive: true });
+    await fs.writeFile(
+      path.join(newProject, '.refactron', 'last-apply.json'),
+      JSON.stringify({
+        projectRoot: newProject,
+        verifiedAt: new Date().toISOString(),
+        changes: [
+          {
+            path: newFile,
+            oldContent: 'def freshSym():\n    return 1\n',
+            newContent: 'def freshSym():\n    return 2\n',
+            transformId: 'format_to_fstring',
+          },
+        ],
+      }),
+    );
+  }, 30_000);
+
+  afterAll(async () => {
+    if (prevToken === undefined) delete process.env.REFACTRON_TOKEN;
+    else process.env.REFACTRON_TOKEN = prevToken;
+    if (prevMock === undefined) delete process.env.REFACTRON_DOCUMENT_MOCK;
+    else process.env.REFACTRON_DOCUMENT_MOCK = prevMock;
+    if (oldProject) await fs.rm(oldProject, { recursive: true, force: true });
+    if (newProject) await fs.rm(newProject, { recursive: true, force: true });
+  });
+
+  it('reads last-apply.json from the active session, not from ctx.projectRoot', async () => {
+    // ctx.projectRoot points at the OLD project (stale snapshot).
+    // Active session's analysis.target points at the NEW project.
+    // `document` without an explicit path must read NEW, not OLD.
+    const lines: string[] = [];
+    const { ctx } = makeFakeContext(oldProject);
+    const fakeAnalysis: WorkSessionAnalysis = {
+      target: newProject,
+      filesAnalyzed: 1,
+      filesSkipped: 0,
+      totalIssues: 1,
+      fixableCount: 1,
+      issuesBySeverity: { critical: 0, high: 1, medium: 0, low: 0 },
+      issues: [],
+      durationMs: 1,
+      timestamp: new Date().toISOString(),
+    };
+    const session = ctx.sessions.createSession(fakeAnalysis);
+    ctx.sessions.setActive(session);
+
+    await executeCommand(
+      { command: 'document', target: '.', flags: {} },
+      ctx,
+      (line: string) => lines.push(line),
+      new AbortController().signal,
+    );
+    const text = lines.join('\n');
+    // We loaded the fresh snapshot — the freshSym symbol from the new project
+    // shows up in the dry-run output. The stale staleSym symbol from the old
+    // project must NOT appear (would mean we read the wrong snapshot).
+    expect(text).toMatch(/freshSym/);
+    expect(text).not.toMatch(/staleSym/);
+  }, 30_000);
+});
+
 function makeFakeContext(projectRoot: string): { ctx: CommandContext } {
   const store = new Map<string, WorkSession>();
   let activeId: string | null = null;

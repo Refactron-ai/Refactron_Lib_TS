@@ -56,12 +56,12 @@ describe('loadRefactronConfig', () => {
 });
 
 describe('documentation sub-config', () => {
-  it('defaults to ollama / llama3.1:8b / local endpoint', async () => {
+  it('defaults to backend provider with llama-3.3-70b-versatile and creds-derived endpoint', async () => {
     const cfg = await loadRefactronConfig(tmp);
     expect(cfg.documentation).toMatchObject({
-      provider: 'ollama',
-      model: 'llama3.1:8b',
-      endpoint: 'http://localhost:11434',
+      provider: 'backend',
+      model: 'llama-3.3-70b-versatile',
+      endpoint: null, // null = use api_base_url from credentials
       tokenBudget: 4000,
       redactPatterns: [],
       cache: true,
@@ -81,7 +81,7 @@ describe('documentation sub-config', () => {
     expect(cfg.documentation.tokenBudget).toBe(2000);
     // defaults preserved via deep-merge
     expect(cfg.documentation.cache).toBe(true);
-    expect(cfg.documentation.endpoint).toBe('http://localhost:11434');
+    expect(cfg.documentation.endpoint).toBeNull();
     expect(cfg.documentation.redactPatterns).toEqual([]);
   });
 

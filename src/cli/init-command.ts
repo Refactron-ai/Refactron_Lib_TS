@@ -11,6 +11,14 @@ const TEMPLATE = {
   testCmd: null,
   confidence: 'high',
   dryRun: true,
+  // Default doc provider is the Refactron-managed backend — works out of
+  // the box for any authenticated user. Switch to 'ollama' (local, free,
+  // requires `brew install ollama`), 'groq' (BYOK via GROQ_API_KEY env
+  // var), 'openai', or 'anthropic' if you prefer a different LLM.
+  documentation: {
+    provider: 'backend',
+    model: 'llama-3.3-70b-versatile',
+  },
 };
 
 export async function runInitCommand(argv: string[]): Promise<number> {

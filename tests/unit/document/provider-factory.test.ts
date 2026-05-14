@@ -65,4 +65,83 @@ describe('pickProvider', () => {
       ),
     ).toThrow(/ANTHROPIC_API_KEY/);
   });
+
+  it('returns GroqProvider when configured + GROQ_API_KEY set', () => {
+    process.env.GROQ_API_KEY = 'gsk_test';
+    const p = pickProvider(
+      { provider: 'groq', model: 'llama-3.3-70b-versatile', endpoint: null },
+      process.env,
+    );
+    expect(p.name).toBe('groq');
+  });
+
+  it('throws when groq configured without GROQ_API_KEY', () => {
+    delete process.env.GROQ_API_KEY;
+    expect(() =>
+      pickProvider(
+        { provider: 'groq', model: 'llama-3.3-70b-versatile', endpoint: null },
+        process.env,
+      ),
+    ).toThrow(/GROQ_API_KEY/);
+  });
+
+  it('GroqProvider honors a custom endpoint when supplied (e.g. for proxies)', () => {
+    process.env.GROQ_API_KEY = 'gsk_test';
+    const p = pickProvider(
+      {
+        provider: 'groq',
+        model: 'llama-3.3-70b-versatile',
+        endpoint: 'https://my-proxy.example.com/openai/v1/chat/completions',
+      },
+      process.env,
+    );
+    expect(p.name).toBe('groq');
+  });
+
+  it('returns BackendLLMProvider when configured + creds provide api_key', () => {
+    const creds = {
+      api_base_url: 'https://api.refactron.dev',
+      access_token: 'tok',
+      token_type: 'Bearer',
+      expires_at: null,
+      email: null,
+      plan: 'pro',
+      api_key: 'rfk_test',
+    };
+    const p = pickProvider(
+      { provider: 'backend', model: 'llama-3.3-70b-versatile', endpoint: null },
+      process.env,
+      creds,
+    );
+    expect(p.name).toBe('backend');
+  });
+
+  it('throws when backend configured but creds are null (not logged in)', () => {
+    expect(() =>
+      pickProvider(
+        { provider: 'backend', model: 'llama-3.3-70b-versatile', endpoint: null },
+        process.env,
+        null,
+      ),
+    ).toThrow(/refactron login|REFACTRON_TOKEN/);
+  });
+
+  it('throws when backend configured but creds have neither api_key nor access_token', () => {
+    const empty = {
+      api_base_url: 'https://api.refactron.dev',
+      access_token: '',
+      token_type: 'Bearer',
+      expires_at: null,
+      email: null,
+      plan: null,
+      api_key: null,
+    };
+    expect(() =>
+      pickProvider(
+        { provider: 'backend', model: 'llama-3.3-70b-versatile', endpoint: null },
+        process.env,
+        empty,
+      ),
+    ).toThrow(/api_key or access_token/);
+  });
 });
