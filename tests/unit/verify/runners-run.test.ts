@@ -20,6 +20,9 @@ describe('runRunner', () => {
     });
     expect(r.exitCode).toBe(17);
   });
+  // Per-test timeout 15s: this test deliberately exercises execa's timeout +
+  // SIGKILL + cleanup wall-clock, which on a contended CI runner can exceed
+  // vitest's default 5000ms long after the runner has reported timedOut=true.
   it('reports timeout', async () => {
     const r = await runRunner({
       cmd: 'sh',
@@ -28,7 +31,7 @@ describe('runRunner', () => {
       timeoutMs: 500,
     });
     expect(r.timedOut).toBe(true);
-  });
+  }, 15_000);
   it('retries baseline on flake', async () => {
     let attempt = 0;
     const r = await runRunner(
