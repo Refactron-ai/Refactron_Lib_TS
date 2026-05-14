@@ -23,7 +23,19 @@ export function isExpired(creds: RefactronCredentials): boolean {
 }
 
 export function isAuthenticated(creds: RefactronCredentials | null): boolean {
-  if (!creds || !creds.access_token) return false;
+  if (!creds) return false;
+  // A long-lived Refactron API key always authenticates. API keys are issued
+  // by refactron.dev's dashboard, carry no expiry, and can only be revoked
+  // explicitly. Users who completed `refactron login` and received an
+  // api_key alongside their access_token stay authenticated indefinitely —
+  // the short-TTL OAuth access_token's expiry is irrelevant in that case.
+  //
+  // Before this fix: a user with a valid api_key got kicked out a few
+  // minutes after `refactron login` because the access_token's expires_at
+  // tripped, and isAuthenticated() ignored api_key entirely.
+  if (creds.api_key && creds.api_key.length > 0) return true;
+  // Otherwise fall back to OAuth access_token validity.
+  if (!creds.access_token) return false;
   return !isExpired(creds);
 }
 
