@@ -1,0 +1,86 @@
+---
+title: deprecated_api_requests_to_httpx
+description: Migrate Python's requests library to the modern httpx equivalent.
+---
+
+**Transform ID:** `deprecated_api_requests_to_httpx`
+**Language:** Python
+
+## What it does
+
+Rewrites `requests` imports and call sites to the API-compatible `httpx` equivalent. The mapping is hardcoded — `requests` and `httpx` share the same `get`/`post`/`put`/`delete`/`head`/`patch`/`options` surface and identical kwargs (`url`, `timeout`, `json`, `headers`, etc.).
+
+## Detector pattern
+
+The detector at `src/analyze/detectors/python/deprecated-api-detector.ts` looks for:
+
+- `import requests`
+- `from requests import <name>`
+- `requests.<method>(...)` call expressions
+
+## Preconditions
+
+1. `httpx` is **not already imported** in the file (avoid double-imports / shadowing).
+2. **Cross-file:** no external file in the project references `<this_module>.requests` in any context. The check covers:
+   - `import this_module; print(this_module.requests)` (attribute reads).
+   - `from unittest.mock import patch; patch("this_module.requests.get", ...)` (string-target mock patches — these would silently break post-rename).
+
+## Before / after
+
+<CodeGroup>
+```python before.py
+import requests
+
+
+def fetch_json(url):
+    try:
+        response = requests.get(url, timeout=5)
+        return response.json()
+    except Exception as exc:
+        return {"error": str(exc)}
+
+
+def submit(url, payload):
+    try:
+        response = requests.post(url, json=payload, timeout=5)
+        return response.json()
+    except Exception as exc:
+        return {"error": str(exc)}
+```
+
+```python after.py
+import httpx
+
+
+def fetch_json(url):
+    try:
+        response = httpx.get(url, timeout=5)
+        return response.json()
+    except Exception as exc:
+        return {"error": str(exc)}
+
+
+def submit(url, payload):
+    try:
+        response = httpx.post(url, json=payload, timeout=5)
+        return response.json()
+    except Exception as exc:
+        return {"error": str(exc)}
+```
+</CodeGroup>
+
+## Edge cases handled
+
+- Both `import requests` and `from requests import get` forms.
+- All HTTP-method call sites (`requests.get`, `.post`, `.put`, `.delete`, etc.).
+- Cross-file string-target mocks (`patch("module.requests.get", ...)`).
+
+## Edge cases NOT handled (skip via precondition)
+
+- File already imports `httpx` (manual migration probably in progress).
+- An external file in the project patches or references `<module>.requests`.
+- Code that uses `requests`-specific surfaces not in `httpx` (e.g. `requests.utils.requote_uri`, `requests.models.Response` constructed by hand). The transform is conservative and skips files where it cannot prove the mapping is total.
+
+<Note>
+After the transform applies, you must add `httpx` to your dependencies (`pip install httpx` or `pyproject.toml`). Refactron does not modify your dependency manifest.
+</Note>

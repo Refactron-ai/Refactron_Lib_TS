@@ -1,0 +1,71 @@
+---
+title: callback_to_async_await
+description: Convert trailing-callback Python functions into async functions that return the result.
+---
+
+**Transform ID:** `callback_to_async_await`
+**Language:** Python
+
+## What it does
+
+Detects functions whose last positional parameter is a callback (named `callback`, `cb`, or `done`) that is invoked exactly once at the tail of every control-flow branch. Rewrites the function as `async def`, drops the callback parameter, and `return`s what the callback was being passed.
+
+## Detector pattern
+
+The detector lives at `src/analyze/detectors/python/callback-detector.ts`. It scans for `def` statements where the last positional parameter name matches the callback alias set, then walks the function body to verify the call shape.
+
+## Preconditions
+
+1. The callback parameter is the **last positional** parameter of the function.
+2. The function is **not already async** (`async def`).
+3. The function is **not a generator** (no `yield` / `yield from`).
+4. The callback is invoked **exactly once**, on the tail of every reachable branch.
+5. **Cross-file:** no external file imports this function and passes a callback at the call site (would orphan that caller). The transform skips itself when an `import <module>` followed by `<module>.<fn>(... cb)` or `from <module> import <fn>` followed by `<fn>(... cb)` is found in the project.
+
+## Before / after
+
+<CodeGroup>
+```python before.py
+def fetch_user(user_id, callback):
+    """Simulate fetching a user record and pass it to ``callback``."""
+    result = {"id": user_id, "name": "user-%d" % user_id}
+    callback(result)
+
+
+def save_data(payload, done):
+    """Simulate persisting ``payload`` then invoking ``done`` with a receipt."""
+    receipt = {"ok": True, "size": len(payload)}
+    done(receipt)
+```
+
+```python after.py
+async def fetch_user(user_id):
+    """Simulate fetching a user record and pass it to ``callback``."""
+    result = {"id": user_id, "name": "user-%d" % user_id}
+    return result
+
+
+async def save_data(payload):
+    """Simulate persisting ``payload`` then invoking ``done`` with a receipt."""
+    receipt = {"ok": True, "size": len(payload)}
+    return receipt
+```
+</CodeGroup>
+
+## Edge cases handled
+
+- Callback aliases: `callback`, `cb`, `done`.
+- Preserves preceding decorators (e.g. `@retry`).
+- Preserves type hints on the remaining parameters.
+
+## Edge cases NOT handled (skip via precondition)
+
+- Callback is not the last positional parameter (e.g. `def f(callback, x)`).
+- Function is a generator (`yield`).
+- Callback is called more than once (multiple branches each invoking it).
+- Function is already declared `async`.
+- An external file in the project calls this function passing a callback argument.
+
+<Note>
+Actual emitted form may differ slightly per the transform's idempotency rules — run `refactron run --dry-run` to see the exact diff for your code.
+</Note>

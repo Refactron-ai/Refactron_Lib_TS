@@ -1,0 +1,51 @@
+---
+title: promise_constructor_to_async
+description: Replace new Promise((resolve) => resolve(value)) with an async function returning the value.
+---
+
+**Transform ID:** `promise_constructor_to_async`
+**Language:** TypeScript
+
+## What it does
+
+Detects `new Promise((resolve) => resolve(x))` (and equivalent block-bodied executors with a single `resolve(...)` call) and folds them into the enclosing function as `async`/`return x`. The `Promise` constructor wrapper disappears.
+
+## Detector pattern
+
+The detector at `src/analyze/detectors/typescript/promise-constructor-detector.ts` walks ts-morph `NewExpression` nodes with `Promise` as the callee, then inspects the executor arrow function body for a single resolve-only path.
+
+## Preconditions
+
+1. The executor's resolve path is **synchronous** — no `setTimeout`, `setInterval`, `process.nextTick`, `queueMicrotask`, `addEventListener`, or other async-escape mechanism (precondition `no-async-escape`).
+2. **Single resolve / reject path** — the executor calls `resolve` (or `reject`) at most once, and not from inside multiple branches (precondition `single-resolve`).
+3. No `try`/`catch` straddling the resolve call.
+4. The enclosing function returns the `new Promise(...)` directly.
+
+## Before / after
+
+<CodeGroup>
+```ts before.ts
+function makePromise(value: number) {
+  return new Promise((resolve) => resolve(value));
+}
+```
+
+```ts after.ts
+async function makePromise(value: number) {
+  return value;
+}
+```
+</CodeGroup>
+
+## Edge cases handled
+
+- Arrow-body executor (`(resolve) => resolve(x)`) and block-body single-statement executor (`(resolve) => { resolve(x); }`).
+- Preserves the function name, parameters, and parameter type annotations.
+- Promotes the function declaration to `async`.
+
+## Edge cases NOT handled (skip via precondition)
+
+- Executor uses `setTimeout` / event listeners to defer resolve (precondition `no-async-escape`). The `delayedValue` fixture is intentionally an example of this — `new Promise((resolve) => setTimeout(() => resolve(value), ms))` is left alone because folding it would lose the delay semantics.
+- Multiple `resolve(...)` calls across branches (precondition `single-resolve`).
+- Executor calls `reject(...)` — the rewrite would need to throw, and bare `throw` inside an async function changes the rejection semantics in ways that may surprise downstream `.catch` handlers.
+- `new Promise((resolve, reject) => ...)` where both are used.

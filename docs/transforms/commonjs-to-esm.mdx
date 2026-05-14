@@ -1,0 +1,68 @@
+---
+title: commonjs_to_esm
+description: Migrate CommonJS require / module.exports to ES module import / export.
+---
+
+**Transform ID:** `commonjs_to_esm`
+**Language:** TypeScript
+
+## What it does
+
+Rewrites the CommonJS module surface into ES modules:
+
+- `const x = require('m')` → `import x from 'm'` (with `node:` prefix for Node builtins).
+- `const { a, b } = require('m')` → `import { a, b } from 'm'`.
+- `module.exports = X` (identifier) → `export default X`.
+- `module.exports = { a, b }` (object literal) → named `export { a, b }`.
+
+## Detector pattern
+
+The detector at `src/analyze/detectors/typescript/commonjs-detector.ts` finds ts-morph `CallExpression` nodes with the callee `require` and `BinaryExpression` nodes with `module.exports` on the left.
+
+## Preconditions
+
+1. The file does **not use `__dirname` or `__filename`** — these are CommonJS-only globals; ESM requires `import.meta.url` translation which is out of scope.
+2. **No dynamic require** (`require(name)` where `name` is not a string literal) — ESM imports must be static.
+3. The file is not a `.cjs` extension (explicitly opted into CommonJS by the user).
+4. No `require.resolve(...)`, `require.cache`, or other Node CJS-specific APIs.
+
+## Before / after
+
+<CodeGroup>
+```ts before.ts
+// Legacy CommonJS interop.
+const path = require('path');
+
+module.exports = {
+  join: (a, b) => path.join(a, b),
+};
+```
+
+```ts after.ts
+import path from 'node:path';
+
+const join = (a, b) => path.join(a, b);
+
+export { join };
+```
+</CodeGroup>
+
+## Edge cases handled
+
+- Node builtins (`path`, `fs`, `os`, `crypto`, etc.) get the modern `node:` specifier prefix.
+- Package specifiers (`lodash`, `express`) are kept unprefixed.
+- Relative specifiers (`'./utils'`) are kept unprefixed.
+- Destructured require (`const { join } = require('path')`) becomes named import.
+- `module.exports = identifier` becomes `export default identifier`.
+- `module.exports = { a, b }` becomes `export { a, b }`.
+
+## Edge cases NOT handled (skip via precondition)
+
+- File uses `__dirname` / `__filename` (precondition `node-globals`).
+- Dynamic `require(name)` where `name` is not a literal (precondition `dynamic-require`).
+- `.cjs` files (precondition `cjs-extension`).
+- `module.exports.x = ...` style (top-level mutation of the exports object — defer to a manual migration).
+
+<Note>
+The actual reordering of declarations between input and output may differ — `module.exports = { join }` references a `join` defined inline; the rewrite hoists the `join` const ahead of the named `export`. Run `refactron run --dry-run` for the exact diff in your code.
+</Note>

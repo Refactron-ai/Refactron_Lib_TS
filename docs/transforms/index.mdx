@@ -1,0 +1,62 @@
+---
+title: Transforms
+description: The ten verified transforms shipped in Refactron 0.2 — five for Python, five for TypeScript.
+---
+
+Refactron ships a hand-curated catalog of ten transforms. Every transform has been hardened against precondition edge cases, runs through the [three verification gates](/concepts/safety-model), and either commits atomically or skips itself.
+
+You select transforms via the `--transforms` flag (`run --transforms=var_to_const_let,implicit_any`) or the `transforms` array in [`.refactronrc.json`](/configuration/refactronrc). The default is `['all']`.
+
+## Catalog
+
+| Transform ID | Language | What it does |
+|---|---|---|
+| `callback_to_async_await` | Python | Trailing-callback function → `async def` returning the result |
+| `format_to_fstring` | Python | `%`-format and `.format()` calls → f-strings |
+| `manual_typecheck_to_hints` | Python | `isinstance` chain dispatching one parameter → `Union[...]` annotation |
+| `deprecated_api_requests_to_httpx` | Python | `requests` imports / calls → `httpx` |
+| `class_to_dataclass` | Python | Pure `__init__`-assignment classes → `@dataclass` |
+| `var_to_const_let` | TypeScript | `var` → `const` (or `let` if reassigned) per binding |
+| `promise_chains_to_async` | TypeScript | `.then(...).then(...)` chains → `async`/`await` |
+| `implicit_any` | TypeScript | Add explicit parameter types when all call sites pass the same primitive |
+| `commonjs_to_esm` | TypeScript | `require` / `module.exports` → ES module `import` / `export` |
+| `promise_constructor_to_async` | TypeScript | `new Promise((resolve) => resolve(x))` → `async` returning `x` |
+
+## Browse the catalog
+
+<CardGroup cols={2}>
+  <Card title="callback_to_async_await" icon="python" href="/transforms/callback-to-async-await">
+    Python · trailing-callback → `async def`
+  </Card>
+  <Card title="format_to_fstring" icon="python" href="/transforms/format-to-fstring">
+    Python · `%` and `.format()` → f-string
+  </Card>
+  <Card title="manual_typecheck_to_hints" icon="python" href="/transforms/manual-typecheck-to-hints">
+    Python · `isinstance` chain → `Union[...]`
+  </Card>
+  <Card title="deprecated_api_requests_to_httpx" icon="python" href="/transforms/deprecated-api-requests-to-httpx">
+    Python · `requests` → `httpx`
+  </Card>
+  <Card title="class_to_dataclass" icon="python" href="/transforms/class-to-dataclass">
+    Python · plain class → `@dataclass`
+  </Card>
+  <Card title="var_to_const_let" icon="js" href="/transforms/var-to-const-let">
+    TypeScript · `var` → `const` / `let`
+  </Card>
+  <Card title="promise_chains_to_async" icon="js" href="/transforms/promise-chains-to-async">
+    TypeScript · `.then().then()` → `async`/`await`
+  </Card>
+  <Card title="implicit_any" icon="js" href="/transforms/implicit-any">
+    TypeScript · annotate inferred-primitive parameters
+  </Card>
+  <Card title="commonjs_to_esm" icon="js" href="/transforms/commonjs-to-esm">
+    TypeScript · `require` / `module.exports` → ESM
+  </Card>
+  <Card title="promise_constructor_to_async" icon="js" href="/transforms/promise-constructor-to-async">
+    TypeScript · `new Promise(...)` → `async`
+  </Card>
+</CardGroup>
+
+<Note>
+Every transform's "after" output passes [Gate 1 (syntax)](/concepts/safety-model#gate-1-syntax) by construction — the refactorer rebuilds the source from a parsed CST/AST. Gates 2 and 3 (imports + tests) are what catch regressions the local rewrite couldn't predict.
+</Note>

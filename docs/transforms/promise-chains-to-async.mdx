@@ -1,0 +1,77 @@
+---
+title: promise_chains_to_async
+description: Convert .then() chains into async/await with named bindings per stage.
+---
+
+**Transform ID:** `promise_chains_to_async`
+**Language:** TypeScript
+
+## What it does
+
+Rewrites `fn(...).then(a => ...).then(b => ...)` chains as `async` functions with `await` and named const bindings for each intermediate value. Both flat (`a().then(b).then(c)`) and nested (`a().then(x => b(x).then(y => y))`) shapes are handled.
+
+## Detector pattern
+
+The detector at `src/analyze/detectors/typescript/promise-chain-detector.ts` walks ts-morph `CallExpression` nodes whose `expression` is a `PropertyAccessExpression` named `then`, climbing the chain to identify the originating call.
+
+## Preconditions
+
+1. The function body returns the chain (or the chain is the only statement). Mid-function chains used for side effects only are skipped.
+2. **No `.catch(...)` in the chain.** The transform doesn't synthesize `try`/`catch` blocks — pre-existing error handling would change semantics.
+3. **No `Promise.all` / `Promise.race` / `Promise.allSettled` / `Promise.any`** inside the chain — combinator semantics aren't trivially rewritable as sequential awaits.
+4. The enclosing function returns a Promise (so adding `async` is type-preserving).
+
+## Before / after
+
+<CodeGroup>
+```ts before.ts
+async function fetchUser(id) {
+  return Promise.resolve({ id: id, name: 'user-' + id });
+}
+
+async function fetchPosts(userId) {
+  return Promise.resolve([
+    { id: 1, userId: userId, title: 'first' },
+    { id: 2, userId: userId, title: 'second' },
+  ]);
+}
+
+export function loadProfile(id) {
+  return fetchUser(id).then((u) =>
+    fetchPosts(u.id).then((posts) => ({ user: u, posts: posts })),
+  );
+}
+```
+
+```ts after.ts
+async function fetchUser(id) {
+  return Promise.resolve({ id: id, name: 'user-' + id });
+}
+
+async function fetchPosts(userId) {
+  return Promise.resolve([
+    { id: 1, userId: userId, title: 'first' },
+    { id: 2, userId: userId, title: 'second' },
+  ]);
+}
+
+export async function loadProfile(id) {
+  const u = await fetchUser(id);
+  const posts = await fetchPosts(u.id);
+  return { user: u, posts: posts };
+}
+```
+</CodeGroup>
+
+## Edge cases handled
+
+- Flat chains (`a().then(b).then(c)`).
+- Nested chains (`a().then(x => b(x).then(y => y))`).
+- Preserves the enclosing function's exports / signature shape.
+
+## Edge cases NOT handled (skip via precondition)
+
+- Chain contains `.catch(...)` (preconditions: `no-catch`).
+- Chain contains `Promise.all` / `Promise.race` / `Promise.allSettled` / `Promise.any` (precondition: `no-promise-combinator`).
+- Chain handler returns void / does side effects only.
+- Multiple parallel chains on the same value.
