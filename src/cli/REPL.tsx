@@ -101,6 +101,15 @@ export function REPL({ ctx, version, email, plan }: REPLProps): React.ReactEleme
       }
 
       if (parsed.command === 'clear') {
+        // Static items have already been written to the terminal — resetting
+        // React state alone won't recall those bytes. Send the ANSI clear-
+        // screen + cursor-home escape so the terminal viewport is wiped, then
+        // reset the lines state so subsequent appends start a fresh log.
+        // Bonus: lineIdRef is reset so new lines start at id 0 again, which
+        // lets Static treat the next batch as a fresh emission rather than
+        // appending after stale (but no-longer-rendered) keys.
+        process.stdout.write('\x1b[2J\x1b[H');
+        lineIdRef.current = 0;
         setLines([]);
         return;
       }
