@@ -87,6 +87,21 @@ class SourceCache {
   }
 }
 
+// Some transforms fire on the *declaration* line of a function/class, so a
+// ±1 window only shows the signature + docstring and hides the actual code
+// being refactored (e.g. callback_to_async_await fires on `def fn(callback):`
+// but the user needs to see the `callback(result)` invocation a few lines
+// below). Per-transform `linesAfter` overrides give the right context for
+// each pattern without bloating output for single-line transforms.
+const EXTENDED_AFTER_BY_TRANSFORM: Partial<Record<string, number>> = {
+  callback_to_async_await: 6,
+  class_to_dataclass: 5,
+  promise_chains_to_async: 5,
+  promise_constructor_to_async: 6,
+  commonjs_to_esm: 3,
+  manual_typecheck_to_hints: 4,
+};
+
 function excerptFor(
   lines: string[],
   targetLine: number,
@@ -161,7 +176,8 @@ export async function formatAnalysisReport(
       if (sourceLines === null) {
         out.push({ text: `           (source unavailable)`, color: theme.colors.textDim });
       } else {
-        const excerpt = excerptFor(sourceLines, finding.line, linesBefore, linesAfter);
+        const effAfter = EXTENDED_AFTER_BY_TRANSFORM[finding.transformId] ?? linesAfter;
+        const excerpt = excerptFor(sourceLines, finding.line, linesBefore, effAfter);
         for (const e of excerpt) {
           out.push({
             text: `           ${e.text}`,

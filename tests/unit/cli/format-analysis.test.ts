@@ -132,6 +132,77 @@ describe('formatAnalysisReport', () => {
     expect(text).toMatch(/1 medium/);
   });
 
+  it('extends after-context for function-level transforms (gauntlet G3)', async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'fa-'));
+    tmp.push(root);
+    // 8 lines: def header at line 1, body lines 2-7 (the actual code being
+    // refactored is on line 5), blank at 8. With default linesAfter=1 the
+    // user only sees lines 1-2 (def + first body line) and misses the
+    // callback invocation. With per-transform extended context, we should
+    // see line 5 in the excerpt.
+    await fs.writeFile(
+      path.join(root, 'a.py'),
+      [
+        'def fetch_user(user_id, callback):',
+        '    """Docstring."""',
+        '    # comment',
+        '    result = lookup(user_id)',
+        '    callback(result)',
+        '    metric.tick()',
+        '    return None',
+        '',
+      ].join('\n'),
+    );
+    const report = synthReport(root, [
+      {
+        id: '1',
+        file: 'a.py',
+        line: 1,
+        transformId: 'callback_to_async_await',
+        remediationMinutes: 7,
+        confidence: 'high',
+      },
+    ]);
+    const lines = await formatAnalysisReport(report, { projectRoot: root });
+    const text = lines.map((l) => l.text).join('\n');
+    expect(text).toContain('callback(result)');
+    expect(text).toContain('metric.tick()');
+  });
+
+  it('keeps tight context for single-line transforms (gauntlet G3 — no over-pull)', async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'fa-'));
+    tmp.push(root);
+    // For format_to_fstring (single-line transform) the default ±1 window
+    // should NOT be extended — we don't want to bloat output by pulling 6
+    // unrelated body lines for a one-line refactor.
+    await fs.writeFile(
+      path.join(root, 'b.py'),
+      [
+        'def greet(name):',
+        '    return "hello %s" % name',
+        '    unrelated_line_three()',
+        '    unrelated_line_four()',
+        '    unrelated_line_five()',
+        '    unrelated_line_six()',
+        '    unrelated_line_seven()',
+      ].join('\n'),
+    );
+    const report = synthReport(root, [
+      {
+        id: '1',
+        file: 'b.py',
+        line: 2,
+        transformId: 'format_to_fstring',
+        remediationMinutes: 1,
+        confidence: 'high',
+      },
+    ]);
+    const lines = await formatAnalysisReport(report, { projectRoot: root });
+    const text = lines.map((l) => l.text).join('\n');
+    expect(text).toContain('return "hello %s" % name');
+    expect(text).not.toContain('unrelated_line_six()');
+  });
+
   it('sorts findings within a file by line number (gauntlet G2)', async () => {
     const root = await fs.mkdtemp(path.join(os.tmpdir(), 'fa-'));
     tmp.push(root);
