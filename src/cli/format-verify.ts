@@ -6,7 +6,7 @@
 import * as path from 'node:path';
 import type { GateResult, VerificationResult, RefactorPlan } from '../contracts.js';
 import { theme } from '../ui/theme.js';
-import type { RenderedLine } from './format-types.js';
+import { type RenderedLine, toPosix } from './format-types.js';
 
 export type GateName = 'syntax' | 'imports' | 'tests';
 
@@ -38,7 +38,7 @@ export function formatVerifySuccess(
   out.push({ text: '', color: theme.colors.text });
   out.push({ text: '  Atomic write:', color: theme.colors.accent });
   for (const c of result.writableChanges) {
-    const rel = path.relative(projectRoot, c.path) || c.path;
+    const rel = toPosix(path.relative(projectRoot, c.path) || c.path);
     const padded = rel.padEnd(48);
     out.push({
       text: `    ${theme.symbols.pass} ${padded} [${c.transformId}]`,
@@ -143,7 +143,7 @@ export function formatVerifyFailure(
     color: theme.colors.warning,
   });
   for (const c of plan.changes) {
-    const rel = path.relative(projectRoot, c.path) || c.path;
+    const rel = toPosix(path.relative(projectRoot, c.path) || c.path);
     out.push({
       text: `    ${theme.symbols.bullet} ${rel} [${c.transformId}]`,
       color: theme.colors.textDim,
@@ -163,7 +163,7 @@ export function formatVerifyFailure(
   // Section 5: culprit hint (best-effort match by basename).
   const culprit = pickCulprit(plan, failedGate?.blockingReason);
   if (culprit !== null) {
-    const rel = path.relative(projectRoot, culprit.relPath) || culprit.relPath;
+    const rel = toPosix(path.relative(projectRoot, culprit.relPath) || culprit.relPath);
     out.push({ text: '', color: theme.colors.text });
     out.push({
       text: `  Likely culprit: the \`${culprit.transformId}\` transform on \`${rel}\`.`,

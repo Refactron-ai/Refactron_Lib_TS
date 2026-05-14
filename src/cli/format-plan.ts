@@ -10,7 +10,7 @@ import * as path from 'node:path';
 import { generateUnifiedDiff, countChangedLines } from '../infrastructure/diff.js';
 import { theme } from '../ui/theme.js';
 import type { RefactorPlan, FileChange, TransformId } from '../contracts.js';
-import type { RenderedLine } from './format-types.js';
+import { type RenderedLine, toPosix } from './format-types.js';
 
 export interface FormatPlanOptions {
   projectRoot: string;
@@ -98,12 +98,13 @@ export async function formatPlanAsDryRun(
   const out: RenderedLine[] = [];
 
   // 1) Filter by glob (operates on absolute path; glob is matched against
-  //    relative-to-projectRoot AND basename for ergonomics).
+  //    relative-to-projectRoot AND basename for ergonomics). Normalize to
+  //    forward slashes so a glob like `src/*.py` works on Windows too.
   let changes = plan.changes;
   if (filesGlob) {
     changes = changes.filter((c) => {
-      const rel = path.relative(opts.projectRoot, c.path);
-      return matchesGlob(rel, filesGlob) || matchesGlob(c.path, filesGlob);
+      const rel = toPosix(path.relative(opts.projectRoot, c.path));
+      return matchesGlob(rel, filesGlob) || matchesGlob(toPosix(c.path), filesGlob);
     });
   }
 
@@ -120,7 +121,7 @@ export async function formatPlanAsDryRun(
 
   for (const group of groups) {
     const original = originals.get(group.path) ?? '';
-    const rel = path.relative(opts.projectRoot, group.path) || group.path;
+    const rel = toPosix(path.relative(opts.projectRoot, group.path) || group.path);
     const diff = generateUnifiedDiff(rel, original, group.finalContent, diffContext);
     const counts = countChangedLines(diff);
     totalAdded += counts.added;

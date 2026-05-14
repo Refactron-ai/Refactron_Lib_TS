@@ -12,7 +12,7 @@ import type { DetectorFinding, Confidence } from '../analyze/detectors/types.js'
 import type { TransformId } from '../contracts.js';
 import { MESSAGE_BY_TRANSFORM, SUGGESTION_BY_TRANSFORM } from './v2-adapters.js';
 import { theme } from '../ui/theme.js';
-import type { RenderedLine } from './format-types.js';
+import { type RenderedLine, toPosix } from './format-types.js';
 
 export interface FormatAnalysisOptions {
   projectRoot: string;
@@ -135,7 +135,7 @@ export async function formatAnalysisReport(
   for (const [file, fileFindings] of groups) {
     out.push({ text: '' });
     out.push({ text: SEPARATOR, color: theme.colors.border });
-    const heading = `${file}  ${theme.symbols.bullet}  ${fileFindings.length} finding(s)`;
+    const heading = `${toPosix(file)}  ${theme.symbols.bullet}  ${fileFindings.length} finding(s)`;
     out.push({ text: heading, color: theme.colors.accent });
     out.push({ text: SEPARATOR, color: theme.colors.border });
     out.push({ text: '' });
