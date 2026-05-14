@@ -92,15 +92,19 @@ export async function runAnalyzeCommand(argv: string[]): Promise<number> {
     throw err;
   }
   let confidence: Confidence;
+  let excludeGlobs: string[] = [];
   try {
     const config = await loadRefactronConfig(flags.target);
     confidence = flags.confidence ?? config.confidence;
+    excludeGlobs = config.exclude;
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     process.stderr.write(`refactron analyze: ${msg}\n`);
     return 2;
   }
-  const analyzer = new RefactronAnalyzer({ confidence });
+  const analyzerOpts: { confidence: Confidence; excludeGlobs?: string[] } = { confidence };
+  if (excludeGlobs.length > 0) analyzerOpts.excludeGlobs = excludeGlobs;
+  const analyzer = new RefactronAnalyzer(analyzerOpts);
   const report = await analyzer.analyzeExtended(flags.target);
   if (flags.graphPath) {
     await fs.writeFile(flags.graphPath, toJson(report), 'utf8');

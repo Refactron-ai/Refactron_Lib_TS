@@ -21,6 +21,9 @@ import './detectors/typescript/promise-constructor.js';
 
 export interface AnalyzeOptions {
   confidence?: Confidence;
+  /** Additional gitignore-style globs to exclude from discovery, on top of
+   *  .gitignore. Sourced from .refactronrc.json's `exclude` field. */
+  excludeGlobs?: string[];
 }
 
 export interface ExtendedAnalysisReport extends AnalysisReport {
@@ -48,7 +51,8 @@ export class RefactronAnalyzer implements Analyzer {
     const minRank = CONFIDENCE_RANK[minConf];
 
     const files: FileRecord[] = [];
-    for await (const f of walkProject(root)) files.push(f);
+    const walkOpts = this.opts.excludeGlobs ? { excludeGlobs: this.opts.excludeGlobs } : {};
+    for await (const f of walkProject(root, walkOpts)) files.push(f);
 
     const findings: DetectorFinding[] = [];
     const callEdges: CallEdge[] = [];

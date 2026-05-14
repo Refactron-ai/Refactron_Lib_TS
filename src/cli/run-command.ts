@@ -221,10 +221,12 @@ export async function runRunCommand(argv: string[]): Promise<number> {
   let confidence: Confidence;
   let transforms: TransformId[];
   let testCmd: string | null;
+  let excludeGlobs: string[] = [];
   try {
     const config = await loadRefactronConfig(projectRoot);
     confidence = flags.confidence ?? config.confidence;
     testCmd = flags.testCmd ?? config.testCmd;
+    excludeGlobs = config.exclude;
     if (flags.transforms !== null) {
       transforms = flags.transforms;
     } else if (config.transforms.includes('all')) {
@@ -239,7 +241,9 @@ export async function runRunCommand(argv: string[]): Promise<number> {
     return 2;
   }
 
-  const analyzer = new RefactronAnalyzer({ confidence });
+  const analyzerOpts: { confidence: Confidence; excludeGlobs?: string[] } = { confidence };
+  if (excludeGlobs.length > 0) analyzerOpts.excludeGlobs = excludeGlobs;
+  const analyzer = new RefactronAnalyzer(analyzerOpts);
   const report = await analyzer.analyzeExtended(projectRoot);
 
   const refactorer = new RefactronRefactorer({ projectRoot });

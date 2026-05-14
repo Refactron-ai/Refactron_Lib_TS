@@ -11,6 +11,7 @@ import { writeBatchAtomic } from '../verify/atomic-batch-writer.js';
 import type { FileChange, TransformId } from '../contracts.js';
 import { findingsToIssues } from './v2-adapters.js';
 import { persistLastApply } from './last-apply.js';
+import { loadRefactronConfig } from './config-loader.js';
 import { formatAnalysisReport } from './format-analysis.js';
 import { formatGateProgress, formatVerifySuccess, formatVerifyFailure } from './format-verify.js';
 import { formatPlanAsDryRun } from './format-plan.js';
@@ -288,7 +289,13 @@ export async function executeCommand(
   if (command === 'analyze') {
     onLine(`  Scanning ${absTarget} …`, theme.colors.textDim);
     const startedAt = Date.now();
-    const analyzer = new RefactronAnalyzer({ confidence: 'high' });
+    // Honor .refactronrc.json: confidence threshold + exclude globs.
+    const rc = await loadRefactronConfig(absTarget).catch(() => null);
+    const analyzerOpts: { confidence: 'high' | 'medium' | 'low'; excludeGlobs?: string[] } = {
+      confidence: rc?.confidence ?? 'high',
+    };
+    if (rc && rc.exclude.length > 0) analyzerOpts.excludeGlobs = rc.exclude;
+    const analyzer = new RefactronAnalyzer(analyzerOpts);
     const report = await analyzer.analyzeExtended(absTarget);
     if (signal.aborted) return {};
 
@@ -380,7 +387,15 @@ export async function executeCommand(
 
     onLine('', undefined);
     onLine(`  Planning refactor for ${sessionTarget} …`, theme.colors.textDim);
-    const analyzer = new RefactronAnalyzer({ confidence: 'high' });
+    // Honor .refactronrc.json exclude/confidence so the REPL behaves the same
+    // as the one-shot CLI when an .refactronrc.json sits alongside the project.
+    const rc = await loadRefactronConfig(sessionTarget).catch(() => null);
+    const planAnalyzerOpts: {
+      confidence: 'high' | 'medium' | 'low';
+      excludeGlobs?: string[];
+    } = { confidence: rc?.confidence ?? 'high' };
+    if (rc && rc.exclude.length > 0) planAnalyzerOpts.excludeGlobs = rc.exclude;
+    const analyzer = new RefactronAnalyzer(planAnalyzerOpts);
     const report = await analyzer.analyzeExtended(sessionTarget);
     if (signal.aborted) return {};
 
