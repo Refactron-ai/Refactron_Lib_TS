@@ -19,7 +19,7 @@
 // whole alt-screen each time, producing visible whole-terminal flicker.
 // After: <Static> emits each line exactly once; spinner ticks only redraw
 // the live tree (4-5 elements). No flicker even on long sessions.
-import React, { useState, useCallback, useRef, useEffect } from 'react';
+import React, { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import { Box, Static, Text, useApp, useInput } from 'ink';
 import { theme } from '../ui/theme.js';
 import { parseInput, executeCommand, type CommandContext, type CommandResult } from './runner.js';
@@ -185,13 +185,21 @@ export function REPL({ ctx, version, email, plan }: REPLProps): React.ReactEleme
   // SessionHeader renders once at the top of scrollback, then each output
   // line. Static emits new items as they appear and never re-renders existing
   // ones, killing the per-spinner-tick whole-screen repaint.
+  //
+  // useMemo: rebuild only when `lines` changes. Without this, every parent
+  // render produces a NEW array reference, which can confuse Ink's Static
+  // identity check and cause it to re-walk all items on each spinner-induced
+  // subtree re-render.
   type StaticItem =
     | { kind: 'header'; key: string }
     | { kind: 'line'; key: number; line: MessageLine };
-  const staticItems: StaticItem[] = [
-    { kind: 'header', key: '__header' },
-    ...lines.map<StaticItem>((line) => ({ kind: 'line', key: line.id, line })),
-  ];
+  const staticItems: StaticItem[] = useMemo(
+    () => [
+      { kind: 'header', key: '__header' },
+      ...lines.map<StaticItem>((line) => ({ kind: 'line', key: line.id, line })),
+    ],
+    [lines],
+  );
 
   return (
     <>

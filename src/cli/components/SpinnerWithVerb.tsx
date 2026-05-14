@@ -1,29 +1,26 @@
 // src/cli/components/SpinnerWithVerb.tsx
-// YRC-equivalent spinner:
-//   - Platform-aware frames: ['·','✢','✳','✶','✻','✽'] forward+reverse (12 total)
-//   - Shimmer sweep across verb text (GlimmerMessage equivalent)
-//   - Stall ramp: color interpolates toward error red after 3s of no progress
-//   - Reduced-motion: single ● dot with 1s blink
-//   - SpinnerAnimationRow wrapped in memo — owns 80ms interval
+// Minimal spinner — anti-flicker design for VS Code's xterm renderer.
+//   - Single platform frame cycling at 250ms (4 FPS — animated but not jittery)
+//   - Verb in a single brand color (no per-char shimmer; shimmer was emitting
+//     N color escape sequences per tick, which xterm's DOM renderer batches
+//     with visible reflow)
+//   - Stall ramp quantized to 1-second buckets so the spinner color updates at
+//     most once per second, not every frame
+//   - Reduced-motion: single ● dot, no animation
+//
+// Before this rewrite: 80ms tick, 7-stop shimmer gradient across verb chars,
+// continuous per-frame color lerp on the glyph. Total ~50 ANSI sequences per
+// second — too much for VS Code's xterm to render without visible flicker.
+// After: 1 cell changes per tick, ~4 ANSI sequences per second. Smooth on
+// every terminal we've tested.
 import React, { useState, useEffect, memo } from 'react';
 import { Box, Text, useStdout } from 'ink';
 import { theme } from '../../ui/theme.js';
 
-// ── Frames (YRC SpinnerGlyph pattern) ──────────────────────────────────────
-const BASE_FRAMES = theme.symbols.spinner; // set by platform in theme.ts
-const SHIMMER_HALF = 3;
-const SHIMMER_COLORS = [
-  theme.colors.brand, // far
-  theme.colors.brandShimmer, // mid
-  '#cce4ff', // near
-  '#ffffff', // peak
-  '#cce4ff',
-  theme.colors.brandShimmer,
-  theme.colors.brand,
-];
+const BASE_FRAMES = theme.symbols.spinner;
 
-// Error red for stall ramp (matches YRC's ERROR_RED)
-const ERROR_RED = { r: 171, g: 43, b: 63 }; // YRC SpinnerGlyph.tsx exact value
+// Error red for stall ramp
+const ERROR_RED = { r: 171, g: 43, b: 63 };
 const BRAND_RGB = { r: 74, g: 158, b: 255 };
 
 function lerpColor(
@@ -37,12 +34,6 @@ function lerpColor(
   return `rgb(${r},${g},${bl})`;
 }
 
-// ── SpinnerAnimationRow — owns 80ms interval ────────────────────────────────
-// Self-managing: tracks its own stall time off lastProgressTime so the parent
-// component never needs to re-render. Previously the parent ticked every 500ms
-// to recompute stall, which caused the whole spinner block (including the
-// terminal-wide top border) to repaint every half-second — visible jitter on
-// terminals that don't smoothly handle alt-screen partial repaints.
 interface RowProps {
   verb: string;
   lastProgressTime: number;
@@ -57,21 +48,18 @@ const SpinnerAnimationRow = memo(function SpinnerAnimationRow({
   const [tick, setTick] = useState(0);
 
   useEffect(() => {
-    const ms = reducedMotion ? 1000 : 80;
+    // 250ms ≈ 4 FPS for the glyph. Slow enough that VS Code's xterm DOM
+    // renderer keeps up cleanly; fast enough to feel alive.
+    const ms = reducedMotion ? 0 : 250;
+    if (ms === 0) return undefined;
     const t = setInterval(() => setTick((n) => n + 1), ms);
     return () => clearInterval(t);
   }, [reducedMotion]);
 
-  // Compute stall from the latest progress time on each animation tick.
-  // No extra render — `tick` is already changing every 80ms.
-  const stallMs = Math.max(0, Date.now() - lastProgressTime);
-
-  // ── Reduced motion: ● blinking dot ──────────────────────────────────────
   if (reducedMotion) {
-    const visible = tick % 2 === 0;
     return (
       <Box>
-        <Text color={theme.colors.brand}>{visible ? theme.symbols.spinnerDot : ' '}</Text>
+        <Text color={theme.colors.brand}>{theme.symbols.spinnerDot}</Text>
         <Text dimColor>
           {' '}
           {verb}
@@ -81,33 +69,23 @@ const SpinnerAnimationRow = memo(function SpinnerAnimationRow({
     );
   }
 
-  // ── Normal animation ──────────────────────────────────────────────────
   const frame = tick % BASE_FRAMES.length;
-  const glimmer = tick % (verb.length + 6);
-
-  // Stall: 0 → no ramp, 1 → full error red (after 6s)
-  const stallIntensity = Math.min(stallMs / 6000, 1);
-  const spinnerColor =
-    stallIntensity > 0.5 ? theme.colors.error : lerpColor(BRAND_RGB, ERROR_RED, stallIntensity);
-
   const spinnerChar = BASE_FRAMES[frame] ?? '·';
+
+  // Stall ramp sampled at 1s granularity — color updates at most once per
+  // second instead of every frame. Removes a major source of per-tick ANSI
+  // churn (was emitting a fresh rgb() on every 80ms tick).
+  const stallSeconds = Math.min(Math.floor((Date.now() - lastProgressTime) / 1000), 6);
+  const stallIntensity = stallSeconds / 6;
+  const spinnerColor =
+    stallIntensity >= 1 ? theme.colors.error : lerpColor(BRAND_RGB, ERROR_RED, stallIntensity);
 
   return (
     <Box>
-      {/* Glyph cell: width=2 height=1, matches YRC SpinnerGlyph */}
       <Box width={2} height={1}>
         <Text color={spinnerColor}>{spinnerChar}</Text>
       </Box>
-      {/* Verb with shimmer sweep */}
-      {verb.split('').map((char, i) => {
-        const dist = Math.min(Math.abs(i - glimmer), SHIMMER_HALF);
-        const color = SHIMMER_COLORS[SHIMMER_HALF - dist] ?? SHIMMER_COLORS[0]!;
-        return (
-          <Text key={i} color={color}>
-            {char}
-          </Text>
-        );
-      })}
+      <Text color={theme.colors.brand}>{verb}</Text>
       <Text dimColor>{'…'}</Text>
     </Box>
   );
