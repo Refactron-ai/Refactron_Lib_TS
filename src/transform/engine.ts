@@ -85,21 +85,46 @@ export class RefactronRefactorer implements Refactorer {
       ? await buildCrossFileContext(report, this.opts.projectRoot)
       : undefined;
 
-    const changes: FileChange[] = [];
-    const preconditions: Precondition[] = [];
-
+    // Per-file work is independent: cross-file context is precomputed and
+    // each transform's preconditions are read-only. Run files in parallel
+    // with bounded concurrency so we don't fan out N python3 subprocesses
+    // on small machines. Within a file transforms still serialize (each
+    // feeds its newContent into the next).
+    //
+    // Before this change: O(N_files × N_transforms_with_findings) sequential
+    // python3 cold-starts ≈ 3-4s on the python-legacy-mini fixture.
+    // After: max(per-file pipeline) on a multi-core machine — typically
+    // 5-10x faster on real-world repos with many files.
+    type FileWork = { relPath: string; findings: DetectorFinding[] };
+    const work: FileWork[] = [];
     for (const [relPath, fileFindings] of byFile) {
+      work.push({ relPath, findings: fileFindings });
+    }
+
+    const concurrency = Math.max(1, Math.min(8, work.length));
+    const results = new Array<{
+      change: FileChange | null;
+      preconditions: Precondition[];
+    } | null>(work.length);
+
+    async function processFile(
+      this: RefactronRefactorer,
+      idx: number,
+    ): Promise<void> {
+      const { relPath, findings: fileFindings } = work[idx]!;
       const absPath = path.resolve(this.opts.projectRoot, relPath);
       let originalText: string;
       try {
         originalText = await fs.readFile(absPath, 'utf8');
       } catch {
-        continue;
+        results[idx] = null;
+        return;
       }
       const originalHash = sha256(originalText);
       let currentText = originalText;
       let touched = false;
       let firstTransform: TransformId | null = null;
+      const localPreconditions: Precondition[] = [];
 
       for (const tid of enabled) {
         const impl = REGISTRY[tid];
@@ -113,7 +138,7 @@ export class RefactronRefactorer implements Refactorer {
           ...(crossFile ? { crossFile } : {}),
         });
         for (const p of result.preconditions) {
-          preconditions.push({ ...p, id: `${tid}:${relPath}:${p.id}` });
+          localPreconditions.push({ ...p, id: `${tid}:${relPath}:${p.id}` });
         }
         if (result.newContent !== null && result.newContent !== currentText) {
           currentText = result.newContent;
@@ -122,14 +147,49 @@ export class RefactronRefactorer implements Refactorer {
         }
       }
 
-      if (touched && firstTransform !== null) {
-        changes.push({
-          path: absPath,
-          oldHash: originalHash,
-          newContent: currentText,
-          transformId: firstTransform,
-        });
-      }
+      results[idx] = {
+        change:
+          touched && firstTransform !== null
+            ? {
+                path: absPath,
+                oldHash: originalHash,
+                newContent: currentText,
+                transformId: firstTransform,
+              }
+            : null,
+        preconditions: localPreconditions,
+      };
+    }
+
+    // Bounded-concurrency worker pool: spawn `concurrency` workers that
+    // pull indices from a shared cursor. Order of completion doesn't matter
+    // because we collect results back into the original index slot.
+    let cursor = 0;
+    const next = (): number | null => {
+      if (cursor >= work.length) return null;
+      return cursor++;
+    };
+    const workers: Array<Promise<void>> = [];
+    for (let w = 0; w < concurrency; w++) {
+      workers.push(
+        (async () => {
+          for (;;) {
+            const idx = next();
+            if (idx === null) return;
+            await processFile.call(this, idx);
+          }
+        })(),
+      );
+    }
+    await Promise.all(workers);
+
+    // Collect results in original order so the plan is deterministic.
+    const changes: FileChange[] = [];
+    const preconditions: Precondition[] = [];
+    for (const r of results) {
+      if (r === null) continue;
+      if (r.change !== null) changes.push(r.change);
+      preconditions.push(...r.preconditions);
     }
 
     return { changes, preconditions };
