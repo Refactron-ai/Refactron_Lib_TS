@@ -27,12 +27,20 @@ export async function runRunner(spec: RunnerSpec, opts: RunOptions = {}): Promis
         reject: false,
         env: { ...process.env, CI: '1' },
       });
+      const elapsedMs = Date.now() - t0;
+      // execa's r.timedOut field is unreliable across Node versions when
+      // reject:false is set (notably Node 18 leaves it undefined even after
+      // a real timeout fire). Derive timedOut from observable wall-clock:
+      // if the process was killed by a signal AND the elapsed time has
+      // reached the configured timeout, the timeout fired.
+      const timedOut =
+        r.timedOut === true || (typeof r.signal === 'string' && elapsedMs >= spec.timeoutMs);
       last = {
         exitCode: r.exitCode ?? 1,
         stdout: r.stdout,
         stderr: r.stderr,
-        timedOut: r.timedOut === true,
-        durationMs: Date.now() - t0,
+        timedOut,
+        durationMs: elapsedMs,
       };
       if (last.exitCode === 0 && !last.timedOut) return last;
     } catch (err) {
