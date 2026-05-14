@@ -73,16 +73,35 @@ output unchanged.
   target LOC count with every transform pattern represented.
 - Generated trees are gitignored (regenerate locally before each run).
 
-## Bench results (2026-05-14, M-series macOS, Node 22)
+## Bench results (2026-05-14)
 
-| Tree size | Files | `analyze` wall-clock | Target | Headroom |
-|---|---|---|---|---|
-| 10k LOC | 448 | 1.31s | 6s | 4.6× |
-| 100k LOC | 4 465 | 11.48s | 60s | 5.2× |
-| 500k LOC | — | not run | 5min | — |
+**Hardware:** Apple M2, 8 physical cores, 8 GB RAM, macOS 26.4.1.
+**Versions:** Node 24.2.0, npm 11.3.0, refactron 0.1.0-beta.2.
 
-500k LOC run requires generating ~25 MB of fixture; deferred. Both measured
-sizes pass with healthy headroom on first attempt — no profiling needed.
+**Methodology:** 1 warm-up run (discarded — primes Node's module cache,
+tree-sitter wasm load, OS file cache), then **5 measured iterations** per
+size via `/usr/bin/time -p`. Reproducible via `bash bench/run-bench.sh`;
+raw evidence saved to `bench/results-<DATE>.txt`.
+
+| Tree size | Files | Runs (s) | Median | Min – Max | Target | Median headroom |
+|---|---|---|---|---|---|---|
+| 10k LOC | 448 | 1.23 / 1.43 / 1.31 / 1.64 / 1.16 | **1.31s** | 1.16s – 1.64s | 6s | 4.6× |
+| 100k LOC | 4 465 | 24.66 / 38.65 / 17.58 / 20.58 / 14.99 | **20.58s** | 14.99s – 38.65s | 60s | 2.9× |
+| 500k LOC | — | not run | — | — | 5min | — |
+
+**Both measured sizes pass the targets at the median.** The 100k case shows
+~2.6× run-to-run variance (15s vs 39s). Likely sources: OS file-cache
+churn under 8 GB RAM, GC pauses, background daemons. Even the worst
+observed run (38.65s) sits comfortably under the 60s target. Raw evidence:
+[`bench/results-2026-05-14.txt`](../../bench/results-2026-05-14.txt).
+
+**500k LOC run** requires generating ~30 MB of fixture; deferred from CI
+because the fixture generation alone takes ~30s wall-clock on this machine.
+Trivially runnable locally with `SIZES=500000 bash bench/run-bench.sh`.
+
+**Variance investigation deferred** to a follow-up if 100k variance becomes a
+ship-blocker. Current data is sufficient to claim "runs in reasonable time
+on a 4 465-file project" without overclaiming a precise number.
 
 ## Consequences
 - The redesign removes the test-gate front-slice bug (failure surface used
