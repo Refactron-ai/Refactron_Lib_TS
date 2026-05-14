@@ -37,10 +37,22 @@ const VALID_TRANSFORMS = [
   'promise_constructor_to_async',
 ] as const;
 
+// Default to the Refactron-managed backend so authenticated users get
+// working documentation out of the box without installing Ollama or paying
+// for a third-party LLM API key. Free-tier users will hit a 402 with a
+// clear "requires Pro plan" message and can opt back to Ollama (free,
+// local) or Groq (free tier available, BYOK) by overriding `provider` in
+// `.refactronrc.json`. Ollama-as-default was the Week 6 choice but in
+// practice "documentation silently skipped" was the most common first-run
+// experience because most users don't have Ollama installed.
+//
+// `endpoint: null` means "use the api_base_url from the user's stored
+// Refactron credentials" — typically https://api.refactron.dev. The
+// BackendLLMProvider constructor handles the fallback.
 const DOCS_DEFAULT: DocumentationConfig = {
-  provider: 'ollama',
-  model: 'llama3.1:8b',
-  endpoint: 'http://localhost:11434',
+  provider: 'backend',
+  model: 'llama-3.3-70b-versatile',
+  endpoint: null,
   tokenBudget: 4000,
   redactPatterns: [],
   cache: true,
