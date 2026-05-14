@@ -18,7 +18,9 @@ async function collect(
   it: AsyncIterable<{ relPath: string; lang: 'python' | 'typescript' }>,
 ): Promise<Array<{ relPath: string; lang: string }>> {
   const out: Array<{ relPath: string; lang: string }> = [];
-  for await (const r of it) out.push({ relPath: r.relPath, lang: r.lang });
+  // Normalize to forward slashes so assertions stay portable across
+  // Windows (where path.relative emits 'fixtures\legacy\a.py') and POSIX.
+  for await (const r of it) out.push({ relPath: r.relPath.replace(/\\/g, '/'), lang: r.lang });
   return out.sort((a, b) => a.relPath.localeCompare(b.relPath));
 }
 
