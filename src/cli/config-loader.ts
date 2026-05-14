@@ -6,7 +6,7 @@ import Ajv from 'ajv';
 import type { ValidateFunction } from 'ajv';
 
 export interface DocumentationConfig {
-  provider: 'ollama' | 'openai' | 'anthropic' | 'groq';
+  provider: 'ollama' | 'openai' | 'anthropic' | 'groq' | 'backend';
   model: string;
   endpoint: string | null;
   tokenBudget: number;
@@ -59,7 +59,7 @@ const DOCS_SCHEMA = {
   type: 'object',
   additionalProperties: false,
   properties: {
-    provider: { type: 'string', enum: ['ollama', 'openai', 'anthropic', 'groq'] },
+    provider: { type: 'string', enum: ['ollama', 'openai', 'anthropic', 'groq', 'backend'] },
     model: { type: 'string' },
     endpoint: { type: ['string', 'null'] },
     tokenBudget: { type: 'integer', minimum: 256, maximum: 32000 },

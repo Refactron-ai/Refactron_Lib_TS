@@ -20,6 +20,7 @@ import writeAtomic from 'write-file-atomic';
 import type { LLMProvider, DocumenterOptions } from '../document/types.js';
 import { MockLLMProvider } from '../document/provider/mock.js';
 import { pickProvider, type ProviderConfig } from '../document/provider/factory.js';
+import { loadCredentials } from '../auth/credentials.js';
 import { RefactronDocumenter } from '../document/engine.js';
 import { insertDocstring, appendChangelog } from '../document/apply.js';
 import type { VerificationResult } from '../contracts.js';
@@ -173,7 +174,12 @@ export async function runDocumentCommand(
         model: effectiveModel,
         endpoint: config.documentation.endpoint,
       };
-      provider = pickProvider(providerConfig, process.env);
+      // The 'backend' provider needs Refactron credentials (api_key OR
+      // access_token) — we already loaded them via requireAuth above, but
+      // the factory takes the raw object so pass it through here. Safe to
+      // call again; loadCredentials reads a small JSON file or an env var.
+      const creds = await loadCredentials();
+      provider = pickProvider(providerConfig, process.env, creds);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       out(`refactron document: ${msg}\n`, 'stderr');
