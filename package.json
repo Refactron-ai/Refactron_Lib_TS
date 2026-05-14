@@ -91,12 +91,12 @@
     "@types/write-file-atomic": "^4.0.3",
     "@typescript-eslint/eslint-plugin": "^7.0.0",
     "@typescript-eslint/parser": "^7.0.0",
-    "@vitest/coverage-v8": "^1.0.0",
+    "@vitest/coverage-v8": "^3.2.4",
     "eslint": "^8.0.0",
     "prettier": "^3.0.0",
     "rimraf": "^5.0.0",
     "typescript": "^5.4.0",
-    "vitest": "^1.0.0"
+    "vitest": "^3.2.4"
   },
   "license": "MIT"
 }
