@@ -1,0 +1,15 @@
+{
+  "file": "f02.py",
+  "sites": [
+    { "line": 5, "kind": ".format", "expected": "f-string" },
+    { "line": 9, "kind": ".format", "expected": "f-string" },
+    { "line": 13, "kind": ".format", "expected": "f-string" },
+    { "line": 17, "kind": ".format", "expected": "f-string" },
+    { "line": 21, "kind": ".format", "expected": "f-string" },
+    { "line": 25, "kind": ".format", "expected": "f-string", "note": "numbered placeholders" },
+    { "line": 29, "kind": ".format", "expected": "f-string" },
+    { "line": 33, "kind": ".format", "expected": "f-string" },
+    { "line": 37, "kind": ".format", "expected": "f-string" },
+    { "line": 41, "kind": ".format", "expected": "f-string", "note": "embedded function call" }
+  ]
+}

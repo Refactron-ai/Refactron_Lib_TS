@@ -1,0 +1,15 @@
+{
+  "file": "f06.py",
+  "sites": [
+    { "line": 15, "kind": "%", "expected": "f-string", "note": "attribute access in tuple" },
+    { "line": 19, "kind": ".format", "expected": "f-string" },
+    { "line": 23, "kind": "%", "expected": "f-string", "note": "indexing" },
+    { "line": 27, "kind": ".format", "expected": "f-string" },
+    { "line": 31, "kind": "%", "expected": "f-string", "note": "function call" },
+    { "line": 35, "kind": ".format", "expected": "f-string" },
+    { "line": 39, "kind": "%", "expected": "f-string", "note": "binary expression" },
+    { "line": 43, "kind": ".format", "expected": "f-string" },
+    { "line": 47, "kind": "%", "expected": "f-string" },
+    { "line": 51, "kind": ".format", "expected": "f-string" }
+  ]
+}

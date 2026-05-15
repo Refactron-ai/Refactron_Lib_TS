@@ -1,0 +1,20 @@
+{
+  "file": "f03.ts",
+  "sites": [
+    { "line": 4, "name": "base", "expected": "const" },
+    { "line": 5, "name": "multiplier", "expected": "const" },
+    { "line": 6, "name": "acc", "expected": "let" },
+    { "line": 7, "name": "i", "expected": "let" },
+    { "line": 14, "name": "sep", "expected": "const" },
+    { "line": 15, "name": "label", "expected": "const" },
+    { "line": 16, "name": "line", "expected": "const" },
+    { "line": 21, "name": "v", "expected": "let" },
+    { "line": 22, "name": "step", "expected": "const" },
+    { "line": 30, "name": "collected", "expected": "const", "note": "array reference never reassigned; only mutated via push" },
+    { "line": 31, "name": "start", "expected": "const" },
+    { "line": 32, "name": "x", "expected": "let" },
+    { "line": 39, "name": "glue", "expected": "const" },
+    { "line": 40, "name": "built", "expected": "const" },
+    { "line": 45, "name": "size", "expected": "let" }
+  ]
+}

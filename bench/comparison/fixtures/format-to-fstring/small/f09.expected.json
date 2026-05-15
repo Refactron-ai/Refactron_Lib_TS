@@ -1,0 +1,15 @@
+{
+  "file": "f09.py",
+  "sites": [
+    { "line": 5, "kind": "%", "expected": "f-string" },
+    { "line": 9, "kind": ".format", "expected": "f-string" },
+    { "line": 13, "kind": "%", "expected": "f-string" },
+    { "line": 17, "kind": ".format", "expected": "f-string" },
+    { "line": 21, "kind": "%", "expected": "f-string" },
+    { "line": 25, "kind": ".format", "expected": "f-string" },
+    { "line": 29, "kind": "%", "expected": "f-string" },
+    { "line": 33, "kind": ".format", "expected": "f-string" },
+    { "line": 37, "kind": "%", "expected": "f-string" },
+    { "line": 41, "kind": ".format", "expected": "f-string" }
+  ]
+}

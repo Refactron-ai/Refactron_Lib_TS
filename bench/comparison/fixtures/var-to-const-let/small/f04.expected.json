@@ -1,0 +1,17 @@
+{
+  "file": "f04.ts",
+  "sites": [
+    { "line": 6, "name": "tmp", "expected": "let", "note": "outer tmp reassigned in loop" },
+    { "line": 7, "name": "i", "expected": "let" },
+    { "line": 11, "name": "tmp", "expected": "const", "note": "inner tmp never reassigned; independent scope" },
+    { "line": 18, "name": "tag", "expected": "const" },
+    { "line": 20, "name": "tag", "expected": "const" },
+    { "line": 27, "name": "a", "expected": "let" },
+    { "line": 28, "name": "b", "expected": "let" },
+    { "line": 29, "name": "i", "expected": "let" },
+    { "line": 37, "name": "v", "expected": "const" },
+    { "line": 39, "name": "v", "expected": "const" },
+    { "line": 46, "name": "x2", "expected": "const" },
+    { "line": 48, "name": "doubled", "expected": "const" }
+  ]
+}

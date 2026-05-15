@@ -1,0 +1,23 @@
+{
+  "file": "f10.ts",
+  "sites": [
+    { "line": 6, "name": "list", "expected": "const", "note": "ref never reassigned; only mutated via push" },
+    { "line": 7, "name": "i", "expected": "let" },
+    { "line": 14, "name": "map", "expected": "const" },
+    { "line": 15, "name": "idx", "expected": "let" },
+    { "line": 22, "name": "c", "expected": "let", "note": "++ counts as reassignment" },
+    { "line": 23, "name": "i", "expected": "let" },
+    { "line": 30, "name": "c", "expected": "let" },
+    { "line": 38, "name": "total", "expected": "let", "note": "+= counts as reassignment" },
+    { "line": 39, "name": "i", "expected": "let" },
+    { "line": 46, "name": "x", "expected": "const" },
+    { "line": 47, "name": "y", "expected": "const" },
+    { "line": 48, "name": "z", "expected": "const" },
+    { "line": 53, "name": "arr", "expected": "const", "note": "ref never reassigned; element assignment is mutation" },
+    { "line": 54, "name": "i", "expected": "let" },
+    { "line": 61, "name": "cfg", "expected": "const" },
+    { "line": 66, "name": "pile", "expected": "const" },
+    { "line": 74, "name": "s", "expected": "let" },
+    { "line": 75, "name": "i", "expected": "let" }
+  ]
+}

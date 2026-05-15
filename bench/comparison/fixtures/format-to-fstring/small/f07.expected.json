@@ -1,0 +1,17 @@
+{
+  "file": "f07.py",
+  "sites": [
+    { "line": 5, "kind": "%", "expected": "f-string", "note": "%5d -> {n:5d}" },
+    { "line": 9, "kind": ".format", "expected": "f-string" },
+    { "line": 13, "kind": "%", "expected": "f-string" },
+    { "line": 17, "kind": ".format", "expected": "f-string" },
+    { "line": 21, "kind": "%", "expected": "f-string" },
+    { "line": 25, "kind": ".format", "expected": "f-string" },
+    { "line": 29, "kind": ".format", "expected": "f-string", "note": "alignment :<10" },
+    { "line": 33, "kind": ".format", "expected": "f-string" },
+    { "line": 37, "kind": "%", "expected": "f-string", "note": "%x" },
+    { "line": 41, "kind": ".format", "expected": "f-string" },
+    { "line": 45, "kind": "%", "expected": "f-string", "note": "zero pad %05d" },
+    { "line": 49, "kind": ".format", "expected": "f-string" }
+  ]
+}

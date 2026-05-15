@@ -1,0 +1,12 @@
+{
+  "file": "f07.ts",
+  "sites": [
+    { "line": 5, "name": "label", "expected": "let", "note": "declared without init then assigned in branches" },
+    { "line": 17, "name": "result", "expected": "let" },
+    { "line": 25, "name": "out", "expected": "let" },
+    { "line": 36, "name": "prefix", "expected": "const" },
+    { "line": 37, "name": "suffix", "expected": "const" },
+    { "line": 42, "name": "v", "expected": "let" },
+    { "line": 53, "name": "kind", "expected": "let" }
+  ]
+}

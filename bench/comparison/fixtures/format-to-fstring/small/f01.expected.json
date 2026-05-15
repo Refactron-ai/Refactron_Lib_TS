@@ -1,0 +1,15 @@
+{
+  "file": "f01.py",
+  "sites": [
+    { "line": 5, "kind": "%", "expected": "f-string" },
+    { "line": 9, "kind": "%", "expected": "f-string" },
+    { "line": 13, "kind": "%", "expected": "f-string" },
+    { "line": 17, "kind": "%", "expected": "f-string" },
+    { "line": 21, "kind": "%", "expected": "f-string", "note": "%% must become a literal % in f-string" },
+    { "line": 25, "kind": "%", "expected": "f-string" },
+    { "line": 29, "kind": "%", "expected": "f-string" },
+    { "line": 33, "kind": "%", "expected": "f-string" },
+    { "line": 37, "kind": "%", "expected": "f-string", "note": "format spec :.2f preserved" },
+    { "line": 41, "kind": "%", "expected": "f-string" }
+  ]
+}

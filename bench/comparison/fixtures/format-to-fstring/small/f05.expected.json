@@ -1,0 +1,17 @@
+{
+  "file": "f05.py",
+  "sites": [
+    { "line": 5, "kind": "%", "expected": "f-string", "note": "multi-line; tools must collapse or preserve formatting" },
+    { "line": 10, "kind": ".format", "expected": "f-string", "note": "multi-line .format" },
+    { "line": 15, "kind": "%", "expected": "f-string", "note": "inside dict literal" },
+    { "line": 20, "kind": ".format", "expected": "f-string", "note": "inside dict literal" },
+    { "line": 25, "kind": "%", "expected": "f-string" },
+    { "line": 25, "kind": "%", "expected": "f-string" },
+    { "line": 30, "kind": ".format", "expected": "f-string" },
+    { "line": 30, "kind": ".format", "expected": "f-string" },
+    { "line": 35, "kind": "%", "expected": "f-string", "note": "inside tuple" },
+    { "line": 40, "kind": "%", "expected": "f-string" },
+    { "line": 45, "kind": ".format", "expected": "f-string" },
+    { "line": 49, "kind": "%", "expected": "f-string" }
+  ]
+}

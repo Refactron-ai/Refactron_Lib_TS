@@ -1,0 +1,15 @@
+{
+  "file": "f04.py",
+  "sites": [
+    { "line": 10, "kind": ".format-kw", "expected": "f-string", "alt": "skip" },
+    { "line": 14, "kind": ".format-kw", "expected": "f-string", "alt": "skip" },
+    { "line": 18, "kind": ".format-kw", "expected": "f-string", "alt": "skip" },
+    { "line": 22, "kind": ".format-kw", "expected": "f-string", "alt": "skip" },
+    { "line": 26, "kind": ".format-kw", "expected": "f-string", "alt": "skip" },
+    { "line": 31, "kind": ".format-mixed", "expected": "skip", "alt": "f-string", "note": "mixed positional + kw is the genuinely tricky case" },
+    { "line": 35, "kind": ".format-kw", "expected": "f-string", "alt": "skip" },
+    { "line": 39, "kind": ".format-kw", "expected": "f-string", "alt": "skip" },
+    { "line": 43, "kind": ".format-kw", "expected": "f-string", "alt": "skip" },
+    { "line": 47, "kind": ".format-kw", "expected": "f-string", "alt": "skip" }
+  ]
+}

@@ -1,0 +1,21 @@
+{
+  "file": "f06.ts",
+  "sites": [
+    { "line": 7, "name": "a", "expected": "const" },
+    { "line": 7, "name": "b", "expected": "const" },
+    { "line": 12, "name": "x", "expected": "const" },
+    { "line": 12, "name": "y", "expected": "const" },
+    { "line": 12, "name": "z", "expected": "const" },
+    { "line": 17, "name": "total", "expected": "let" },
+    { "line": 17, "name": "longest", "expected": "let" },
+    { "line": 18, "name": "i", "expected": "let" },
+    { "line": 28, "name": "first", "expected": "const" },
+    { "line": 28, "name": "second", "expected": "const" },
+    { "line": 33, "name": "label", "expected": "const" },
+    { "line": 33, "name": "sep", "expected": "const" },
+    { "line": 38, "name": "a", "expected": "let" },
+    { "line": 38, "name": "b", "expected": "let" },
+    { "line": 38, "name": "c", "expected": "let" },
+    { "line": 39, "name": "i", "expected": "let" }
+  ]
+}

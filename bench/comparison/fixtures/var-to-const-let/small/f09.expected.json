@@ -1,0 +1,18 @@
+{
+  "file": "f09.ts",
+  "sites": [
+    { "line": 4, "name": "parsed", "expected": "let" },
+    { "line": 6, "name": "raw", "expected": "const" },
+    { "line": 15, "name": "seen", "expected": "let" },
+    { "line": 16, "name": "v", "expected": "const", "note": "for-of binding fresh per iteration" },
+    { "line": 23, "name": "collected", "expected": "const", "note": "array ref never reassigned" },
+    { "line": 24, "name": "v", "expected": "const" },
+    { "line": 30, "name": "lows", "expected": "const" },
+    { "line": 31, "name": "highs", "expected": "const" },
+    { "line": 32, "name": "v", "expected": "const" },
+    { "line": 43, "name": "best", "expected": "let" },
+    { "line": 44, "name": "pass", "expected": "let" },
+    { "line": 45, "name": "n", "expected": "const" },
+    { "line": 55, "name": "result", "expected": "let" }
+  ]
+}

@@ -1,0 +1,17 @@
+{
+  "file": "f10.py",
+  "sites": [
+    { "line": 7, "kind": "%", "expected": "f-string", "note": "inside for loop" },
+    { "line": 14, "kind": ".format", "expected": "f-string" },
+    { "line": 20, "kind": "%", "expected": "f-string" },
+    { "line": 21, "kind": "%", "expected": "f-string" },
+    { "line": 26, "kind": ".format", "expected": "f-string" },
+    { "line": 27, "kind": ".format", "expected": "f-string" },
+    { "line": 31, "kind": "%", "expected": "f-string", "note": "list comprehension" },
+    { "line": 35, "kind": ".format", "expected": "f-string" },
+    { "line": 39, "kind": "%", "expected": "f-string", "note": "lambda body" },
+    { "line": 43, "kind": ".format", "expected": "f-string" },
+    { "line": 47, "kind": "%", "expected": "f-string", "note": "assert message" },
+    { "line": 52, "kind": ".format", "expected": "f-string" }
+  ]
+}

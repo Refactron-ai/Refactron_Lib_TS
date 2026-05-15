@@ -1,0 +1,8 @@
+[project]
+name = "format-to-fstring-fixture-small"
+version = "0.0.0"
+requires-python = ">=3.8"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
