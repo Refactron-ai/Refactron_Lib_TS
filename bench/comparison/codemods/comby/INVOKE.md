@@ -2,15 +2,22 @@
 
 For `var -> let` (TypeScript):
 ```
-comby -config bench/comparison/codemods/comby/var-to-const-let.toml \
-      -in-place -directory <fixture-dir> -extensions ts
+comby 'var :[name] :[rest]' 'let :[name] :[rest]' .ts \
+      -in-place -directory <fixture-dir> -depth 1
 ```
 
-For `format -> f-string` (Python):
+For `format -> f-string` (Python), two passes:
 ```
-comby -config bench/comparison/codemods/comby/format-to-fstring.toml \
-      -in-place -directory <fixture-dir> -extensions py
+comby '":[before]{}:[after]".format(:[arg])' 'f":[before]{:[arg]}:[after]"' .py \
+      -in-place -directory <fixture-dir> -depth 1
+comby '":[before]%s:[after]" % :[arg]' 'f":[before]{:[arg]}:[after]"' .py \
+      -in-place -directory <fixture-dir> -depth 1
 ```
+
+The `.toml` files in this directory document the same rules as Comby
+templates, but Comby's CLI does not accept `-config` *without* positional
+template args, so the harness uses the inline form. The behavior is
+identical.
 
 ## Honest limitations recorded inline in the .toml files
 
