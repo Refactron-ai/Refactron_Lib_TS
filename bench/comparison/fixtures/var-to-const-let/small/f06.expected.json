@@ -1,21 +1,101 @@
 {
   "file": "f06.ts",
   "sites": [
-    { "line": 7, "name": "a", "expected": "const" },
-    { "line": 7, "name": "b", "expected": "const" },
-    { "line": 12, "name": "x", "expected": "const" },
-    { "line": 12, "name": "y", "expected": "const" },
-    { "line": 12, "name": "z", "expected": "const" },
-    { "line": 17, "name": "total", "expected": "let" },
-    { "line": 17, "name": "longest", "expected": "let" },
-    { "line": 18, "name": "i", "expected": "let" },
-    { "line": 28, "name": "first", "expected": "const" },
-    { "line": 28, "name": "second", "expected": "const" },
-    { "line": 33, "name": "label", "expected": "const" },
-    { "line": 33, "name": "sep", "expected": "const" },
-    { "line": 38, "name": "a", "expected": "let" },
-    { "line": 38, "name": "b", "expected": "let" },
-    { "line": 38, "name": "c", "expected": "let" },
-    { "line": 39, "name": "i", "expected": "let" }
+    {
+      "function": "pair",
+      "name": "a",
+      "line": 7,
+      "expected": "const"
+    },
+    {
+      "function": "pair",
+      "name": "b",
+      "line": 7,
+      "expected": "const"
+    },
+    {
+      "function": "trio",
+      "name": "x",
+      "line": 12,
+      "expected": "const"
+    },
+    {
+      "function": "trio",
+      "name": "y",
+      "line": 12,
+      "expected": "const"
+    },
+    {
+      "function": "trio",
+      "name": "z",
+      "line": 12,
+      "expected": "const"
+    },
+    {
+      "function": "lengths",
+      "name": "total",
+      "line": 17,
+      "expected": "let"
+    },
+    {
+      "function": "lengths",
+      "name": "longest",
+      "line": 17,
+      "expected": "let"
+    },
+    {
+      "function": "lengths",
+      "name": "i",
+      "line": 18,
+      "expected": "let"
+    },
+    {
+      "function": "firstTwo",
+      "name": "first",
+      "line": 28,
+      "expected": "const"
+    },
+    {
+      "function": "firstTwo",
+      "name": "second",
+      "line": 28,
+      "expected": "const"
+    },
+    {
+      "function": "describe",
+      "name": "label",
+      "line": 33,
+      "expected": "const"
+    },
+    {
+      "function": "describe",
+      "name": "sep",
+      "line": 33,
+      "expected": "const"
+    },
+    {
+      "function": "counters",
+      "name": "a",
+      "line": 38,
+      "expected": "let"
+    },
+    {
+      "function": "counters",
+      "name": "b",
+      "line": 38,
+      "expected": "let"
+    },
+    {
+      "function": "counters",
+      "name": "c",
+      "line": 38,
+      "expected": "let"
+    },
+    {
+      "function": "counters",
+      "name": "i",
+      "line": 39,
+      "expected": "let"
+    }
   ]
 }

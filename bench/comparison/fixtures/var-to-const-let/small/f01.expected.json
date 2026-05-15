@@ -1,19 +1,89 @@
 {
   "file": "f01.ts",
   "sites": [
-    { "line": 5, "name": "sum", "expected": "const" },
-    { "line": 10, "name": "prefix", "expected": "const" },
-    { "line": 11, "name": "suffix", "expected": "const" },
-    { "line": 16, "name": "head", "expected": "const" },
-    { "line": 21, "name": "first", "expected": "const" },
-    { "line": 22, "name": "second", "expected": "const" },
-    { "line": 27, "name": "label", "expected": "const" },
-    { "line": 28, "name": "sep", "expected": "const" },
-    { "line": 29, "name": "rendered", "expected": "const" },
-    { "line": 34, "name": "doubled", "expected": "const" },
-    { "line": 39, "name": "tri", "expected": "const" },
-    { "line": 44, "name": "avg", "expected": "const" },
-    { "line": 49, "name": "out", "expected": "const" },
-    { "line": 54, "name": "tag", "expected": "const" }
+    {
+      "function": "add",
+      "name": "sum",
+      "line": 5,
+      "expected": "const"
+    },
+    {
+      "function": "greet",
+      "name": "prefix",
+      "line": 10,
+      "expected": "const"
+    },
+    {
+      "function": "greet",
+      "name": "suffix",
+      "line": 11,
+      "expected": "const"
+    },
+    {
+      "function": "pickFirst",
+      "name": "head",
+      "line": 16,
+      "expected": "const"
+    },
+    {
+      "function": "buildPair",
+      "name": "first",
+      "line": 21,
+      "expected": "const"
+    },
+    {
+      "function": "buildPair",
+      "name": "second",
+      "line": 22,
+      "expected": "const"
+    },
+    {
+      "function": "describe",
+      "name": "label",
+      "line": 27,
+      "expected": "const"
+    },
+    {
+      "function": "describe",
+      "name": "sep",
+      "line": 28,
+      "expected": "const"
+    },
+    {
+      "function": "describe",
+      "name": "rendered",
+      "line": 29,
+      "expected": "const"
+    },
+    {
+      "function": "double",
+      "name": "doubled",
+      "line": 34,
+      "expected": "const"
+    },
+    {
+      "function": "triangle",
+      "name": "tri",
+      "line": 39,
+      "expected": "const"
+    },
+    {
+      "function": "mid",
+      "name": "avg",
+      "line": 44,
+      "expected": "const"
+    },
+    {
+      "function": "repeat",
+      "name": "out",
+      "line": 49,
+      "expected": "const"
+    },
+    {
+      "function": "tagged",
+      "name": "tag",
+      "line": 54,
+      "expected": "const"
+    }
   ]
 }

@@ -1,18 +1,85 @@
 {
   "file": "f09.ts",
   "sites": [
-    { "line": 4, "name": "parsed", "expected": "let" },
-    { "line": 6, "name": "raw", "expected": "const" },
-    { "line": 15, "name": "seen", "expected": "let" },
-    { "line": 16, "name": "v", "expected": "const", "note": "for-of binding fresh per iteration" },
-    { "line": 23, "name": "collected", "expected": "const", "note": "array ref never reassigned" },
-    { "line": 24, "name": "v", "expected": "const" },
-    { "line": 30, "name": "lows", "expected": "const" },
-    { "line": 31, "name": "highs", "expected": "const" },
-    { "line": 32, "name": "v", "expected": "const" },
-    { "line": 43, "name": "best", "expected": "let" },
-    { "line": 44, "name": "pass", "expected": "let" },
-    { "line": 45, "name": "n", "expected": "const" },
-    { "line": 55, "name": "result", "expected": "let" }
+    {
+      "function": "trySafe",
+      "name": "parsed",
+      "line": 4,
+      "expected": "let"
+    },
+    {
+      "function": "trySafe",
+      "name": "raw",
+      "line": 6,
+      "expected": "const"
+    },
+    {
+      "function": "counted",
+      "name": "seen",
+      "line": 15,
+      "expected": "let"
+    },
+    {
+      "function": "counted",
+      "name": "v",
+      "line": 16,
+      "expected": "const",
+      "note": "for-of binding fresh per iteration"
+    },
+    {
+      "function": "gather",
+      "name": "collected",
+      "line": 23,
+      "expected": "const",
+      "note": "array ref never reassigned"
+    },
+    {
+      "function": "gather",
+      "name": "v",
+      "line": 24,
+      "expected": "const"
+    },
+    {
+      "function": "partition",
+      "name": "lows",
+      "line": 30,
+      "expected": "const"
+    },
+    {
+      "function": "partition",
+      "name": "highs",
+      "line": 31,
+      "expected": "const"
+    },
+    {
+      "function": "partition",
+      "name": "v",
+      "line": 32,
+      "expected": "const"
+    },
+    {
+      "function": "maxThrice",
+      "name": "best",
+      "line": 43,
+      "expected": "let"
+    },
+    {
+      "function": "maxThrice",
+      "name": "pass",
+      "line": 44,
+      "expected": "let"
+    },
+    {
+      "function": "maxThrice",
+      "name": "n",
+      "line": 45,
+      "expected": "const"
+    },
+    {
+      "function": "safeDivide",
+      "name": "result",
+      "line": 55,
+      "expected": "let"
+    }
   ]
 }

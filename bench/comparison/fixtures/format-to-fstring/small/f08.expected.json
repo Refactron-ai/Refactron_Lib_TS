@@ -1,17 +1,98 @@
 {
   "file": "f08.py",
   "sites": [
-    { "line": 13, "kind": "%-dict", "expected": "skip", "note": "%(name)s syntax — out of scope for naive rewriters" },
-    { "line": 18, "kind": ".format", "expected": "f-string", "note": "inner .format on literal is rewritable" },
-    { "line": 19, "kind": "%", "expected": "f-string", "note": "outer %s on a variable is rewritable" },
-    { "line": 23, "kind": ".format-stararg", "expected": "skip", "note": ".format(*args) — arity unknown" },
-    { "line": 28, "kind": ".format-starkw", "expected": "skip", "note": ".format(**kw) — names unknown" },
-    { "line": 33, "kind": "%-non-literal", "expected": "skip", "note": "template is a variable, not a string literal" },
-    { "line": 38, "kind": ".format-non-literal", "expected": "skip", "note": "method called on a variable" },
-    { "line": 43, "kind": ".format", "expected": "f-string", "note": "outer .format is rewritable; inner is too" },
-    { "line": 43, "kind": ".format", "expected": "f-string" },
-    { "line": 48, "kind": "%-modulo", "expected": "skip", "note": "modulo, not string formatting — must not rewrite" },
-    { "line": 53, "kind": "%", "expected": "f-string" },
-    { "line": 57, "kind": ".format", "expected": "f-string" }
+    {
+      "function": "percent_dict",
+      "occurrence": 0,
+      "line": 13,
+      "kind": "%-dict",
+      "expected": "skip",
+      "note": "%(name)s syntax — out of scope for naive rewriters"
+    },
+    {
+      "function": "percent_with_format_method",
+      "occurrence": 0,
+      "line": 18,
+      "kind": ".format",
+      "expected": "f-string",
+      "note": "inner .format on literal is rewritable"
+    },
+    {
+      "function": "percent_with_format_method",
+      "occurrence": 1,
+      "line": 19,
+      "kind": "%",
+      "expected": "f-string",
+      "note": "outer %s on a variable is rewritable"
+    },
+    {
+      "function": "format_with_starargs",
+      "occurrence": 0,
+      "line": 23,
+      "kind": ".format-stararg",
+      "expected": "skip",
+      "note": ".format(*args) — arity unknown"
+    },
+    {
+      "function": "format_with_starkw",
+      "occurrence": 0,
+      "line": 28,
+      "kind": ".format-starkw",
+      "expected": "skip",
+      "note": ".format(**kw) — names unknown"
+    },
+    {
+      "function": "percent_logger_style",
+      "occurrence": 0,
+      "line": 33,
+      "kind": "%-non-literal",
+      "expected": "skip",
+      "note": "template is a variable, not a string literal"
+    },
+    {
+      "function": "fmt_method_on_var",
+      "occurrence": 0,
+      "line": 38,
+      "kind": ".format-non-literal",
+      "expected": "skip",
+      "note": "method called on a variable"
+    },
+    {
+      "function": "chained_format",
+      "occurrence": 0,
+      "line": 43,
+      "kind": ".format",
+      "expected": "f-string",
+      "note": "outer .format is rewritable; inner is too"
+    },
+    {
+      "function": "chained_format",
+      "occurrence": 1,
+      "line": 43,
+      "kind": ".format",
+      "expected": "f-string"
+    },
+    {
+      "function": "percent_on_non_str_const",
+      "occurrence": 0,
+      "line": 48,
+      "kind": "%-modulo",
+      "expected": "skip",
+      "note": "modulo, not string formatting — must not rewrite"
+    },
+    {
+      "function": "good_one",
+      "occurrence": 0,
+      "line": 53,
+      "kind": "%",
+      "expected": "f-string"
+    },
+    {
+      "function": "good_two",
+      "occurrence": 0,
+      "line": 57,
+      "kind": ".format",
+      "expected": "f-string"
+    }
   ]
 }

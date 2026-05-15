@@ -1,17 +1,94 @@
 {
   "file": "f05.py",
   "sites": [
-    { "line": 5, "kind": "%", "expected": "f-string", "note": "multi-line; tools must collapse or preserve formatting" },
-    { "line": 10, "kind": ".format", "expected": "f-string", "note": "multi-line .format" },
-    { "line": 15, "kind": "%", "expected": "f-string", "note": "inside dict literal" },
-    { "line": 20, "kind": ".format", "expected": "f-string", "note": "inside dict literal" },
-    { "line": 25, "kind": "%", "expected": "f-string" },
-    { "line": 25, "kind": "%", "expected": "f-string" },
-    { "line": 30, "kind": ".format", "expected": "f-string" },
-    { "line": 30, "kind": ".format", "expected": "f-string" },
-    { "line": 35, "kind": "%", "expected": "f-string", "note": "inside tuple" },
-    { "line": 40, "kind": "%", "expected": "f-string" },
-    { "line": 45, "kind": ".format", "expected": "f-string" },
-    { "line": 49, "kind": "%", "expected": "f-string" }
+    {
+      "function": "multi_pct",
+      "occurrence": 0,
+      "line": 5,
+      "kind": "%",
+      "expected": "f-string",
+      "note": "multi-line; tools must collapse or preserve formatting"
+    },
+    {
+      "function": "multi_fmt",
+      "occurrence": 0,
+      "line": 10,
+      "kind": ".format",
+      "expected": "f-string",
+      "note": "multi-line .format"
+    },
+    {
+      "function": "in_dict",
+      "occurrence": 0,
+      "line": 15,
+      "kind": "%",
+      "expected": "f-string",
+      "note": "inside dict literal"
+    },
+    {
+      "function": "in_dict_fmt",
+      "occurrence": 0,
+      "line": 20,
+      "kind": ".format",
+      "expected": "f-string",
+      "note": "inside dict literal"
+    },
+    {
+      "function": "in_list",
+      "occurrence": 0,
+      "line": 25,
+      "kind": "%",
+      "expected": "f-string"
+    },
+    {
+      "function": "in_list",
+      "occurrence": 1,
+      "line": 25,
+      "kind": "%",
+      "expected": "f-string"
+    },
+    {
+      "function": "in_list_fmt",
+      "occurrence": 0,
+      "line": 30,
+      "kind": ".format",
+      "expected": "f-string"
+    },
+    {
+      "function": "in_list_fmt",
+      "occurrence": 1,
+      "line": 30,
+      "kind": ".format",
+      "expected": "f-string"
+    },
+    {
+      "function": "in_tuple",
+      "occurrence": 0,
+      "line": 35,
+      "kind": "%",
+      "expected": "f-string",
+      "note": "inside tuple"
+    },
+    {
+      "function": "assigned_then_returned",
+      "occurrence": 0,
+      "line": 40,
+      "kind": "%",
+      "expected": "f-string"
+    },
+    {
+      "function": "assigned_fmt_then_returned",
+      "occurrence": 0,
+      "line": 45,
+      "kind": ".format",
+      "expected": "f-string"
+    },
+    {
+      "function": "returned_directly",
+      "occurrence": 0,
+      "line": 49,
+      "kind": "%",
+      "expected": "f-string"
+    }
   ]
 }

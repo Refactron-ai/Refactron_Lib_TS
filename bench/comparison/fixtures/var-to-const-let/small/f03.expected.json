@@ -1,20 +1,96 @@
 {
   "file": "f03.ts",
   "sites": [
-    { "line": 4, "name": "base", "expected": "const" },
-    { "line": 5, "name": "multiplier", "expected": "const" },
-    { "line": 6, "name": "acc", "expected": "let" },
-    { "line": 7, "name": "i", "expected": "let" },
-    { "line": 14, "name": "sep", "expected": "const" },
-    { "line": 15, "name": "label", "expected": "const" },
-    { "line": 16, "name": "line", "expected": "const" },
-    { "line": 21, "name": "v", "expected": "let" },
-    { "line": 22, "name": "step", "expected": "const" },
-    { "line": 30, "name": "collected", "expected": "const", "note": "array reference never reassigned; only mutated via push" },
-    { "line": 31, "name": "start", "expected": "const" },
-    { "line": 32, "name": "x", "expected": "let" },
-    { "line": 39, "name": "glue", "expected": "const" },
-    { "line": 40, "name": "built", "expected": "const" },
-    { "line": 45, "name": "size", "expected": "let" }
+    {
+      "function": "compute",
+      "name": "base",
+      "line": 4,
+      "expected": "const"
+    },
+    {
+      "function": "compute",
+      "name": "multiplier",
+      "line": 5,
+      "expected": "const"
+    },
+    {
+      "function": "compute",
+      "name": "acc",
+      "line": 6,
+      "expected": "let"
+    },
+    {
+      "function": "compute",
+      "name": "i",
+      "line": 7,
+      "expected": "let"
+    },
+    {
+      "function": "formatLine",
+      "name": "sep",
+      "line": 14,
+      "expected": "const"
+    },
+    {
+      "function": "formatLine",
+      "name": "label",
+      "line": 15,
+      "expected": "const"
+    },
+    {
+      "function": "formatLine",
+      "name": "line",
+      "line": 16,
+      "expected": "const"
+    },
+    {
+      "function": "bumpUntil",
+      "name": "v",
+      "line": 21,
+      "expected": "let"
+    },
+    {
+      "function": "bumpUntil",
+      "name": "step",
+      "line": 22,
+      "expected": "const"
+    },
+    {
+      "function": "listOdd",
+      "name": "collected",
+      "line": 30,
+      "expected": "const",
+      "note": "array reference never reassigned; only mutated via push"
+    },
+    {
+      "function": "listOdd",
+      "name": "start",
+      "line": 31,
+      "expected": "const"
+    },
+    {
+      "function": "listOdd",
+      "name": "x",
+      "line": 32,
+      "expected": "let"
+    },
+    {
+      "function": "nameWith",
+      "name": "glue",
+      "line": 39,
+      "expected": "const"
+    },
+    {
+      "function": "nameWith",
+      "name": "built",
+      "line": 40,
+      "expected": "const"
+    },
+    {
+      "function": "shrink",
+      "name": "size",
+      "line": 45,
+      "expected": "let"
+    }
   ]
 }

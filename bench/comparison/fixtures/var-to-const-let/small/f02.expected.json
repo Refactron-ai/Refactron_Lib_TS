@@ -1,17 +1,78 @@
 {
   "file": "f02.ts",
   "sites": [
-    { "line": 5, "name": "total", "expected": "let" },
-    { "line": 6, "name": "i", "expected": "let" },
-    { "line": 13, "name": "out", "expected": "const", "note": "array reference never reassigned; only mutated via push" },
-    { "line": 14, "name": "current", "expected": "let" },
-    { "line": 23, "name": "best", "expected": "let" },
-    { "line": 24, "name": "idx", "expected": "let" },
-    { "line": 33, "name": "acc", "expected": "let" },
-    { "line": 34, "name": "k", "expected": "let" },
-    { "line": 45, "name": "on", "expected": "let" },
-    { "line": 46, "name": "step", "expected": "let" },
-    { "line": 53, "name": "hit", "expected": "let" },
-    { "line": 54, "name": "p", "expected": "let" }
+    {
+      "function": "sumTo",
+      "name": "total",
+      "line": 5,
+      "expected": "let"
+    },
+    {
+      "function": "sumTo",
+      "name": "i",
+      "line": 6,
+      "expected": "let"
+    },
+    {
+      "function": "countdown",
+      "name": "out",
+      "line": 13,
+      "expected": "const",
+      "note": "array reference never reassigned; only mutated via push"
+    },
+    {
+      "function": "countdown",
+      "name": "current",
+      "line": 14,
+      "expected": "let"
+    },
+    {
+      "function": "maxOf",
+      "name": "best",
+      "line": 23,
+      "expected": "let"
+    },
+    {
+      "function": "maxOf",
+      "name": "idx",
+      "line": 24,
+      "expected": "let"
+    },
+    {
+      "function": "joinWith",
+      "name": "acc",
+      "line": 33,
+      "expected": "let"
+    },
+    {
+      "function": "joinWith",
+      "name": "k",
+      "line": 34,
+      "expected": "let"
+    },
+    {
+      "function": "flipFlop",
+      "name": "on",
+      "line": 45,
+      "expected": "let"
+    },
+    {
+      "function": "flipFlop",
+      "name": "step",
+      "line": 46,
+      "expected": "let"
+    },
+    {
+      "function": "lastNonZero",
+      "name": "hit",
+      "line": 53,
+      "expected": "let"
+    },
+    {
+      "function": "lastNonZero",
+      "name": "p",
+      "line": 54,
+      "expected": "let"
+    }
   ]
 }

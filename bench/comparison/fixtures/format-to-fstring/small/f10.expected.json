@@ -1,17 +1,93 @@
 {
   "file": "f10.py",
   "sites": [
-    { "line": 7, "kind": "%", "expected": "f-string", "note": "inside for loop" },
-    { "line": 14, "kind": ".format", "expected": "f-string" },
-    { "line": 20, "kind": "%", "expected": "f-string" },
-    { "line": 21, "kind": "%", "expected": "f-string" },
-    { "line": 26, "kind": ".format", "expected": "f-string" },
-    { "line": 27, "kind": ".format", "expected": "f-string" },
-    { "line": 31, "kind": "%", "expected": "f-string", "note": "list comprehension" },
-    { "line": 35, "kind": ".format", "expected": "f-string" },
-    { "line": 39, "kind": "%", "expected": "f-string", "note": "lambda body" },
-    { "line": 43, "kind": ".format", "expected": "f-string" },
-    { "line": 47, "kind": "%", "expected": "f-string", "note": "assert message" },
-    { "line": 52, "kind": ".format", "expected": "f-string" }
+    {
+      "function": "loop_pct",
+      "occurrence": 0,
+      "line": 7,
+      "kind": "%",
+      "expected": "f-string",
+      "note": "inside for loop"
+    },
+    {
+      "function": "loop_fmt",
+      "occurrence": 0,
+      "line": 14,
+      "kind": ".format",
+      "expected": "f-string"
+    },
+    {
+      "function": "cond_pct",
+      "occurrence": 0,
+      "line": 20,
+      "kind": "%",
+      "expected": "f-string"
+    },
+    {
+      "function": "cond_pct",
+      "occurrence": 1,
+      "line": 21,
+      "kind": "%",
+      "expected": "f-string"
+    },
+    {
+      "function": "cond_fmt",
+      "occurrence": 0,
+      "line": 26,
+      "kind": ".format",
+      "expected": "f-string"
+    },
+    {
+      "function": "cond_fmt",
+      "occurrence": 1,
+      "line": 27,
+      "kind": ".format",
+      "expected": "f-string"
+    },
+    {
+      "function": "comp_pct",
+      "occurrence": 0,
+      "line": 31,
+      "kind": "%",
+      "expected": "f-string",
+      "note": "list comprehension"
+    },
+    {
+      "function": "comp_fmt",
+      "occurrence": 0,
+      "line": 35,
+      "kind": ".format",
+      "expected": "f-string"
+    },
+    {
+      "function": "lambda_pct",
+      "occurrence": 0,
+      "line": 39,
+      "kind": "%",
+      "expected": "f-string",
+      "note": "lambda body"
+    },
+    {
+      "function": "lambda_fmt",
+      "occurrence": 0,
+      "line": 43,
+      "kind": ".format",
+      "expected": "f-string"
+    },
+    {
+      "function": "assert_msg",
+      "occurrence": 0,
+      "line": 47,
+      "kind": "%",
+      "expected": "f-string",
+      "note": "assert message"
+    },
+    {
+      "function": "assert_msg_fmt",
+      "occurrence": 0,
+      "line": 52,
+      "kind": ".format",
+      "expected": "f-string"
+    }
   ]
 }

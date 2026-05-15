@@ -1,18 +1,85 @@
 {
   "file": "f05.ts",
   "sites": [
-    { "line": 5, "name": "total", "expected": "let" },
-    { "line": 6, "name": "i", "expected": "let" },
-    { "line": 13, "name": "p", "expected": "let" },
-    { "line": 14, "name": "idx", "expected": "let" },
-    { "line": 21, "name": "out", "expected": "const", "note": "array reference never reassigned" },
-    { "line": 22, "name": "k", "expected": "let" },
-    { "line": 29, "name": "hits", "expected": "let" },
-    { "line": 30, "name": "r", "expected": "let" },
-    { "line": 31, "name": "c", "expected": "let" },
-    { "line": 41, "name": "found", "expected": "let" },
-    { "line": 42, "name": "n", "expected": "let" },
-    { "line": 52, "name": "out", "expected": "const", "note": "array reference never reassigned" },
-    { "line": 53, "name": "p", "expected": "let" }
+    {
+      "function": "sumRange",
+      "name": "total",
+      "line": 5,
+      "expected": "let"
+    },
+    {
+      "function": "sumRange",
+      "name": "i",
+      "line": 6,
+      "expected": "let"
+    },
+    {
+      "function": "product",
+      "name": "p",
+      "line": 13,
+      "expected": "let"
+    },
+    {
+      "function": "product",
+      "name": "idx",
+      "line": 14,
+      "expected": "let"
+    },
+    {
+      "function": "copyArray",
+      "name": "out",
+      "line": 21,
+      "expected": "const",
+      "note": "array reference never reassigned"
+    },
+    {
+      "function": "copyArray",
+      "name": "k",
+      "line": 22,
+      "expected": "let"
+    },
+    {
+      "function": "diagonal",
+      "name": "hits",
+      "line": 29,
+      "expected": "let"
+    },
+    {
+      "function": "diagonal",
+      "name": "r",
+      "line": 30,
+      "expected": "let"
+    },
+    {
+      "function": "diagonal",
+      "name": "c",
+      "line": 31,
+      "expected": "let"
+    },
+    {
+      "function": "firstMatch",
+      "name": "found",
+      "line": 41,
+      "expected": "let"
+    },
+    {
+      "function": "firstMatch",
+      "name": "n",
+      "line": 42,
+      "expected": "let"
+    },
+    {
+      "function": "reverseInto",
+      "name": "out",
+      "line": 52,
+      "expected": "const",
+      "note": "array reference never reassigned"
+    },
+    {
+      "function": "reverseInto",
+      "name": "p",
+      "line": 53,
+      "expected": "let"
+    }
   ]
 }
