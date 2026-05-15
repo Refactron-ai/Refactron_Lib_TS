@@ -41,10 +41,22 @@ function ensureTsx(): Parser {
   return tsxParser;
 }
 
+// tree-sitter's native binding rejects a string input longer than ~32 KB
+// with "Error: Invalid argument" (EINVAL). The callback-input form feeds the
+// parser in chunks and has no size limit — and produces an identical tree —
+// so we always use it. 16 KB chunks keep us well clear of the string cap.
+const CHUNK = 1 << 14;
+
+function parseChunked(parser: Parser, source: string): Parser.Tree {
+  return parser.parse((index: number): string | null =>
+    index < source.length ? source.slice(index, index + CHUNK) : null,
+  );
+}
+
 export function parsePython(source: string): Parser.Tree {
-  return ensurePython().parse(source);
+  return parseChunked(ensurePython(), source);
 }
 
 export function parseTypescript(source: string, tsx: boolean): Parser.Tree {
-  return (tsx ? ensureTsx() : ensureTypescript()).parse(source);
+  return parseChunked(tsx ? ensureTsx() : ensureTypescript(), source);
 }
