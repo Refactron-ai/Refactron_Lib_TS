@@ -1,0 +1,89 @@
+{
+  "file": "f01.ts",
+  "sites": [
+    {
+      "function": "add",
+      "name": "sum",
+      "line": 5,
+      "expected": "const"
+    },
+    {
+      "function": "greet",
+      "name": "prefix",
+      "line": 10,
+      "expected": "const"
+    },
+    {
+      "function": "greet",
+      "name": "suffix",
+      "line": 11,
+      "expected": "const"
+    },
+    {
+      "function": "pickFirst",
+      "name": "head",
+      "line": 16,
+      "expected": "const"
+    },
+    {
+      "function": "buildPair",
+      "name": "first",
+      "line": 21,
+      "expected": "const"
+    },
+    {
+      "function": "buildPair",
+      "name": "second",
+      "line": 22,
+      "expected": "const"
+    },
+    {
+      "function": "describe",
+      "name": "label",
+      "line": 27,
+      "expected": "const"
+    },
+    {
+      "function": "describe",
+      "name": "sep",
+      "line": 28,
+      "expected": "const"
+    },
+    {
+      "function": "describe",
+      "name": "rendered",
+      "line": 29,
+      "expected": "const"
+    },
+    {
+      "function": "double",
+      "name": "doubled",
+      "line": 34,
+      "expected": "const"
+    },
+    {
+      "function": "triangle",
+      "name": "tri",
+      "line": 39,
+      "expected": "const"
+    },
+    {
+      "function": "mid",
+      "name": "avg",
+      "line": 44,
+      "expected": "const"
+    },
+    {
+      "function": "repeat",
+      "name": "out",
+      "line": 49,
+      "expected": "const"
+    },
+    {
+      "function": "tagged",
+      "name": "tag",
+      "line": 54,
+      "expected": "const"
+    }
+  ]
+}

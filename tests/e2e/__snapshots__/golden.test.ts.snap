@@ -1,7 +1,21 @@
 // Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
 
 exports[`refactron golden e2e > run --apply produces verified, behavior-preserving output on python-legacy-mini 1`] = `
-"Index: formatting.py
+"Index: callbacks.py
+===================================================================
+--- callbacks.py	
++++ callbacks.py	
+@@ -9,7 +9,7 @@
+ def fetch_user(user_id, callback):
+     """Simulate fetching a user record and pass it to \`\`callback\`\`."""
+     # Pretend we hit a database here.
+-    result = {"id": user_id, "name": "user-%d" % user_id}
++    result = {"id": user_id, "name": f"user-{user_id}"}
+     callback(result)
+ 
+ 
+
+Index: formatting.py
 ===================================================================
 --- formatting.py	
 +++ formatting.py	

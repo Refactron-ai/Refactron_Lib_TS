@@ -1,0 +1,79 @@
+{
+  "file": "f04.ts",
+  "sites": [
+    {
+      "function": "nestedScope",
+      "name": "tmp",
+      "line": 6,
+      "expected": "let",
+      "note": "outer tmp reassigned in loop"
+    },
+    {
+      "function": "nestedScope",
+      "name": "i",
+      "line": 7,
+      "expected": "let"
+    },
+    {
+      "function": "inner",
+      "name": "tmp",
+      "line": 11,
+      "expected": "const",
+      "note": "inner tmp never reassigned; independent scope"
+    },
+    {
+      "function": "outerThenInner",
+      "name": "tag",
+      "line": 18,
+      "expected": "const"
+    },
+    {
+      "function": "build",
+      "name": "tag",
+      "line": 20,
+      "expected": "const"
+    },
+    {
+      "function": "counterPair",
+      "name": "a",
+      "line": 27,
+      "expected": "let"
+    },
+    {
+      "function": "counterPair",
+      "name": "b",
+      "line": 28,
+      "expected": "let"
+    },
+    {
+      "function": "counterPair",
+      "name": "i",
+      "line": 29,
+      "expected": "let"
+    },
+    {
+      "function": "shadowConst",
+      "name": "v",
+      "line": 37,
+      "expected": "const"
+    },
+    {
+      "function": "leaf",
+      "name": "v",
+      "line": 39,
+      "expected": "const"
+    },
+    {
+      "function": "paramShadow",
+      "name": "x2",
+      "line": 46,
+      "expected": "const"
+    },
+    {
+      "function": "helper",
+      "name": "doubled",
+      "line": 48,
+      "expected": "const"
+    }
+  ]
+}

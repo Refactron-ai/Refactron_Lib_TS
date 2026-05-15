@@ -1,0 +1,78 @@
+{
+  "file": "f02.ts",
+  "sites": [
+    {
+      "function": "sumTo",
+      "name": "total",
+      "line": 5,
+      "expected": "let"
+    },
+    {
+      "function": "sumTo",
+      "name": "i",
+      "line": 6,
+      "expected": "let"
+    },
+    {
+      "function": "countdown",
+      "name": "out",
+      "line": 13,
+      "expected": "const",
+      "note": "array reference never reassigned; only mutated via push"
+    },
+    {
+      "function": "countdown",
+      "name": "current",
+      "line": 14,
+      "expected": "let"
+    },
+    {
+      "function": "maxOf",
+      "name": "best",
+      "line": 23,
+      "expected": "let"
+    },
+    {
+      "function": "maxOf",
+      "name": "idx",
+      "line": 24,
+      "expected": "let"
+    },
+    {
+      "function": "joinWith",
+      "name": "acc",
+      "line": 33,
+      "expected": "let"
+    },
+    {
+      "function": "joinWith",
+      "name": "k",
+      "line": 34,
+      "expected": "let"
+    },
+    {
+      "function": "flipFlop",
+      "name": "on",
+      "line": 45,
+      "expected": "let"
+    },
+    {
+      "function": "flipFlop",
+      "name": "step",
+      "line": 46,
+      "expected": "let"
+    },
+    {
+      "function": "lastNonZero",
+      "name": "hit",
+      "line": 53,
+      "expected": "let"
+    },
+    {
+      "function": "lastNonZero",
+      "name": "p",
+      "line": 54,
+      "expected": "let"
+    }
+  ]
+}

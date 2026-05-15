@@ -1,0 +1,48 @@
+{
+  "file": "f07.ts",
+  "sites": [
+    {
+      "function": "classify",
+      "name": "label",
+      "line": 5,
+      "expected": "let",
+      "note": "declared without init then assigned in branches"
+    },
+    {
+      "function": "maybeBoost",
+      "name": "result",
+      "line": 17,
+      "expected": "let"
+    },
+    {
+      "function": "piecewise",
+      "name": "out",
+      "line": 25,
+      "expected": "let"
+    },
+    {
+      "function": "tag",
+      "name": "prefix",
+      "line": 36,
+      "expected": "const"
+    },
+    {
+      "function": "tag",
+      "name": "suffix",
+      "line": 37,
+      "expected": "const"
+    },
+    {
+      "function": "clamp",
+      "name": "v",
+      "line": 42,
+      "expected": "let"
+    },
+    {
+      "function": "inferKind",
+      "name": "kind",
+      "line": 53,
+      "expected": "let"
+    }
+  ]
+}

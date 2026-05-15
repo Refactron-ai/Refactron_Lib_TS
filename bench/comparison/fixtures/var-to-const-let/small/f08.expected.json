@@ -1,0 +1,45 @@
+{
+  "file": "f08.ts",
+  "sites": [
+    {
+      "function": "hoistDemo",
+      "name": "temp",
+      "line": 13,
+      "expected": "const",
+      "alt": "skip",
+      "note": "var hoisting: reference before decl is safe under var; const/let only safe because init() is called after assignment"
+    },
+    {
+      "function": "tdzTrap",
+      "name": "probe",
+      "line": 21,
+      "expected": "const"
+    },
+    {
+      "function": "tdzTrap",
+      "name": "usedBeforeDecl",
+      "line": 25,
+      "expected": "skip",
+      "note": "TDZ trap: typeof check would throw under let/const because of temporal dead zone"
+    },
+    {
+      "function": "lateReassign",
+      "name": "accum",
+      "line": 32,
+      "expected": "let"
+    },
+    {
+      "function": "plain",
+      "name": "doubled",
+      "line": 41,
+      "expected": "const"
+    },
+    {
+      "function": "blockedVar",
+      "name": "inner",
+      "line": 47,
+      "expected": "const",
+      "note": "block-scoped after rewrite; only used inside the if-branch"
+    }
+  ]
+}

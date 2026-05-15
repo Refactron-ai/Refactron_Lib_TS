@@ -1,0 +1,86 @@
+{
+  "file": "f04.py",
+  "sites": [
+    {
+      "function": "named",
+      "occurrence": 0,
+      "line": 10,
+      "kind": ".format-kw",
+      "expected": "f-string",
+      "alt": "skip"
+    },
+    {
+      "function": "named_two",
+      "occurrence": 0,
+      "line": 14,
+      "kind": ".format-kw",
+      "expected": "f-string",
+      "alt": "skip"
+    },
+    {
+      "function": "named_int",
+      "occurrence": 0,
+      "line": 18,
+      "kind": ".format-kw",
+      "expected": "f-string",
+      "alt": "skip"
+    },
+    {
+      "function": "kw_dict",
+      "occurrence": 0,
+      "line": 22,
+      "kind": ".format-kw",
+      "expected": "f-string",
+      "alt": "skip"
+    },
+    {
+      "function": "named_path",
+      "occurrence": 0,
+      "line": 26,
+      "kind": ".format-kw",
+      "expected": "f-string",
+      "alt": "skip"
+    },
+    {
+      "function": "mixed_pos_kw",
+      "occurrence": 0,
+      "line": 31,
+      "kind": ".format-mixed",
+      "expected": "skip",
+      "alt": "f-string",
+      "note": "mixed positional + kw is the genuinely tricky case"
+    },
+    {
+      "function": "kw_repeat",
+      "occurrence": 0,
+      "line": 35,
+      "kind": ".format-kw",
+      "expected": "f-string",
+      "alt": "skip"
+    },
+    {
+      "function": "kw_int_str",
+      "occurrence": 0,
+      "line": 39,
+      "kind": ".format-kw",
+      "expected": "f-string",
+      "alt": "skip"
+    },
+    {
+      "function": "kw_with_call",
+      "occurrence": 0,
+      "line": 43,
+      "kind": ".format-kw",
+      "expected": "f-string",
+      "alt": "skip"
+    },
+    {
+      "function": "kw_pair",
+      "occurrence": 0,
+      "line": 47,
+      "kind": ".format-kw",
+      "expected": "f-string",
+      "alt": "skip"
+    }
+  ]
+}

@@ -1,0 +1,79 @@
+{
+  "file": "f06.py",
+  "sites": [
+    {
+      "function": "attr_pct",
+      "occurrence": 0,
+      "line": 15,
+      "kind": "%",
+      "expected": "f-string",
+      "note": "attribute access in tuple"
+    },
+    {
+      "function": "attr_fmt",
+      "occurrence": 0,
+      "line": 19,
+      "kind": ".format",
+      "expected": "f-string"
+    },
+    {
+      "function": "idx_pct",
+      "occurrence": 0,
+      "line": 23,
+      "kind": "%",
+      "expected": "f-string",
+      "note": "indexing"
+    },
+    {
+      "function": "idx_fmt",
+      "occurrence": 0,
+      "line": 27,
+      "kind": ".format",
+      "expected": "f-string"
+    },
+    {
+      "function": "call_pct",
+      "occurrence": 0,
+      "line": 31,
+      "kind": "%",
+      "expected": "f-string",
+      "note": "function call"
+    },
+    {
+      "function": "call_fmt",
+      "occurrence": 0,
+      "line": 35,
+      "kind": ".format",
+      "expected": "f-string"
+    },
+    {
+      "function": "expr_pct",
+      "occurrence": 0,
+      "line": 39,
+      "kind": "%",
+      "expected": "f-string",
+      "note": "binary expression"
+    },
+    {
+      "function": "expr_fmt",
+      "occurrence": 0,
+      "line": 43,
+      "kind": ".format",
+      "expected": "f-string"
+    },
+    {
+      "function": "chained_attr",
+      "occurrence": 0,
+      "line": 47,
+      "kind": "%",
+      "expected": "f-string"
+    },
+    {
+      "function": "chained_attr_fmt",
+      "occurrence": 0,
+      "line": 51,
+      "kind": ".format",
+      "expected": "f-string"
+    }
+  ]
+}

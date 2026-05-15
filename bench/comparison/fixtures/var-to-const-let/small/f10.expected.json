@@ -1,0 +1,117 @@
+{
+  "file": "f10.ts",
+  "sites": [
+    {
+      "function": "buildList",
+      "name": "list",
+      "line": 6,
+      "expected": "const",
+      "note": "ref never reassigned; only mutated via push"
+    },
+    {
+      "function": "buildList",
+      "name": "i",
+      "line": 7,
+      "expected": "let"
+    },
+    {
+      "function": "buildMap",
+      "name": "map",
+      "line": 14,
+      "expected": "const"
+    },
+    {
+      "function": "buildMap",
+      "name": "idx",
+      "line": 15,
+      "expected": "let"
+    },
+    {
+      "function": "tickUp",
+      "name": "c",
+      "line": 22,
+      "expected": "let",
+      "note": "++ counts as reassignment"
+    },
+    {
+      "function": "tickUp",
+      "name": "i",
+      "line": 23,
+      "expected": "let"
+    },
+    {
+      "function": "tickDown",
+      "name": "c",
+      "line": 30,
+      "expected": "let"
+    },
+    {
+      "function": "compoundAssign",
+      "name": "total",
+      "line": 38,
+      "expected": "let",
+      "note": "+= counts as reassignment"
+    },
+    {
+      "function": "compoundAssign",
+      "name": "i",
+      "line": 39,
+      "expected": "let"
+    },
+    {
+      "function": "chained",
+      "name": "x",
+      "line": 46,
+      "expected": "const"
+    },
+    {
+      "function": "chained",
+      "name": "y",
+      "line": 47,
+      "expected": "const"
+    },
+    {
+      "function": "chained",
+      "name": "z",
+      "line": 48,
+      "expected": "const"
+    },
+    {
+      "function": "bigArr",
+      "name": "arr",
+      "line": 53,
+      "expected": "const",
+      "note": "ref never reassigned; element assignment is mutation"
+    },
+    {
+      "function": "bigArr",
+      "name": "i",
+      "line": 54,
+      "expected": "let"
+    },
+    {
+      "function": "untouchedConfig",
+      "name": "cfg",
+      "line": 61,
+      "expected": "const"
+    },
+    {
+      "function": "mutateInPlace",
+      "name": "pile",
+      "line": 66,
+      "expected": "const"
+    },
+    {
+      "function": "loopUpdate",
+      "name": "s",
+      "line": 74,
+      "expected": "let"
+    },
+    {
+      "function": "loopUpdate",
+      "name": "i",
+      "line": 75,
+      "expected": "let"
+    }
+  ]
+}
