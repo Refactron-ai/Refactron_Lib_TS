@@ -74,35 +74,28 @@ function clipPathLeft(text: string, max: number): string {
   return `…${text.slice(text.length - (max - 1))}`;
 }
 
-// Minimum widths for the three flexible columns. Their sum (35) plus the
-// fixed line/severity columns, the frame, and the row indent is exactly 60 —
-// the narrowest terminal we render to without wrapping.
-const COL_MIN = { file: 11, transform: 10, code: 14 } as const;
+// Minimum widths for the two flexible columns. Their sum (28) plus the fixed
+// line/severity columns, the 4-column frame, and the row indent is 52 — well
+// inside the 60-column floor we render to without wrapping.
+const COL_MIN = { transform: 12, code: 16 } as const;
 
 /**
- * Distribute `flex` columns across FILE / TRANSFORM / CODE so the table fits.
- * Starts at preferred widths, shrinks the widest column still above its
- * minimum until the total fits, and hands any leftover budget to CODE so the
- * table fills the terminal. Returns [fileW, transformW, codeW].
+ * Distribute `flex` columns across TRANSFORM / CODE so the table fits. Starts
+ * at preferred widths, shrinks the larger column still above its minimum until
+ * the total fits, and hands any leftover budget to CODE so the table fills the
+ * terminal. Returns [transformW, codeW].
  */
-function fitColumns(flex: number): [number, number, number] {
-  let fileW = 32;
+function fitColumns(flex: number): [number, number] {
   let transformW = 25;
-  let codeW = Math.max(COL_MIN.code, flex - fileW - transformW);
+  let codeW = Math.max(COL_MIN.code, flex - transformW);
   let guard = 4000;
-  while (fileW + transformW + codeW > flex && guard-- > 0) {
-    const candidates: Array<[number, 'file' | 'transform' | 'code']> = [];
-    if (fileW > COL_MIN.file) candidates.push([fileW, 'file']);
-    if (transformW > COL_MIN.transform) candidates.push([transformW, 'transform']);
-    if (codeW > COL_MIN.code) candidates.push([codeW, 'code']);
-    if (candidates.length === 0) break; // all at minimum — accept graceful overflow
-    candidates.sort((a, b) => b[0] - a[0]);
-    const target = candidates[0]?.[1];
-    if (target === 'file') fileW--;
-    else if (target === 'transform') transformW--;
-    else codeW--;
+  while (transformW + codeW > flex && guard-- > 0) {
+    if (transformW <= COL_MIN.transform && codeW <= COL_MIN.code) break; // graceful overflow
+    if (transformW > COL_MIN.transform && transformW >= codeW) transformW--;
+    else if (codeW > COL_MIN.code) codeW--;
+    else transformW--;
   }
-  return [fileW, transformW, codeW];
+  return [transformW, codeW];
 }
 
 export async function formatAnalysisReport(
@@ -120,69 +113,42 @@ export async function formatAnalysisReport(
   const groups = groupByFile(report.findings);
 
   // ── Column widths, fitted to the terminal ─────────────────────────────────
-  // The rendered line is `INDENT + sum(colWidths) + FRAME`. colWidths are
-  // padding-inclusive; the 5-column frame is 6 chars. Budget every part so
-  // the line never exceeds `width` — otherwise the terminal wraps it and the
-  // box-drawing shatters.
+  // Each per-file box's rendered line is `INDENT + sum(colWidths) + FRAME`.
+  // colWidths are padding-inclusive; the 4-column frame is 5 chars. Budget
+  // every part so the line never exceeds `width` — otherwise the terminal
+  // wraps it and the box-drawing shatters. Widths are computed once and shared
+  // by every per-file box so the boxes align vertically.
   const INDENT = 2;
-  const FRAME = 6;
+  const FRAME = 5;
   const LINE_W = 7;
   const SEV_W = 10;
   const width = Math.max(60, Math.min(opts.width ?? process.stdout.columns ?? 100, 200));
   const flex = width - INDENT - FRAME - LINE_W - SEV_W;
-  const [FILE_W, TRANSFORM_W, CODE_W] = fitColumns(flex);
+  const [TRANSFORM_W, CODE_W] = fitColumns(flex);
 
-  const table = new Table({
-    head: ['File', 'Line', 'Severity', 'Transform', 'Code'],
-    colWidths: [FILE_W, LINE_W, SEV_W, TRANSFORM_W, CODE_W],
-    colAligns: ['left', 'right', 'left', 'left', 'left'],
-    // Disable cli-table3's own ANSI colouring — RenderedLine carries one
-    // colour per line and the printers own the tinting.
-    style: { head: [], border: [], 'padding-left': 1, 'padding-right': 1 },
-    wordWrap: false, // long code/paths truncate with `truncate` rather than wrap
-    truncate: '…',
-    // Outer frame + a single rule under the header; no rule between data
-    // rows — a horizontal line per finding is exactly the noise we removed.
-    chars: {
-      top: '─',
-      'top-mid': '┬',
-      'top-left': '┌',
-      'top-right': '┐',
-      bottom: '─',
-      'bottom-mid': '┴',
-      'bottom-left': '└',
-      'bottom-right': '┘',
-      left: '│',
-      right: '│',
-      middle: '│',
-      mid: '',
-      'mid-mid': '',
-      'left-mid': '',
-      'right-mid': '',
-    },
-  });
-
-  // One row per finding, grouped by file (file shown once, blank on repeats).
-  for (const [file, fileFindings] of groups) {
-    const sourceLines = await cache.get(file);
-    const filePosix = toPosix(file);
-
-    fileFindings.forEach((finding, idx) => {
-      const sev = confidenceToSeverity(finding.confidence);
-      const raw = sourceLines ? (sourceLines[finding.line - 1] ?? '').trim() : '';
-      const code = raw.length > 0 ? raw : '(no source)';
-      table.push([
-        idx === 0 ? clipPathLeft(filePosix, FILE_W - 2) : '',
-        String(finding.line),
-        sev,
-        finding.transformId,
-        code,
-      ]);
-    });
-  }
+  // Outer frame + verticals only — no rule under the header, no rule between
+  // data rows. cli-table3 disables its own ANSI colouring (RenderedLine
+  // carries one colour per line; the printers own the tinting).
+  const tableChars = {
+    top: '─',
+    'top-mid': '┬',
+    'top-left': '┌',
+    'top-right': '┐',
+    bottom: '─',
+    'bottom-mid': '┴',
+    'bottom-left': '└',
+    'bottom-right': '┘',
+    left: '│',
+    right: '│',
+    middle: '│',
+    mid: '',
+    'mid-mid': '',
+    'left-mid': '',
+    'right-mid': '',
+  } as const;
 
   // Heading first — this is the first non-empty line, so the REPL's `⏺`
-  // first-output indicator lands here and not on the table's top border.
+  // first-output indicator lands here and not on a table's top border.
   const findingCount = report.findings.length;
   out.push({ text: '' });
   out.push({
@@ -192,13 +158,45 @@ export async function formatAnalysisReport(
     color: theme.colors.accent,
   });
   out.push({ text: '' });
-  for (const row of table.toString().split('\n')) {
-    out.push({ text: `  ${row}`, color: theme.colors.border });
+
+  // One bordered box per file — filename heading, then its own table, then a
+  // blank line of breathing room before the next file.
+  for (const [file, fileFindings] of groups) {
+    const sourceLines = await cache.get(file);
+    out.push({
+      text: `  ${clipPathLeft(toPosix(file), width - INDENT)}`,
+      color: theme.colors.accent,
+    });
+
+    const table = new Table({
+      head: ['Line', 'Severity', 'Transform', 'Code'],
+      colWidths: [LINE_W, SEV_W, TRANSFORM_W, CODE_W],
+      colAligns: ['right', 'left', 'left', 'left'],
+      style: { head: [], border: [], 'padding-left': 1, 'padding-right': 1 },
+      wordWrap: false, // long code/ids truncate with `truncate` rather than wrap
+      truncate: '…',
+      chars: tableChars,
+    });
+
+    for (const finding of fileFindings) {
+      const sev = confidenceToSeverity(finding.confidence);
+      const raw = sourceLines ? (sourceLines[finding.line - 1] ?? '').trim() : '';
+      table.push([
+        String(finding.line),
+        sev,
+        finding.transformId,
+        raw.length > 0 ? raw : '(no source)',
+      ]);
+    }
+
+    for (const row of table.toString().split('\n')) {
+      out.push({ text: `  ${row}`, color: theme.colors.border });
+    }
+    out.push({ text: '' });
   }
 
   // ── Transforms legend ─────────────────────────────────────────────────────
   const distinctTransforms = [...new Set(report.findings.map((f) => f.transformId))];
-  out.push({ text: '' });
   out.push({ text: '  TRANSFORMS', color: theme.colors.accent });
   for (const tid of distinctTransforms) {
     const suggestion = SUGGESTION_BY_TRANSFORM[tid as TransformId] ?? '';

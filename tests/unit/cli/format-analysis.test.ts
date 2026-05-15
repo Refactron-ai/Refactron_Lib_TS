@@ -129,6 +129,40 @@ describe('formatAnalysisReport', () => {
     }
   });
 
+  it('renders one bordered box per file, separated by a blank line', async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'fa-'));
+    tmp.push(root);
+    await fs.writeFile(path.join(root, 'a.py'), 'def f():\n    return "%s" % x\n');
+    await fs.writeFile(path.join(root, 'b.py'), 'def g():\n    return "%s" % y\n');
+    const report = synthReport(root, [
+      {
+        id: '1',
+        file: 'a.py',
+        line: 2,
+        transformId: 'format_to_fstring',
+        remediationMinutes: 1,
+        confidence: 'high',
+      },
+      {
+        id: '2',
+        file: 'b.py',
+        line: 2,
+        transformId: 'format_to_fstring',
+        remediationMinutes: 1,
+        confidence: 'high',
+      },
+    ]);
+    const lines = await formatAnalysisReport(report, { projectRoot: root });
+    // Two files → two box top-borders.
+    const topBorders = lines.filter((l) => l.text.includes('┌'));
+    expect(topBorders.length).toBe(2);
+    // The first box's bottom border is followed by a blank line, then the
+    // second file's heading.
+    const firstBottom = lines.findIndex((l) => l.text.includes('└'));
+    expect(lines[firstBottom + 1]?.text).toBe('');
+    expect(lines[firstBottom + 2]?.text).toContain('b.py');
+  });
+
   it('shows a "No findings." message when empty', async () => {
     const root = await fs.mkdtemp(path.join(os.tmpdir(), 'fa-'));
     tmp.push(root);
