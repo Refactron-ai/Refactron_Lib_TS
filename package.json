@@ -1,6 +1,6 @@
 {
   "name": "refactron",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Safety-first refactoring — finds, fixes, and verifies changes are safe before touching the filesystem",
   "author": "Om Sherikar <omsherikar0229@gmail.com>",
   "bin": {

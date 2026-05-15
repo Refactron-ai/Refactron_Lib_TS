@@ -7,6 +7,18 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [0.2.1] — 2026-05-16
+
+Patch release. Fixes a crash on large source files and lands two
+transform-coverage improvements surfaced by the comparison benchmark.
+
+### Fixed
+- **`analyze` crashed on files larger than ~32 KB** — tree-sitter's native binding rejects a string input past ~32 KB with `Error: Invalid argument`, aborting the whole run. Parsing now uses tree-sitter's callback-input form, which streams the source in chunks and has no size cap. A single unparseable file is also skipped instead of aborting the run (PR #29)
+- **`var_to_const_let` dropped whole files** — the hoisting and reassignment checks matched identifiers by text across the entire file, so two functions each declaring a same-named `var` tripped a false-positive and the transform skipped the file. Reference resolution is now scope-correct, and for-loop `var i` initializers are covered (PR #27)
+
+### Changed
+- **`format_to_fstring` now converts the full printf grammar** — `%d`, `%.2f`, `%x`, `%o`, `%e`, `%g`, width and precision specifiers, and `%%`. Previously only plain `%s` was handled. Mapping `%(name)s`, non-literal targets, and dynamic `*` widths are still conservatively skipped (PR #27)
+
 ## [0.2.0] — 2026-05-15
 
 First public release of the v2.0 deterministic-refactoring rebuild.
