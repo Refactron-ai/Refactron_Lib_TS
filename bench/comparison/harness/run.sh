@@ -69,16 +69,14 @@ invoke() {
       REFACTRON_TOKEN=dummy node "$REFACTRON_BIN" run --apply --transforms=format_to_fstring "$workdir" >/dev/null 2>&1
       ;;
     jscodeshift:var-to-const-let)
-      "$JSCS_BIN" -t "$JSCS_TRANSFORM" --extensions=ts --parser=ts --no-babel \
-        "$workdir/f01.ts" "$workdir/f02.ts" "$workdir/f03.ts" "$workdir/f04.ts" "$workdir/f05.ts" \
-        "$workdir/f06.ts" "$workdir/f07.ts" "$workdir/f08.ts" "$workdir/f09.ts" "$workdir/f10.ts" \
-        >/dev/null 2>&1
+      ( cd "$workdir" && "$JSCS_BIN" -t "$JSCS_TRANSFORM" --extensions=ts --parser=ts --no-babel \
+        f01.ts f02.ts f03.ts f04.ts f05.ts f06.ts f07.ts f08.ts f09.ts f10.ts ) >/dev/null 2>&1
       ;;
     eslint:var-to-const-let)
-      "$ESLINT_BIN" -c "$ESLINT_CONFIG" --fix \
-        "$workdir/f01.ts" "$workdir/f02.ts" "$workdir/f03.ts" "$workdir/f04.ts" "$workdir/f05.ts" \
-        "$workdir/f06.ts" "$workdir/f07.ts" "$workdir/f08.ts" "$workdir/f09.ts" "$workdir/f10.ts" \
-        >/dev/null 2>&1
+      # ESLint v10 enforces a config "base path"; running from inside the
+      # fixture dir keeps every target file in scope.
+      ( cd "$workdir" && "$ESLINT_BIN" -c "$ESLINT_CONFIG" --fix \
+        f01.ts f02.ts f03.ts f04.ts f05.ts f06.ts f07.ts f08.ts f09.ts f10.ts ) >/dev/null 2>&1
       ;;
     comby:var-to-const-let)
       # Comby's TOML config loader insists on positional args even with
@@ -207,17 +205,7 @@ for transform in "${TRANSFORMS_ARR[@]}"; do
 
       for run in $(seq 1 "$ITERATIONS"); do
         WORK="$(prepare_workdir "$transform" "$size")"
-        # Time the tool invocation only.
-        TIME_OUT=$( { /usr/bin/time -p bash -c "$(declare -f invoke); invoke '$tool' '$transform' '$WORK'" ; } 2>&1 1>/dev/null )
-        EXIT=$?
-        # Re-export the function definitions for the subshell.
-        ELAPSED=$(echo "$TIME_OUT" | awk '/^real/{print $2}')
-        if [ -z "$ELAPSED" ]; then ELAPSED=0; fi
-        # Re-run and capture properly: we lost the in-place modification because
-        # we ran in a subshell. Re-prepare and run again with a wrapper that
-        # *does* mutate $WORK.
-        rm -rf "$WORK"
-        WORK="$(prepare_workdir "$transform" "$size")"
+        # Time the tool invocation only (Python time gives sub-second precision).
         START=$(python3 -c 'import time;print(time.time())')
         invoke "$tool" "$transform" "$WORK"
         EXIT=$?
