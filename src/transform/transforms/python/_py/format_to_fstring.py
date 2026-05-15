@@ -10,12 +10,12 @@ from libcst.codemod.commands.convert_format_to_fstring import (  # noqa: E402
     ConvertFormatStringCommand,
 )
 
-try:
-    from libcst.codemod.commands.convert_percent_format_to_fstring import (  # noqa: E402
-        ConvertPercentFormatStringCommand,
-    )
-except Exception:  # pragma: no cover - older libcst versions
-    ConvertPercentFormatStringCommand = None  # type: ignore[assignment]
+# Refactron's own printf-grammar percent-format converter. It supersedes
+# LibCST's ConvertPercentFormatStringCommand, which only converts plain %s
+# and silently skips %d/%f/%x/width/precision/%% etc. We therefore do NOT
+# chain the LibCST percent command anymore -- our converter is a strict
+# superset for the cases LibCST handled (plain %s) and covers far more.
+from _percent_format import convert_percent_formats  # noqa: E402
 
 
 def _run_command(cmd, module: cst.Module) -> cst.Module:
@@ -38,6 +38,8 @@ def main():
 
     preconditions = []
     current = module
+
+    # Pass 1: LibCST's .format() -> f-string codemod (kept as-is).
     try:
         current = _run_command(ConvertFormatStringCommand(CodemodContext()), current)
     except Exception as e:  # unsupported pattern; record and continue
@@ -49,19 +51,17 @@ def main():
             }
         )
 
-    if ConvertPercentFormatStringCommand is not None:
-        try:
-            current = _run_command(
-                ConvertPercentFormatStringCommand(CodemodContext()), current
-            )
-        except Exception as e:
-            preconditions.append(
-                {
-                    "id": "percent-format-command",
-                    "satisfied": False,
-                    "reason": f"ConvertPercentFormatStringCommand failed: {e}",
-                }
-            )
+    # Pass 2: Refactron's printf-grammar percent-format -> f-string converter.
+    try:
+        current = convert_percent_formats(current)
+    except Exception as e:
+        preconditions.append(
+            {
+                "id": "percent-format-command",
+                "satisfied": False,
+                "reason": f"percent-format converter failed: {e}",
+            }
+        )
 
     if current.code == src:
         # No change — leave source untouched.
