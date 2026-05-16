@@ -196,25 +196,49 @@ export async function formatPlanAsDryRun(
   }
   emitTable('CHANGES', cTable);
 
-  // ── Per-file diff sections ─────────────────────────────────────────────────
+  // ── Per-file diff sections — one full 4-sided box per file ─────────────────
+  // The box is drawn by hand (not cli-table3): cli-table3 colours the whole
+  // table one colour, which would erase the green/red diff lines. Here every
+  // line keeps its own colour, so the borders take that colour too. Diff lines
+  // longer than the box are truncated with `…` to keep the right `│` aligned.
+  const W = width - 6; // INDENT(2) + "│ "(2) + " │"(2)
+  const fit = (s: string): string => (s.length > W ? `${s.slice(0, W - 1)}…` : s.padEnd(W));
+  const boxTop = (): RenderedLine => ({
+    text: `  ┌${'─'.repeat(W + 2)}┐`,
+    color: theme.colors.border,
+  });
+  const boxBottom = (): RenderedLine => ({
+    text: `  └${'─'.repeat(W + 2)}┘`,
+    color: theme.colors.border,
+  });
+  const boxLine = (content: string, color: string): RenderedLine => ({
+    text: `  │ ${fit(content)} │`,
+    color,
+  });
+
   for (const r of results) {
-    out.push({ text: `  ${clipPathLeft(r.rel, width - INDENT)}`, color: theme.colors.accent });
-    out.push({
-      text: `  ${r.transforms.join(', ')}  ${theme.symbols.bullet}  +${r.added} / -${r.removed}`,
-      color: theme.colors.textDim,
-    });
-    out.push({ text: '' });
-    const shown = r.body.slice(0, maxDiffLines);
-    for (const line of shown) {
-      out.push({ text: `  │ ${line}`, color: colorForDiffLine(line) });
+    out.push(boxTop());
+    out.push(boxLine(clipPathLeft(r.rel, W), theme.colors.accent));
+    out.push(
+      boxLine(
+        `${r.transforms.join(', ')}  ${theme.symbols.bullet}  +${r.added} / -${r.removed}`,
+        theme.colors.textDim,
+      ),
+    );
+    out.push(boxLine('', theme.colors.border));
+    for (const line of r.body.slice(0, maxDiffLines)) {
+      out.push(boxLine(line, colorForDiffLine(line)));
     }
     if (r.body.length > maxDiffLines) {
       const elided = r.body.length - maxDiffLines;
-      out.push({
-        text: `  │ … ${elided} more lines elided. Use --diff-context to see more.`,
-        color: theme.colors.textDim,
-      });
+      out.push(
+        boxLine(
+          `… ${elided} more lines elided. Use --diff-context to see more.`,
+          theme.colors.textDim,
+        ),
+      );
     }
+    out.push(boxBottom());
     out.push({ text: '' });
   }
 
