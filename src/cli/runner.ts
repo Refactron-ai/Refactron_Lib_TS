@@ -15,6 +15,8 @@ import { loadRefactronConfig } from './config-loader.js';
 import { formatAnalysisReport } from './format-analysis.js';
 import { formatGateProgress, formatVerifySuccess, formatVerifyFailure } from './format-verify.js';
 import { formatPlanAsDryRun } from './format-plan.js';
+import { writeRenderedReport, displayReportPath } from './report-file.js';
+import type { RenderedLine } from './format-types.js';
 import * as fsp from 'node:fs/promises';
 import { WorkSessionManager } from '../session/manager.js';
 import type { WorkSession } from '../session/types.js';
@@ -162,6 +164,31 @@ function printSessionCard(
 
 export interface CommandResult {
   shouldExit?: boolean;
+}
+
+// Persist a rendered report to .refactron/reports/ and print a footer pointing
+// to it — a large analyze / dry-run prints more lines than the terminal's
+// scrollback can hold, so the file is the durable fully-scrollable copy.
+async function emitReportFooter(
+  onLine: (line: string, color?: string) => void,
+  projectRoot: string,
+  command: string,
+  sessionId: string,
+  lines: RenderedLine[],
+): Promise<void> {
+  try {
+    const abs = await writeRenderedReport({ projectRoot, command, sessionId, lines });
+    onLine(
+      `  Full report  ${theme.symbols.bullet}  ${displayReportPath(abs)}`,
+      theme.colors.textDim,
+    );
+    onLine(
+      '  (open it in any editor or pager to scroll the complete output)',
+      theme.colors.textDim,
+    );
+  } catch (err) {
+    onLine(`  (could not write full report: ${(err as Error).message})`, theme.colors.textDim);
+  }
 }
 
 export async function executeCommand(
@@ -331,6 +358,8 @@ export async function executeCommand(
     const renderedLines = await formatAnalysisReport(report, { projectRoot: absTarget });
     for (const line of renderedLines) onLine(line.text, line.color);
     onLine('', undefined);
+    await emitReportFooter(onLine, absTarget, 'analyze', session.id, renderedLines);
+    onLine('', undefined);
     onLine(`  Session ${session.id}  —  ${issues.length} pattern(s) found.`, theme.colors.textDim);
     onLine(
       '  Next: `run --dry-run` to preview changes · `run --apply` to verify + write.',
@@ -434,6 +463,8 @@ export async function executeCommand(
         projectRoot: sessionTarget,
       });
       for (const line of dryRunLines) onLine(line.text, line.color);
+      onLine('', undefined);
+      await emitReportFooter(onLine, sessionTarget, 'dry-run', active.id, dryRunLines);
       onLine('', undefined);
       return {};
     }
