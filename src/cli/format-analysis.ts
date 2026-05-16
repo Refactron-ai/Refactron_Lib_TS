@@ -13,7 +13,7 @@ import type { DetectorFinding, Confidence } from '../analyze/detectors/types.js'
 import type { TransformId } from '../contracts.js';
 import { SUGGESTION_BY_TRANSFORM } from './v2-adapters.js';
 import { theme } from '../ui/theme.js';
-import { type RenderedLine, toPosix } from './format-types.js';
+import { type RenderedLine, toPosix, clipPathLeft, tableChars } from './format-types.js';
 
 export interface FormatAnalysisOptions {
   projectRoot: string;
@@ -69,12 +69,6 @@ function groupByFile(findings: DetectorFinding[]): Map<string, DetectorFinding[]
   return out;
 }
 
-/** Truncate a path from the LEFT so the filename tail survives. */
-function clipPathLeft(text: string, max: number): string {
-  if (text.length <= max) return text;
-  return `…${text.slice(text.length - (max - 1))}`;
-}
-
 // Minimum widths for the two flexible columns. Their sum (28) plus the fixed
 // line/severity columns, the 4-column frame, and the row indent is 52 — well
 // inside the 60-column floor we render to without wrapping.
@@ -126,27 +120,6 @@ export async function formatAnalysisReport(
   const width = Math.max(60, Math.min(opts.width ?? process.stdout.columns ?? 100, 200));
   const flex = width - INDENT - FRAME - LINE_W - SEV_W;
   const [TRANSFORM_W, CODE_W] = fitColumns(flex);
-
-  // Outer frame + verticals only — no rule under the header, no rule between
-  // data rows. cli-table3 disables its own ANSI colouring (RenderedLine
-  // carries one colour per line; the printers own the tinting).
-  const tableChars = {
-    top: '─',
-    'top-mid': '┬',
-    'top-left': '┌',
-    'top-right': '┐',
-    bottom: '─',
-    'bottom-mid': '┴',
-    'bottom-left': '└',
-    'bottom-right': '┘',
-    left: '│',
-    right: '│',
-    middle: '│',
-    mid: '',
-    'mid-mid': '',
-    'left-mid': '',
-    'right-mid': '',
-  } as const;
 
   // Heading first — this is the first non-empty line, so the REPL's `⏺`
   // first-output indicator lands here and not on a table's top border.
