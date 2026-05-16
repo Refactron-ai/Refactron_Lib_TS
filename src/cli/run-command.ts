@@ -3,15 +3,13 @@ import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 import { RefactronAnalyzer } from '../analyze/engine.js';
 import { RefactronRefactorer } from '../transform/engine.js';
-import { RefactronVerifier } from '../verify/engine.js';
-import { writeBatchAtomic } from '../verify/atomic-batch-writer.js';
+import { runApplyWithVerification } from './apply-orchestrator.js';
 import type { Confidence } from '../analyze/detectors/types.js';
 import type { TransformId } from '../contracts.js';
 import { requireAuth } from './auth-gate.js';
 import { loadRefactronConfig } from './config-loader.js';
 import { persistLastApply } from './last-apply.js';
 import { scopePlanChanges } from './runner.js';
-import { formatGateProgress, formatVerifySuccess, formatVerifyFailure } from './format-verify.js';
 import { formatPlanAsDryRun } from './format-plan.js';
 import { applyColor } from './apply-color.js';
 
@@ -297,48 +295,26 @@ export async function runRunCommand(argv: string[]): Promise<number> {
     }
   }
 
-  let capturedShadowRoot: string | null = null;
-  const verifierOpts: {
-    projectRoot: string;
-    testCmd?: string;
-    onGateComplete: (
-      gate: 'syntax' | 'imports' | 'tests',
-      g: import('../contracts.js').GateResult,
-    ) => void;
-    onShadowRoot: (p: string) => void;
-  } = {
+  const { appliedChanges, outcome } = await runApplyWithVerification(
+    plan,
     projectRoot,
-    onGateComplete: (gate, g) => {
-      for (const line of formatGateProgress(gate, g)) {
-        process.stdout.write(applyColor(line.text, line.color) + '\n');
-      }
-    },
-    onShadowRoot: (p) => {
-      capturedShadowRoot = p;
-    },
-  };
-  if (testCmd) verifierOpts.testCmd = testCmd;
-  const verifier = new RefactronVerifier(verifierOpts);
-  const result = await verifier.verify(plan);
-  if (!result.passed) {
-    for (const line of formatVerifyFailure(result, plan, projectRoot, capturedShadowRoot)) {
-      process.stderr.write(applyColor(line.text, line.color) + '\n');
-    }
-    return 1;
+    { line: (text, color) => process.stdout.write(applyColor(text, color) + '\n') },
+    { signal: new AbortController().signal, ...(testCmd ? { testCmd } : {}) },
+  );
+
+  if (appliedChanges.length > 0) {
+    await persistLastApply({
+      projectRoot,
+      verifiedAt: new Date().toISOString(),
+      changes: appliedChanges.map((c) => ({
+        path: c.path,
+        oldContent: originalsBeforeWrite.get(c.path) ?? '',
+        newContent: c.newContent,
+        transformId: c.transformId,
+      })),
+    });
   }
-  await writeBatchAtomic(result.writableChanges);
-  await persistLastApply({
-    projectRoot,
-    verifiedAt: new Date().toISOString(),
-    changes: result.writableChanges.map((c) => ({
-      path: c.path,
-      oldContent: originalsBeforeWrite.get(c.path) ?? '',
-      newContent: c.newContent,
-      transformId: c.transformId,
-    })),
-  });
-  for (const line of formatVerifySuccess(result, plan, projectRoot)) {
-    process.stdout.write(applyColor(line.text, line.color) + '\n');
-  }
-  return 0;
+
+  // Exit 0 only when every planned change was applied cleanly.
+  return outcome === 'all' ? 0 : 1;
 }

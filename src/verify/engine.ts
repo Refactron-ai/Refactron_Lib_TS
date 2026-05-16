@@ -17,10 +17,22 @@ export interface RefactronVerifierOptions {
    */
   onGateComplete?: (gate: GateName, result: GateResult) => void;
   /**
+   * Streaming hook: invoked immediately BEFORE a gate begins. Lets the CLI
+   * render live "verifying …" progress. Not part of the locked Verifier
+   * surface. Never fires for a gate skipped because an earlier gate failed.
+   */
+  onGateStart?: (gate: GateName) => void;
+  /**
    * Fires exactly once with the absolute path of the shadow tree, immediately
    * after creation. The CLI uses this for the "reproduce locally" hint.
    */
   onShadowRoot?: (path: string) => void;
+  /**
+   * Forwarded to the tests gate — skips its baseline (unmodified-tree) run.
+   * Used by the per-file apply fallback, where the batch run has already
+   * proven the baseline is green.
+   */
+  skipBaseline?: boolean;
 }
 
 export class RefactronVerifier implements Verifier {
@@ -32,10 +44,12 @@ export class RefactronVerifier implements Verifier {
     try {
       const ctx = { shadowRoot: handle.path, changes: plan.changes };
 
+      this.opts.onGateStart?.('syntax');
       const syntax = await syntaxGate(ctx, this.opts.projectRoot);
       this.opts.onGateComplete?.('syntax', syntax);
       if (!syntax.passed) return this.fail({ syntax });
 
+      this.opts.onGateStart?.('imports');
       const imports = await importsGate(ctx, this.opts.projectRoot);
       this.opts.onGateComplete?.('imports', imports);
       if (!imports.passed) return this.fail({ syntax, imports });
@@ -43,7 +57,9 @@ export class RefactronVerifier implements Verifier {
       const testsOpts: TestsGateOptions = {
         ...(this.opts.testCmd !== undefined ? { testCmd: this.opts.testCmd } : {}),
         ...(this.opts.timeoutMs !== undefined ? { timeoutMs: this.opts.timeoutMs } : {}),
+        ...(this.opts.skipBaseline !== undefined ? { skipBaseline: this.opts.skipBaseline } : {}),
       };
+      this.opts.onGateStart?.('tests');
       const tests = await testsGate(ctx, this.opts.projectRoot, testsOpts);
       this.opts.onGateComplete?.('tests', tests);
       if (!tests.passed) return this.fail({ syntax, imports, tests });

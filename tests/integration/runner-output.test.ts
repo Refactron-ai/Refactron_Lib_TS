@@ -110,8 +110,12 @@ describe('redesigned runner output streams', () => {
       expect(text).toMatch(/syntax/i);
       expect(text).toMatch(/imports/i);
       expect(text).toMatch(/tests/i);
-      // On success we expect either the success-block header or per-file
-      // atomic-write entries with transform tags.
+      // Live progress: a "verifying <gate> …" line precedes the gates, and an
+      // "applying …" line precedes the write.
+      expect(text).toMatch(/verifying syntax/);
+      expect(text).toMatch(/applying \d+ file/);
+      // On success we expect the success-block header / per-file atomic-write
+      // entries with transform tags.
       expect(text).toMatch(/written|applied|verified|Gate/i);
     } finally {
       await fs.rm(applyScratch, { recursive: true, force: true });

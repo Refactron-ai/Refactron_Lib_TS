@@ -6,14 +6,12 @@ import type { RefactronConfig } from '../core/config.js';
 import type { Severity } from '../core/models.js';
 import { RefactronAnalyzer } from '../analyze/engine.js';
 import { RefactronRefactorer } from '../transform/engine.js';
-import { RefactronVerifier } from '../verify/engine.js';
-import { writeBatchAtomic } from '../verify/atomic-batch-writer.js';
+import { runApplyWithVerification } from './apply-orchestrator.js';
 import type { FileChange, TransformId } from '../contracts.js';
 import { findingsToIssues } from './v2-adapters.js';
 import { persistLastApply } from './last-apply.js';
 import { loadRefactronConfig } from './config-loader.js';
 import { formatAnalysisReport } from './format-analysis.js';
-import { formatGateProgress, formatVerifySuccess, formatVerifyFailure } from './format-verify.js';
 import { formatPlanAsDryRun } from './format-plan.js';
 import { writeRenderedReport, displayReportPath } from './report-file.js';
 import type { RenderedLine } from './format-types.js';
@@ -483,42 +481,25 @@ export async function executeCommand(
       }
     }
 
-    onLine(`  Verifying ${plan.changes.length} change(s) …`, theme.colors.textDim);
-    let capturedShadowRoot: string | null = null;
-    const verifier = new RefactronVerifier({
-      projectRoot: sessionTarget,
-      onGateComplete: (gate, gateResult) => {
-        for (const line of formatGateProgress(gate, gateResult)) {
-          onLine(line.text, line.color);
-        }
-      },
-      onShadowRoot: (p) => {
-        capturedShadowRoot = p;
-      },
-    });
-    const result = await verifier.verify(plan);
+    const { appliedChanges } = await runApplyWithVerification(
+      plan,
+      sessionTarget,
+      { line: onLine },
+      { signal },
+    );
     if (signal.aborted) return {};
 
-    if (!result.passed) {
-      for (const line of formatVerifyFailure(result, plan, sessionTarget, capturedShadowRoot)) {
-        onLine(line.text, line.color);
-      }
-      return {};
-    }
-
-    await writeBatchAtomic(result.writableChanges);
-    await persistLastApply({
-      projectRoot: sessionTarget,
-      verifiedAt: new Date().toISOString(),
-      changes: result.writableChanges.map((c) => ({
-        path: c.path,
-        oldContent: originalsBeforeWrite.get(c.path) ?? '',
-        newContent: c.newContent,
-        transformId: c.transformId,
-      })),
-    });
-    for (const line of formatVerifySuccess(result, plan, sessionTarget)) {
-      onLine(line.text, line.color);
+    if (appliedChanges.length > 0) {
+      await persistLastApply({
+        projectRoot: sessionTarget,
+        verifiedAt: new Date().toISOString(),
+        changes: appliedChanges.map((c) => ({
+          path: c.path,
+          oldContent: originalsBeforeWrite.get(c.path) ?? '',
+          newContent: c.newContent,
+          transformId: c.transformId,
+        })),
+      });
     }
     return {};
   }
