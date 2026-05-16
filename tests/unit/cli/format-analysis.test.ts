@@ -153,8 +153,11 @@ describe('formatAnalysisReport', () => {
       },
     ]);
     const lines = await formatAnalysisReport(report, { projectRoot: root });
-    // Two files → two box top-borders.
-    const topBorders = lines.filter((l) => l.text.includes('┌'));
+    // Two files → two box top-borders among the per-file section (everything
+    // before the TRANSFORMS legend, which adds its own boxes).
+    const legendStart = lines.findIndex((l) => l.text.includes('TRANSFORMS'));
+    const fileSection = lines.slice(0, legendStart);
+    const topBorders = fileSection.filter((l) => l.text.includes('┌'));
     expect(topBorders.length).toBe(2);
     // The first box's bottom border is followed by a blank line, then the
     // second file's heading.
@@ -190,7 +193,7 @@ describe('formatAnalysisReport', () => {
     expect(text).toContain('(no source)');
   });
 
-  it('emits a Summary block with by-file / by-transform / by-severity / fixable counts', async () => {
+  it('emits TRANSFORMS / BY TRANSFORM / SUMMARY boxes with the right counts', async () => {
     const root = await fs.mkdtemp(path.join(os.tmpdir(), 'fa-'));
     tmp.push(root);
     await fs.writeFile(path.join(root, 'a.py'), 'def f():\n    pass\n');
@@ -221,12 +224,20 @@ describe('formatAnalysisReport', () => {
         confidence: 'high',
       },
     ]);
-    const lines = await formatAnalysisReport(report, { projectRoot: root });
+    const lines = await formatAnalysisReport(report, { projectRoot: root, width: 200 });
     const text = lines.map((l) => l.text).join('\n');
-    expect(text).toContain('Summary');
-    expect(text).toMatch(/Files affected\s+2/);
-    expect(text).toMatch(/format_to_fstring:\s*2/);
-    expect(text).toMatch(/class_to_dataclass:\s*1/);
+    expect(text).toContain('TRANSFORMS');
+    expect(text).toContain('BY TRANSFORM');
+    expect(text).toContain('SUMMARY');
+    // BY TRANSFORM box: each id and its count land on the same rendered line.
+    expect(lines.some((l) => l.text.includes('format_to_fstring') && /\b2\b/.test(l.text))).toBe(
+      true,
+    );
+    expect(lines.some((l) => l.text.includes('class_to_dataclass') && /\b1\b/.test(l.text))).toBe(
+      true,
+    );
+    // SUMMARY box: file count and severity tallies.
+    expect(lines.some((l) => l.text.includes('Files affected') && l.text.includes('2'))).toBe(true);
     expect(text).toMatch(/2 high/);
     expect(text).toMatch(/1 medium/);
   });

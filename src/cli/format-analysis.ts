@@ -1,8 +1,9 @@
 // src/cli/format-analysis.ts
-// Analyze-command formatter. Renders findings as a proper bordered table —
-// File · Line · Severity · Transform · Code — one row per finding. Returns
+// Analyze-command formatter. Renders one bordered box per file (Line · Severity
+// · Transform · Code, one row per finding), followed by three more bordered
+// boxes — TRANSFORMS (guidance), BY TRANSFORM (counts), SUMMARY. Returns
 // RenderedLine[] so the REPL (Ink) and the one-shot CLI (stdout) render it
-// identically. Per-transform guidance is a single legend after the table.
+// identically.
 
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
@@ -195,18 +196,8 @@ export async function formatAnalysisReport(
     out.push({ text: '' });
   }
 
-  // ── Transforms legend ─────────────────────────────────────────────────────
+  // ── Tallies ───────────────────────────────────────────────────────────────
   const distinctTransforms = [...new Set(report.findings.map((f) => f.transformId))];
-  out.push({ text: '  TRANSFORMS', color: theme.colors.accent });
-  for (const tid of distinctTransforms) {
-    const suggestion = SUGGESTION_BY_TRANSFORM[tid as TransformId] ?? '';
-    out.push({
-      text: `    ${tid.padEnd(TRANSFORM_W)}  ${suggestion}`,
-      color: theme.colors.textDim,
-    });
-  }
-
-  // ── Summary ───────────────────────────────────────────────────────────────
   const byTransform = new Map<TransformId, number>();
   const bySeverity: Record<Severity, number> = { critical: 0, high: 0, medium: 0, low: 0 };
   for (const f of report.findings) {
@@ -214,19 +205,72 @@ export async function formatAnalysisReport(
     bySeverity[confidenceToSeverity(f.confidence)]++;
   }
   const total = report.findings.length;
-  const transformSummary = [...byTransform.entries()]
-    .map(([tid, n]) => `${tid}: ${n}`)
-    .join(`  ${theme.symbols.bullet}  `);
 
-  out.push({ text: '' });
-  out.push({ text: '  Summary', color: theme.colors.accent });
-  out.push({ text: `    Files affected   ${groups.size}`, color: theme.colors.text });
-  out.push({ text: `    By transform     ${transformSummary}`, color: theme.colors.text });
-  out.push({
-    text: `    By severity      ${bySeverity.critical} critical  ${theme.symbols.bullet}  ${bySeverity.high} high  ${theme.symbols.bullet}  ${bySeverity.medium} medium  ${theme.symbols.bullet}  ${bySeverity.low} low`,
-    color: theme.colors.text,
+  // Shared id-column width — TRANSFORMS and BY TRANSFORM align on it. The cap
+  // keeps the guidance column ≥ MIN_GUIDANCE (and so BY TRANSFORM fits too).
+  const MIN_GUIDANCE = 22;
+  const rawIdW = Math.max(9, ...distinctTransforms.map((t) => t.length)) + 2;
+  const idColW = Math.min(rawIdW, width - INDENT - 3 - MIN_GUIDANCE);
+
+  const section = (heading: string, t: InstanceType<typeof Table>): void => {
+    out.push({ text: `  ${heading}`, color: theme.colors.accent });
+    for (const row of t.toString().split('\n')) {
+      out.push({ text: `  ${row}`, color: theme.colors.border });
+    }
+    out.push({ text: '' });
+  };
+
+  // ── TRANSFORMS — Transform · What it does ─────────────────────────────────
+  const tTable = new Table({
+    head: ['Transform', 'What it does'],
+    colWidths: [idColW, width - INDENT - 3 - idColW],
+    colAligns: ['left', 'left'],
+    style: { head: [], border: [], 'padding-left': 1, 'padding-right': 1 },
+    wordWrap: false,
+    truncate: '…',
+    chars: tableChars,
   });
-  out.push({ text: `    Fixable          ${total} / ${total}`, color: theme.colors.text });
+  for (const tid of distinctTransforms) {
+    tTable.push([tid, SUGGESTION_BY_TRANSFORM[tid as TransformId] ?? '']);
+  }
+  section('TRANSFORMS', tTable);
+
+  // ── BY TRANSFORM — Transform · Count, most-frequent first ─────────────────
+  const btTable = new Table({
+    head: ['Transform', 'Count'],
+    colWidths: [idColW, 9],
+    colAligns: ['left', 'right'],
+    style: { head: [], border: [], 'padding-left': 1, 'padding-right': 1 },
+    wordWrap: false,
+    truncate: '…',
+    chars: tableChars,
+  });
+  for (const [tid, n] of [...byTransform.entries()].sort((a, b) => b[1] - a[1])) {
+    btTable.push([tid, String(n)]);
+  }
+  section('BY TRANSFORM', btTable);
+
+  // ── SUMMARY — Metric · Value, no header row ───────────────────────────────
+  const sevLine = `${bySeverity.critical} critical  ${theme.symbols.bullet}  ${bySeverity.high} high  ${theme.symbols.bullet}  ${bySeverity.medium} medium  ${theme.symbols.bullet}  ${bySeverity.low} low`;
+  const summaryRows: Array<[string, string]> = [
+    ['Files affected', String(groups.size)],
+    ['By severity', sevLine],
+    ['Fixable', `${total} / ${total}`],
+  ];
+  const METRIC_W = 18;
+  const sTable = new Table({
+    colWidths: [
+      METRIC_W,
+      Math.min(Math.max(...summaryRows.map((r) => r[1].length)) + 2, width - INDENT - 3 - METRIC_W),
+    ],
+    colAligns: ['left', 'left'],
+    style: { border: [], 'padding-left': 1, 'padding-right': 1 },
+    wordWrap: false,
+    truncate: '…',
+    chars: tableChars,
+  });
+  for (const r of summaryRows) sTable.push(r);
+  section('SUMMARY', sTable);
 
   // Guarantee no emitted line exceeds the terminal width. Table lines already
   // fit exactly by construction; this only ever clips the legend / summary
