@@ -20,6 +20,23 @@ describe('parseBatchDocstrings', () => {
     expect(parseBatchDocstrings('not json').size).toBe(0);
     expect(parseBatchDocstrings('[1,2,3]').size).toBe(0);
   });
+
+  it('salvages complete pairs from a response truncated mid-object', () => {
+    // The model hit its completion cap mid-string on tag 2.
+    const truncated = '{\n  "0": "first body",\n  "1": "second body",\n  "2": "third body is cut o';
+    const m = parseBatchDocstrings(truncated);
+    expect(m.get(0)).toBe('first body');
+    expect(m.get(1)).toBe('second body');
+    expect(m.has(2)).toBe(false);
+  });
+
+  it('salvages pairs whose values contain escaped quotes and newlines', () => {
+    const truncated = '{"0":"line one\\nline two","1":"has \\"quotes\\" inside","2":"cut';
+    const m = parseBatchDocstrings(truncated);
+    expect(m.get(0)).toBe('line one\nline two');
+    expect(m.get(1)).toBe('has "quotes" inside');
+    expect(m.has(2)).toBe(false);
+  });
 });
 
 describe('batchDocstringPrompt', () => {

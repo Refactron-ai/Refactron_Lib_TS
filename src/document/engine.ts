@@ -71,6 +71,13 @@ function estimateTokens(text: string): number {
   return Math.ceil(text.length / 4);
 }
 
+/** Conservative per-docstring completion estimate (JSON value + wrapper), in
+ *  tokens. Batch size is capped at `tokenBudget / this` so the model's JSON
+ *  response never overruns its completion cap and gets truncated mid-object.
+ *  Sized with headroom — a verbose Args/Returns docstring runs ~250 tokens;
+ *  the surplus keeps whole batches inside the cap, not just the average one. */
+const OUTPUT_TOKENS_PER_DOCSTRING = 320;
+
 interface PendingSymbol {
   file: string;
   language: Language;
@@ -79,19 +86,42 @@ interface PendingSymbol {
   source: string;
 }
 
-/** Parse the batched-docstring strict-JSON response → Map<tag, docstring>. */
+/** Parse the batched-docstring strict-JSON response → Map<tag, docstring>.
+ *
+ * Fast path: a well-formed JSON object. Fallback: when the model hits its
+ * completion cap the response is truncated mid-object — a single `JSON.parse`
+ * throws and would discard the whole batch. So we salvage every COMPLETE
+ * `"<tag>": "<string>"` pair that landed before the cut; only the truncated
+ * trailing pair is lost. */
 export function parseBatchDocstrings(raw: string): Map<number, string> {
   const out = new Map<number, string>();
+  const text = raw.trim();
   let parsed: unknown;
   try {
-    parsed = JSON.parse(raw.trim());
+    parsed = JSON.parse(text);
   } catch {
+    parsed = undefined;
+  }
+  if (typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed)) {
+    for (const [k, v] of Object.entries(parsed as Record<string, unknown>)) {
+      const tag = Number(k);
+      if (Number.isInteger(tag) && typeof v === 'string') out.set(tag, v);
+    }
     return out;
   }
-  if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) return out;
-  for (const [k, v] of Object.entries(parsed as Record<string, unknown>)) {
-    const tag = Number(k);
-    if (Number.isInteger(tag) && typeof v === 'string') out.set(tag, v);
+  // Salvage path. The JSON-string matcher `"(?:[^"\\]|\\.)*"` consumes escaped
+  // quotes/backslashes, so it always matches a *complete* value; a truncated
+  // trailing pair (no closing quote) fails to match and is dropped.
+  const pairRe = /"(\d+)"\s*:\s*("(?:[^"\\]|\\.)*")/g;
+  for (const m of text.matchAll(pairRe)) {
+    const tag = Number(m[1]);
+    if (!Number.isInteger(tag)) continue;
+    try {
+      const value: unknown = JSON.parse(m[2]!);
+      if (typeof value === 'string') out.set(tag, value);
+    } catch {
+      // A pair whose value won't decode — skip it.
+    }
   }
   return out;
 }
@@ -107,12 +137,19 @@ function deterministicChangelog(entries: ChangelogEntryInput[]): string {
 export class RefactronDocumenter implements Documenter {
   private readonly scheduler: CallScheduler;
   private readonly batchTokenBudget: number;
+  /** Max symbols per docstring batch — bounds the RESPONSE size. */
+  private readonly maxBatchItems: number;
   /** Generous prompt-truncation cap — won't fire for properly-packed batches. */
   private readonly promptCap: number;
 
   constructor(private readonly opts: DocumenterOptions) {
     this.scheduler = new CallScheduler(opts.scheduler ?? DEFAULT_SCHEDULER);
     this.batchTokenBudget = opts.batchTokenBudget ?? 4000;
+    // A batch's RESPONSE must fit the completion cap (`tokenBudget` →
+    // `maxTokens`). The input-token cap alone lets dozens of tiny functions
+    // pack into one batch whose combined docstrings overflow that cap and
+    // truncate the JSON — so also bound the symbol count by output size.
+    this.maxBatchItems = Math.max(1, Math.floor(opts.tokenBudget / OUTPUT_TOKENS_PER_DOCSTRING));
     this.promptCap = Math.max(opts.tokenBudget, this.batchTokenBudget) + 2000;
   }
 
@@ -186,7 +223,13 @@ export class RefactronDocumenter implements Documenter {
         file: p.file,
       };
       const tokens = estimateTokens(p.source);
-      if (current.length > 0 && currentTokens + tokens > this.batchTokenBudget) {
+      // Close the batch when EITHER the input tokens exceed the prompt budget
+      // OR the symbol count would overflow the response budget.
+      if (
+        current.length > 0 &&
+        (current.length >= this.maxBatchItems ||
+          currentTokens + tokens > this.batchTokenBudget)
+      ) {
         batches.push(current);
         current = [];
         currentTokens = 0;
