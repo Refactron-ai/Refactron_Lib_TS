@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "refactron"
-version = "0.2.1"
+version = "0.2.2"
 description = "Safety-first refactoring CLI for Python and TypeScript (Python wrapper around the npm package)"
 readme = "README.md"
 requires-python = ">=3.8"
