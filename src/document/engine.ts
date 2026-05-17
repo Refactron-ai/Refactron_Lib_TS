@@ -227,8 +227,7 @@ export class RefactronDocumenter implements Documenter {
       // OR the symbol count would overflow the response budget.
       if (
         current.length > 0 &&
-        (current.length >= this.maxBatchItems ||
-          currentTokens + tokens > this.batchTokenBudget)
+        (current.length >= this.maxBatchItems || currentTokens + tokens > this.batchTokenBudget)
       ) {
         batches.push(current);
         current = [];

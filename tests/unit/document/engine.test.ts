@@ -77,10 +77,9 @@ describe('RefactronDocumenter', () => {
 
   it('caps batch size by the response budget so the JSON never truncates', async () => {
     const filePath = path.join(tmp, 'many.py');
-    const fns = Array.from(
-      { length: 12 },
-      (_, i) => `def f${i}(x):\n    return x + ${i}\n`,
-    ).join('\n');
+    const fns = Array.from({ length: 12 }, (_, i) => `def f${i}(x):\n    return x + ${i}\n`).join(
+      '\n',
+    );
     const originals = new Map<string, string>([[filePath, fns]]);
 
     const batchSizes: number[] = [];
