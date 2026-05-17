@@ -121,9 +121,12 @@ export class CallScheduler {
   async run<T>(fn: () => Promise<T>, estimatedTokens = 0): Promise<T> {
     await this.sem.acquire();
     try {
+      // Pace ONCE per call — not per retry. Re-pacing inside the retry loop
+      // makes a persistently rate-limited call wait the full token window on
+      // every attempt (minutes per call); retries should only back off.
+      await this.reqLimiter.acquire(1);
+      await this.tokenLimiter.acquire(estimatedTokens);
       for (let attempt = 0; ; attempt++) {
-        await this.reqLimiter.acquire(1);
-        await this.tokenLimiter.acquire(estimatedTokens);
         try {
           return await fn();
         } catch (err) {
