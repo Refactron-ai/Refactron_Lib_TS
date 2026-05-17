@@ -7,6 +7,34 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [0.2.2] — 2026-05-18
+
+Quality-of-life release for the analyze → run → document pipeline: boxed
+CLI output, a real `rollback` command, and a much more efficient
+`document`. All changes landed via PR #31.
+
+### Added
+- **Bordered table output** — `analyze` renders one box per file plus boxed TRANSFORMS / BY TRANSFORM / SUMMARY blocks; `run --dry-run` is restructured to match, with a CHANGES table and a four-sided diff box per file
+- **`rollback` command** — undo an applied refactor or `document` run; operation journal with LIFO undo, drift-safe, `--all` / `--force` / `--dry-run`
+- **`run --apply` live progress** — gate-by-gate status and per-file verify/apply detail; batch-first verification with a per-file fallback when the batch fails
+- **`run --apply` short-circuit** — exits early with a clear message when no test runner is detected, instead of silently skipping the test gate
+- **Full report saved to disk** — `analyze` and `run --dry-run` write the complete report to `.refactron/reports/` so long output survives terminal scrollback
+- **`document` enrichments** — inline comments, a per-run modernization report under `docs/refactron/`, and a post-apply syntax re-check
+
+### Changed
+- **`document` is far more efficient** — docstring requests are batched with bounded concurrency and token-aware rate limiting; the LLM call count is now O(source tokens / batch budget) instead of O(symbols)
+
+### Fixed
+- **`document` produced zero docstrings on large files** — batches were sized by input tokens only, so dozens of symbols packed into one request whose combined response overran the completion cap and truncated mid-object. Batches are now also capped by response size, and `parseBatchDocstrings` salvages every complete entry from a truncated reply
+- **`document` six-quote docstring bug** — `""""""…""""""` produced by a contradictory prompt plus unconditional quote wrapping
+- **`document` rate-limited runs ground on for minutes** — each LLM call is paced once, not re-paced on every retry
+- **`document` report / CHANGELOG paths** — normalized to forward slashes (were OS-native `\` on Windows, breaking the markdown and the Windows CI leg)
+- **`analyze` old-string-format line numbers** — multi-line `%` / `.format()` findings now anchor on the operator, not the opening string quote that can sit many lines above
+- **`analyze` over-reported `manual_typecheck_to_hints`** — no longer flags an isinstance chain on an already-annotated parameter, which the transform always skips
+- **`deprecated_api_requests_to_httpx` emitted runtime-broken code** — a blind `requests.X → httpx.X` rename produced non-existent names (`httpx.ConnectionError`) and wrong types (`httpx.Timeout` is a config class). The transform now refuses files that use `requests` API which is not a safe httpx drop-in
+- **`analyze` "Fixable N/N"** — replaced with an honest auto-fix-candidate count that defers the real number to `run --dry-run`
+- **vitest per-test timeout** — corrected the config key (`timeout` → `testTimeout`); Python LibCST tests no longer flake against the 5 s default
+
 ## [0.2.1] — 2026-05-16
 
 Patch release. Fixes a crash on large source files and lands two
