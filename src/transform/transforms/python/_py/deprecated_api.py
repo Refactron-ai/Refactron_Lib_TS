@@ -11,6 +11,52 @@ import libcst.matchers as m  # noqa: E402
 
 MAPPING = {"requests": "httpx"}
 
+# httpx is a safe drop-in for `requests` ONLY for the HTTP verb helpers below
+# (`httpx.get(...)` etc. accept the same common kwargs). Everything else
+# diverges: `httpx.Timeout` is a *config class*, not an exception (the
+# exception is `TimeoutException`); `httpx.ConnectionError` does not exist
+# (it is `ConnectError`); `requests.Session` maps to `httpx.Client`; the
+# `requests.exceptions` submodule has no httpx equivalent. Blindly renaming
+# `requests.X` -> `httpx.X` for those emits code that fails at runtime, so we
+# refuse the whole file instead -- over-skip beats under-skip.
+SAFE_HTTPX_DROP_INS = {
+    "get",
+    "post",
+    "put",
+    "delete",
+    "patch",
+    "head",
+    "options",
+    "request",
+}
+
+
+def find_unsafe_api_refs(module: cst.Module, aliases: dict) -> list:
+    """Return the sorted `requests` API names referenced in this module that
+    are NOT safe httpx drop-ins -- attribute access on a `requests` local, or
+    a bare name pulled in via `from requests import ...`.
+    """
+    unsafe = set()
+    for attr in m.findall(module, m.Attribute()):
+        base = attr.value
+        if isinstance(base, cst.Name) and base.value in aliases:
+            name = attr.attr.value
+            if name not in SAFE_HTTPX_DROP_INS:
+                unsafe.add(name)
+    for imp in m.findall(module, m.ImportFrom()):
+        if imp.module is None or _name_to_str(imp.module) not in MAPPING:
+            continue
+        if isinstance(imp.names, cst.ImportStar):
+            unsafe.add("*")
+            continue
+        for alias in imp.names:
+            if (
+                isinstance(alias.name, cst.Name)
+                and alias.name.value not in SAFE_HTTPX_DROP_INS
+            ):
+                unsafe.add(alias.name.value)
+    return sorted(unsafe)
+
 
 def module_name_from_path(rel_path):
     """`legacy_http.py` -> `legacy_http`. `pkg/foo.py` -> `pkg.foo`. Drops `__init__`."""
@@ -216,6 +262,24 @@ def main():
                     }
                 )
                 blocked = True
+
+    # API-surface precondition: refuse if the file touches `requests` API that
+    # is not a safe httpx drop-in (exceptions, Session, the exceptions
+    # submodule, ...). A blind rename of those produces runtime-broken code.
+    unsafe_attrs = find_unsafe_api_refs(module, aliases)
+    if unsafe_attrs:
+        preconditions.append(
+            {
+                "id": "unsafe-api-surface",
+                "satisfied": False,
+                "reason": (
+                    "requests API used here is not a safe httpx drop-in: "
+                    + ", ".join(unsafe_attrs)
+                    + " (httpx diverges on exceptions, Session, etc.)"
+                ),
+            }
+        )
+        blocked = True
 
     if blocked:
         emit(ok=True, new_content="", preconditions=preconditions)

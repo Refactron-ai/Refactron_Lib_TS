@@ -56,6 +56,35 @@ describe('deprecated_api_requests_to_httpx (python)', () => {
     expect(r.newContent).toContain('from httpx import get');
   });
 
+  it('blocks when the file uses requests API that is not a safe httpx drop-in', async () => {
+    // httpx.Timeout is a config class (not an exception) and httpx has no
+    // ConnectionError — a blind rename would emit runtime-broken code.
+    const src =
+      'import requests\n\n' +
+      'def fetch(url):\n' +
+      '    try:\n' +
+      '        return requests.get(url, timeout=5)\n' +
+      '    except requests.Timeout:\n' +
+      '        return None\n' +
+      '    except requests.ConnectionError:\n' +
+      '        return None\n';
+    const p = await file(src);
+    const r = await transform({ absPath: p, relPath: 'f.py', source: src, findings: [] });
+    expect(r.newContent).toBeNull();
+    const pc = r.preconditions.find((c) => c.id === 'unsafe-api-surface');
+    expect(pc?.satisfied).toBe(false);
+    expect(pc?.reason).toMatch(/ConnectionError/);
+    expect(pc?.reason).toMatch(/Timeout/);
+  });
+
+  it('still rewrites a file that only uses safe verb helpers', async () => {
+    const src =
+      'import requests\n\ndef fetch(url):\n    return requests.post(url, json={}).status_code\n';
+    const p = await file(src);
+    const r = await transform({ absPath: p, relPath: 'f.py', source: src, findings: [] });
+    expect(r.newContent).toContain('httpx.post(url, json={})');
+  });
+
   it('precondition fails when target already imported', async () => {
     const src = 'import httpx\nimport requests\n';
     const p = await file(src);
