@@ -6,6 +6,7 @@ import {
   formatVerifySuccess,
   formatPartialApply,
   formatBaselineBroken,
+  formatNoTestRunner,
   type PerFileOutcome,
 } from '../../../src/cli/format-verify.js';
 import type {
@@ -133,5 +134,16 @@ describe('formatBaselineBroken', () => {
       .join('\n');
     expect(blob).toMatch(/already fail before any change/);
     expect(blob).toMatch(/red test suite/);
+  });
+});
+
+describe('formatNoTestRunner', () => {
+  it('explains no runner was detected and how to fix it', () => {
+    const blob = formatNoTestRunner('no test runner detected (pytest, vitest, jest)')
+      .map((l) => l.text)
+      .join('\n');
+    expect(blob).toMatch(/no test runner detected/);
+    expect(blob).toMatch(/pytest, vitest, or jest/);
+    expect(blob).toMatch(/testCmd/);
   });
 });

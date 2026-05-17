@@ -20,6 +20,7 @@ import {
   formatVerifySuccess,
   formatPartialApply,
   formatBaselineBroken,
+  formatNoTestRunner,
   findFailedGate,
   extractFailingTestsBlock,
   type PerFileOutcome,
@@ -29,7 +30,7 @@ export interface ApplyEmit {
   line(text: string, color?: string): void;
 }
 
-export type ApplyOutcome = 'all' | 'partial' | 'none' | 'baseline-broken';
+export type ApplyOutcome = 'all' | 'partial' | 'none' | 'baseline-broken' | 'no-runner';
 
 export interface ApplyResult {
   /** The changes that were verified and written to disk. */
@@ -89,6 +90,13 @@ export async function runApplyWithVerification(
   if (failedGate === 'tests' && failedReason?.includes('baseline tests already fail')) {
     emitLines(formatBaselineBroken(failedReason));
     return { appliedChanges: [], outcome: 'baseline-broken' };
+  }
+
+  // No test runner at all — a project-setup problem, not a per-file one.
+  // Per-file isolation would just repeat this same message for every file.
+  if (failedGate === 'tests' && failedReason?.includes('no test runner detected')) {
+    emitLines(formatNoTestRunner(failedReason));
+    return { appliedChanges: [], outcome: 'no-runner' };
   }
 
   // Per-file fallback — verify each change on its own to isolate the culprits.

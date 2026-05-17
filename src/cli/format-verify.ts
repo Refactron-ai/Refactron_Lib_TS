@@ -209,3 +209,29 @@ export function formatBaselineBroken(rawReason: string | undefined): RenderedLin
   out.push({ text: '', color: theme.colors.text });
   return out;
 }
+
+/**
+ * Rendered when the tests gate can't find a runner at all — a project-setup
+ * problem, not a per-file one, so the per-file fallback is skipped.
+ */
+export function formatNoTestRunner(rawReason: string | undefined): RenderedLine[] {
+  const out: RenderedLine[] = [];
+  out.push({ text: '', color: theme.colors.text });
+  out.push({
+    text: `  ${theme.symbols.fail} Verification can't run — no test runner detected.`,
+    color: theme.colors.error,
+  });
+  out.push({
+    text: '    The tests gate needs pytest, vitest, or jest at the target root.',
+    color: theme.colors.textDim,
+  });
+  out.push({
+    text: '    Point `run` at a single project (not a folder holding several), or set `testCmd` in .refactronrc.json.',
+    color: theme.colors.textDim,
+  });
+  if (rawReason) {
+    out.push({ text: `    ${rawReason}`, color: theme.colors.textDim });
+  }
+  out.push({ text: '', color: theme.colors.text });
+  return out;
+}
