@@ -32,6 +32,7 @@ import {
   reportPath,
 } from '../document/report.js';
 import { recheckSyntax } from '../document/post-check.js';
+import { appendJournalEntry, type JournalFileChange } from './journal.js';
 import type { VerificationResult } from '../contracts.js';
 import { requireAuth } from './auth-gate.js';
 import { loadRefactronConfig } from './config-loader.js';
@@ -496,27 +497,61 @@ export async function runDocumentCommand(
   const changelogDir = await pickChangelogDir(snapshot.changes, snapshot.projectRoot);
   const changelogPath = path.join(changelogDir, 'CHANGELOG.md');
   let existingChangelog = '';
+  let changelogExisted = false;
   try {
     existingChangelog = await fs.readFile(changelogPath, 'utf8');
+    changelogExisted = true;
   } catch {
     existingChangelog = '';
   }
   const today = new Date().toISOString().slice(0, 10);
-  await writeAtomic(
-    changelogPath,
-    appendChangelog(existingChangelog, [patch.changelogEntry], today),
-  );
+  const newChangelog = appendChangelog(existingChangelog, [patch.changelogEntry], today);
+  await writeAtomic(changelogPath, newChangelog);
 
   // Modernization report under docs/refactron/ (unless --no-report).
   let reportRel = '';
+  let reportFile: string | null = null;
+  let reportBefore: string | null = null;
+  let reportAfter = '';
   if (!flags.noReport) {
     const model = buildReportModel(verified, originals, snapshot.projectRoot);
     const prose = await documenter.reportProse(reportProseInputs(model));
     const md = renderModernizationReport(model, prose, { ok: recheckOk, rolledBack }, today);
     const rp = reportPath(changelogDir, today);
+    try {
+      reportBefore = await fs.readFile(rp, 'utf8'); // a same-day re-run overwrites
+    } catch {
+      reportBefore = null;
+    }
     await fs.mkdir(path.dirname(rp), { recursive: true });
     await writeAtomic(rp, md);
+    reportFile = rp;
+    reportAfter = md;
     reportRel = path.relative(snapshot.projectRoot, rp) || rp;
+  }
+
+  // Record a journal entry so `rollback` can undo this document run — the
+  // changed source files, the CHANGELOG, and the report.
+  const journalFiles: JournalFileChange[] = [];
+  for (const [file, before] of preDoc) {
+    if (recheck.broken.includes(file)) continue; // rolled back → ended unchanged
+    journalFiles.push({ path: file, before, after: await fs.readFile(file, 'utf8') });
+  }
+  journalFiles.push({
+    path: changelogPath,
+    before: changelogExisted ? existingChangelog : null,
+    after: newChangelog,
+  });
+  if (reportFile !== null) {
+    journalFiles.push({ path: reportFile, before: reportBefore, after: reportAfter });
+  }
+  if (journalFiles.length > 0) {
+    await appendJournalEntry(
+      snapshot.projectRoot,
+      'document',
+      `document --apply — ${docstringsWritten} docstring(s), ${commentsWritten} comment(s)`,
+      journalFiles,
+    );
   }
 
   // ── Summary ───────────────────────────────────────────────────────────────

@@ -66,7 +66,7 @@ export function formatVerifySuccess(
     color: theme.colors.success,
   });
   out.push({
-    text: '  Run `document` to generate docstrings + CHANGELOG.',
+    text: '  Run `document` to generate docstrings + CHANGELOG · `rollback` to undo.',
     color: theme.colors.textDim,
   });
   out.push({ text: '', color: theme.colors.text });
@@ -178,6 +178,12 @@ export function formatPartialApply(
   if (held.length >= 2) {
     out.push({
       text: '  Note: files held back together may depend on each other — they can still pass when applied as a group.',
+      color: theme.colors.textDim,
+    });
+  }
+  if (applied.length > 0) {
+    out.push({
+      text: '  Run `rollback` to undo the applied changes.',
       color: theme.colors.textDim,
     });
   }

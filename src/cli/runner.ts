@@ -10,6 +10,7 @@ import { runApplyWithVerification } from './apply-orchestrator.js';
 import type { FileChange, TransformId } from '../contracts.js';
 import { findingsToIssues } from './v2-adapters.js';
 import { persistLastApply } from './last-apply.js';
+import { appendJournalEntry } from './journal.js';
 import { loadRefactronConfig } from './config-loader.js';
 import { formatAnalysisReport } from './format-analysis.js';
 import { formatPlanAsDryRun } from './format-plan.js';
@@ -67,6 +68,8 @@ const BOOLEAN_FLAGS = new Set([
   'no-tui',
   'no-comments',
   'no-report',
+  'all',
+  'force',
   'verbose',
   'quiet',
 ]);
@@ -502,6 +505,16 @@ export async function executeCommand(
           transformId: c.transformId,
         })),
       });
+      await appendJournalEntry(
+        sessionTarget,
+        'apply',
+        `run --apply — ${appliedChanges.length} file(s)`,
+        appliedChanges.map((c) => ({
+          path: c.path,
+          before: originalsBeforeWrite.get(c.path) ?? null,
+          after: c.newContent,
+        })),
+      );
     }
     return {};
   }
@@ -615,11 +628,33 @@ export async function executeCommand(
     return {};
   }
 
-  // ── rollback ──────────────────────────────────────────────────────────────
+  // ── rollback — undo the last run --apply / document --apply ───────────────
 
   if (command === 'rollback') {
-    onLine('  Rollback restores files from the last autofix backup.', theme.colors.textDim);
-    onLine('  Run: autofix <target> to create a new session with backups.', theme.colors.textDim);
+    const { runRollbackCommand } = await import('./rollback-command.js');
+    // The journal lives where `run --apply` wrote it — the active session's
+    // analyze target, falling back to a positional arg or ctx.projectRoot.
+    const activeForRollback = ctx.sessions.getActive();
+    let rollbackTarget: string;
+    if (target && target !== '.') {
+      rollbackTarget = path.isAbsolute(target) ? target : path.resolve(ctx.projectRoot, target);
+    } else if (activeForRollback?.analysis.target) {
+      rollbackTarget = activeForRollback.analysis.target;
+    } else {
+      rollbackTarget = ctx.projectRoot;
+    }
+    const argv: string[] = [rollbackTarget];
+    if (flags['all'] === true) argv.push('--all');
+    if (flags['force'] === true) argv.push('--force');
+    if (flags['dry-run'] === true) argv.push('--dry-run');
+    await runRollbackCommand(argv, {
+      out: (text, stream) => {
+        const color = stream === 'stderr' ? theme.colors.error : undefined;
+        const lines = text.split('\n');
+        if (lines.length > 0 && lines[lines.length - 1] === '') lines.pop();
+        for (const line of lines) onLine(line, color);
+      },
+    });
     return {};
   }
 

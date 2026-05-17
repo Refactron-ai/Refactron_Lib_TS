@@ -9,6 +9,7 @@ import type { TransformId } from '../contracts.js';
 import { requireAuth } from './auth-gate.js';
 import { loadRefactronConfig } from './config-loader.js';
 import { persistLastApply } from './last-apply.js';
+import { appendJournalEntry } from './journal.js';
 import { scopePlanChanges } from './runner.js';
 import { formatPlanAsDryRun } from './format-plan.js';
 import { applyColor } from './apply-color.js';
@@ -313,6 +314,16 @@ export async function runRunCommand(argv: string[]): Promise<number> {
         transformId: c.transformId,
       })),
     });
+    await appendJournalEntry(
+      projectRoot,
+      'apply',
+      `run --apply — ${appliedChanges.length} file(s)`,
+      appliedChanges.map((c) => ({
+        path: c.path,
+        before: originalsBeforeWrite.get(c.path) ?? null,
+        after: c.newContent,
+      })),
+    );
   }
 
   // Exit 0 only when every planned change was applied cleanly.
