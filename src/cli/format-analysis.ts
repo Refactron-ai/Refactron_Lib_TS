@@ -225,10 +225,15 @@ export async function formatAnalysisReport(
 
   // ── SUMMARY — Metric · Value, no header row ───────────────────────────────
   const sevLine = `${bySeverity.critical} critical  ${theme.symbols.bullet}  ${bySeverity.high} high  ${theme.symbols.bullet}  ${bySeverity.medium} medium  ${theme.symbols.bullet}  ${bySeverity.low} low`;
+  // `analyze` only DETECTS — it never runs a transform, so it cannot promise a
+  // finding will produce a change (a transform may hit a precondition and skip
+  // safely). Report findings as auto-fix *candidates* and defer the real count
+  // to `run --dry-run`, rather than the misleading "N / N" that read as a
+  // guarantee every finding would be fixed.
   const summaryRows: Array<[string, string]> = [
     ['Files affected', String(groups.size)],
     ['By severity', sevLine],
-    ['Fixable', `${total} / ${total}`],
+    ['Auto-fixable', `${total} candidate(s) — \`run --dry-run\` shows real changes`],
   ];
   const METRIC_W = 18;
   const sTable = new Table({
