@@ -35,6 +35,8 @@ export class ProviderError extends Error {
   }
 }
 
+import type { SchedulerOptions } from './scheduler.js';
+
 export interface DocumenterOptions {
   provider: LLMProvider;
   model: string;
@@ -43,4 +45,10 @@ export interface DocumenterOptions {
   redactPatterns: string[];
   /** Map<absPath, originalContent> captured before run --apply wrote the new file. */
   originals: Map<string, string>;
+  /** Project root — used to render file paths relative in changelog/report prompts. */
+  projectRoot: string;
+  /** Token budget per batched docstring request; defaults to 6000. */
+  batchTokenBudget?: number;
+  /** Concurrency / rate-limit / backoff tuning; defaults to DEFAULT_SCHEDULER. */
+  scheduler?: SchedulerOptions;
 }

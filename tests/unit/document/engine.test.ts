@@ -26,6 +26,13 @@ function makeVerified(changes: Array<{ path: string; newContent: string }>): Ver
 
 function makeResponder(): (prompt: string) => string {
   return (prompt: string) => {
+    if (prompt.includes('[REFACTRON:DOCSTRING-BATCH]')) {
+      const obj: Record<string, string> = {};
+      for (const m of prompt.matchAll(/^### tag (\d+) —/gm)) {
+        obj[m[1] ?? '0'] = 'Generated docstring body.';
+      }
+      return JSON.stringify(obj);
+    }
     if (prompt.includes('CHANGELOG')) {
       return '- Modernized formatting.';
     }
@@ -57,6 +64,7 @@ describe('RefactronDocumenter', () => {
       cacheDir: null,
       redactPatterns: [],
       originals,
+      projectRoot: tmp,
     });
 
     const patch = await doc.document(makeVerified([{ path: filePath, newContent: newText }]));
@@ -65,6 +73,42 @@ describe('RefactronDocumenter', () => {
     expect(patch.docstrings[0]?.symbol).toBe('foo');
     expect(patch.docstrings[0]?.content).toBe('Generated docstring body.');
     expect(patch.changelogEntry).toBe('- Modernized formatting.');
+  });
+
+  it('caps batch size by the response budget so the JSON never truncates', async () => {
+    const filePath = path.join(tmp, 'many.py');
+    const fns = Array.from({ length: 12 }, (_, i) => `def f${i}(x):\n    return x + ${i}\n`).join(
+      '\n',
+    );
+    const originals = new Map<string, string>([[filePath, fns]]);
+
+    const batchSizes: number[] = [];
+    const provider = new MockLLMProvider((prompt: string) => {
+      if (prompt.includes('[REFACTRON:DOCSTRING-BATCH]')) {
+        const tags = [...prompt.matchAll(/^### tag (\d+) —/gm)];
+        batchSizes.push(tags.length);
+        const obj: Record<string, string> = {};
+        for (const t of tags) obj[t[1] ?? '0'] = 'Generated docstring body.';
+        return JSON.stringify(obj);
+      }
+      if (prompt.includes('CHANGELOG')) return '- entry';
+      return 'x';
+    });
+
+    const doc = new RefactronDocumenter({
+      provider,
+      model: 'mock-model',
+      tokenBudget: 1280, // maxBatchItems = floor(1280 / 320) = 4
+      cacheDir: null,
+      redactPatterns: [],
+      originals,
+      projectRoot: tmp,
+    });
+
+    const patch = await doc.document(makeVerified([{ path: filePath, newContent: fns }]));
+    expect(batchSizes.length).toBeGreaterThan(1); // 12 symbols did not fit one batch
+    expect(Math.max(...batchSizes)).toBeLessThanOrEqual(4);
+    expect(patch.docstrings).toHaveLength(12); // every symbol still documented
   });
 
   it('skips symbols that already carry a docstring', async () => {
@@ -87,6 +131,7 @@ describe('RefactronDocumenter', () => {
       cacheDir: null,
       redactPatterns: [],
       originals,
+      projectRoot: tmp,
     });
 
     const patch = await doc.document(makeVerified([{ path: filePath, newContent: newText }]));
@@ -112,6 +157,7 @@ describe('RefactronDocumenter', () => {
       cacheDir: null,
       redactPatterns: [],
       originals,
+      projectRoot: tmp,
     });
 
     const patch = await doc.document(makeVerified([{ path: filePath, newContent: newText }]));
@@ -140,6 +186,7 @@ describe('RefactronDocumenter', () => {
       cacheDir,
       redactPatterns: [],
       originals,
+      projectRoot: tmp,
     });
     await docA.document(makeVerified([{ path: filePath, newContent: newText }]));
     const callsAfterFirst = calls;
@@ -152,6 +199,7 @@ describe('RefactronDocumenter', () => {
       cacheDir,
       redactPatterns: [],
       originals,
+      projectRoot: tmp,
     });
     await docB.document(makeVerified([{ path: filePath, newContent: newText }]));
     expect(calls).toBe(callsAfterFirst);

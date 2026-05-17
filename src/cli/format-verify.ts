@@ -1,10 +1,10 @@
 // src/cli/format-verify.ts
-// CLI formatters for the verify-gate output. All functions return
-// RenderedLine[] so the caller (REPL Ink renderer, one-shot stdout writer,
-// JSON serializer) picks how to realize the color hint.
+// CLI formatters for the verify-gate / apply output. All functions return
+// RenderedLine[] so the caller (REPL Ink renderer, one-shot stdout writer)
+// picks how to realize the color hint.
 
 import * as path from 'node:path';
-import type { GateResult, VerificationResult, RefactorPlan } from '../contracts.js';
+import type { GateResult, VerificationResult, RefactorPlan, FileChange } from '../contracts.js';
 import { theme } from '../ui/theme.js';
 import { type RenderedLine, toPosix } from './format-types.js';
 
@@ -19,6 +19,21 @@ function formatDuration(ms: number): string {
 
 function gateIndex(gate: GateName): number {
   return GATE_ORDER.indexOf(gate) + 1;
+}
+
+/** Live "verifying <gate> …" line, emitted before the gate runs. */
+export function formatGateStart(gate: GateName): RenderedLine[] {
+  return [{ text: `  ${theme.symbols.bullet} verifying ${gate} …`, color: theme.colors.textDim }];
+}
+
+/** Live "applying N file(s) …" line, emitted before the atomic write. */
+export function formatApplyingNotice(count: number): RenderedLine[] {
+  return [
+    {
+      text: `  ${theme.symbols.bullet} applying ${count} file(s) …`,
+      color: theme.colors.textDim,
+    },
+  ];
 }
 
 export function formatGateProgress(gate: GateName, result: GateResult): RenderedLine[] {
@@ -51,7 +66,7 @@ export function formatVerifySuccess(
     color: theme.colors.success,
   });
   out.push({
-    text: '  Run `document` to generate docstrings + CHANGELOG.',
+    text: '  Run `document` to generate docstrings + CHANGELOG · `rollback` to undo.',
     color: theme.colors.textDim,
   });
   out.push({ text: '', color: theme.colors.text });
@@ -64,7 +79,7 @@ export function formatVerifySuccess(
  * "Failing tests:" header and the "Raw tail:" marker. Returns null if the
  * structured block isn't present (the gate didn't have any vitest failures).
  */
-function extractFailingTestsBlock(blockingReason: string | undefined): string[] | null {
+export function extractFailingTestsBlock(blockingReason: string | undefined): string[] | null {
   if (!blockingReason) return null;
   const startIdx = blockingReason.indexOf('Failing tests:');
   if (startIdx < 0) return null;
@@ -77,100 +92,152 @@ function extractFailingTestsBlock(blockingReason: string | undefined): string[] 
     .filter((l) => l.length > 0);
 }
 
-function findFailedGate(result: VerificationResult): GateName | null {
+/** The first gate that did not pass, in syntax → imports → tests order. */
+export function findFailedGate(result: VerificationResult): GateName | null {
   for (const g of GATE_ORDER) {
     if (!result.gates[g].passed) return g;
   }
   return null;
 }
 
-function stripKnownExt(base: string): string {
-  return base.replace(/\.(?:py|tsx|ts|jsx|js)$/u, '');
+// ── Per-file apply surface ──────────────────────────────────────────────────
+
+/** Outcome of verifying one file's change on its own (per-file fallback). */
+export interface PerFileOutcome {
+  change: FileChange;
+  applied: boolean;
+  /** The gate that blocked this file (only when `applied` is false). */
+  failedGate?: GateName;
+  /** Structured failing-test lines, when the tests gate blocked the file. */
+  failingTests?: string[];
+  /** Raw blocking reason, when there is no structured test block. */
+  rawReason?: string;
 }
 
-function pickCulprit(
-  plan: RefactorPlan,
-  blockingReason: string | undefined,
-): { transformId: string; relPath: string } | null {
-  if (!blockingReason) return null;
-  for (const c of plan.changes) {
-    const base = stripKnownExt(path.basename(c.path));
-    if (base.length === 0) continue;
-    if (blockingReason.includes(base)) {
-      return { transformId: c.transformId, relPath: c.path };
-    }
-  }
-  return null;
-}
-
-export function formatVerifyFailure(
-  result: VerificationResult,
-  plan: RefactorPlan,
+/**
+ * Renders the per-file apply surface used when the batch failed and each file
+ * was re-verified on its own: which files were applied, which were held back,
+ * and why.
+ */
+export function formatPartialApply(
+  outcomes: PerFileOutcome[],
   projectRoot: string,
-  shadowRoot: string | null,
 ): RenderedLine[] {
   const out: RenderedLine[] = [];
-  const failed = findFailedGate(result);
-  const failedName = failed ?? 'unknown';
-  const failedGate = failed !== null ? result.gates[failed] : undefined;
+  const applied = outcomes.filter((o) => o.applied);
+  const held = outcomes.filter((o) => !o.applied);
+  const rel = (c: FileChange): string => toPosix(path.relative(projectRoot, c.path) || c.path);
 
   out.push({ text: '', color: theme.colors.text });
   out.push({
-    text: `  ${theme.symbols.fail} Verification failed at gate '${failedName}'.`,
-    color: theme.colors.error,
+    text: '  Batch verification failed — checked each file individually:',
+    color: theme.colors.warning,
   });
 
-  // Section 2: failing tests block (if present in blockingReason).
-  const block = extractFailingTestsBlock(failedGate?.blockingReason);
-  if (block !== null && block.length > 0) {
+  if (applied.length > 0) {
     out.push({ text: '', color: theme.colors.text });
-    out.push({ text: '  Failing tests:', color: theme.colors.error });
-    for (const line of block) {
-      out.push({ text: `    ${line}`, color: theme.colors.text });
-    }
-  } else if (failedGate?.blockingReason) {
-    // No structured block — render the raw blockingReason indented.
-    out.push({ text: '', color: theme.colors.text });
-    for (const line of failedGate.blockingReason.split('\n')) {
-      out.push({ text: `    ${line}`, color: theme.colors.textDim });
+    out.push({ text: `  Applied (${applied.length}):`, color: theme.colors.accent });
+    for (const o of applied) {
+      out.push({
+        text: `    ${theme.symbols.pass} ${rel(o.change).padEnd(48)} [${o.change.transformId}]`,
+        color: theme.colors.success,
+      });
     }
   }
 
-  // Section 3: in-flight plan summary.
+  if (held.length > 0) {
+    out.push({ text: '', color: theme.colors.text });
+    out.push({ text: `  Held back (${held.length}):`, color: theme.colors.error });
+    for (const o of held) {
+      out.push({
+        text: `    ${theme.symbols.fail} ${rel(o.change).padEnd(48)} [${o.change.transformId}]`,
+        color: theme.colors.error,
+      });
+      out.push({
+        text: `        blocked at gate '${o.failedGate ?? 'unknown'}'`,
+        color: theme.colors.textDim,
+      });
+      if (o.failingTests && o.failingTests.length > 0) {
+        out.push({ text: '        Failing tests:', color: theme.colors.error });
+        for (const line of o.failingTests) {
+          out.push({ text: `          ${line}`, color: theme.colors.text });
+        }
+      } else if (o.rawReason) {
+        for (const line of o.rawReason.split('\n').filter((l) => l.trim().length > 0)) {
+          out.push({ text: `        ${line}`, color: theme.colors.textDim });
+        }
+      }
+    }
+  }
+
   out.push({ text: '', color: theme.colors.text });
   out.push({
-    text: '  Proposed changes (NOT written — your tree is unchanged):',
-    color: theme.colors.warning,
+    text: `  ${applied.length > 0 ? theme.symbols.pass : theme.symbols.fail} ${applied.length} file(s) applied · ${held.length} held back. Held-back files are unchanged.`,
+    color: applied.length > 0 ? theme.colors.success : theme.colors.error,
   });
-  for (const c of plan.changes) {
-    const rel = toPosix(path.relative(projectRoot, c.path) || c.path);
+  if (held.length >= 2) {
     out.push({
-      text: `    ${theme.symbols.bullet} ${rel} [${c.transformId}]`,
+      text: '  Note: files held back together may depend on each other — they can still pass when applied as a group.',
       color: theme.colors.textDim,
     });
   }
-
-  // Section 4: reproduce hint.
-  if (shadowRoot !== null && shadowRoot.length > 0) {
-    out.push({ text: '', color: theme.colors.text });
-    out.push({ text: '  To reproduce locally:', color: theme.colors.accent });
+  if (applied.length > 0) {
     out.push({
-      text: `    cd ${shadowRoot} && npx vitest run`,
-      color: theme.colors.text,
+      text: '  Run `rollback` to undo the applied changes.',
+      color: theme.colors.textDim,
     });
   }
+  out.push({ text: '', color: theme.colors.text });
+  return out;
+}
 
-  // Section 5: culprit hint (best-effort match by basename).
-  const culprit = pickCulprit(plan, failedGate?.blockingReason);
-  if (culprit !== null) {
-    const rel = toPosix(path.relative(projectRoot, culprit.relPath) || culprit.relPath);
+/**
+ * Rendered when the batch failed at the tests gate because the project's own
+ * test suite was already red — per-file isolation would be pointless.
+ */
+export function formatBaselineBroken(rawReason: string | undefined): RenderedLine[] {
+  const out: RenderedLine[] = [];
+  out.push({ text: '', color: theme.colors.text });
+  out.push({
+    text: `  ${theme.symbols.fail} Verification failed — the project's own tests already fail before any change.`,
+    color: theme.colors.error,
+  });
+  out.push({
+    text: '    Refactron will not apply changes on top of a red test suite.',
+    color: theme.colors.textDim,
+  });
+  if (rawReason) {
     out.push({ text: '', color: theme.colors.text });
-    out.push({
-      text: `  Likely culprit: the \`${culprit.transformId}\` transform on \`${rel}\`.`,
-      color: theme.colors.warning,
-    });
+    for (const line of rawReason.split('\n').filter((l) => l.trim().length > 0)) {
+      out.push({ text: `    ${line}`, color: theme.colors.textDim });
+    }
   }
+  out.push({ text: '', color: theme.colors.text });
+  return out;
+}
 
+/**
+ * Rendered when the tests gate can't find a runner at all — a project-setup
+ * problem, not a per-file one, so the per-file fallback is skipped.
+ */
+export function formatNoTestRunner(rawReason: string | undefined): RenderedLine[] {
+  const out: RenderedLine[] = [];
+  out.push({ text: '', color: theme.colors.text });
+  out.push({
+    text: `  ${theme.symbols.fail} Verification can't run — no test runner detected.`,
+    color: theme.colors.error,
+  });
+  out.push({
+    text: '    The tests gate needs pytest, vitest, or jest at the target root.',
+    color: theme.colors.textDim,
+  });
+  out.push({
+    text: '    Point `run` at a single project (not a folder holding several), or set `testCmd` in .refactronrc.json.',
+    color: theme.colors.textDim,
+  });
+  if (rawReason) {
+    out.push({ text: `    ${rawReason}`, color: theme.colors.textDim });
+  }
   out.push({ text: '', color: theme.colors.text });
   return out;
 }

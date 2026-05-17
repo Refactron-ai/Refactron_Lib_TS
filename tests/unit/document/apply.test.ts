@@ -1,5 +1,45 @@
 import { describe, it, expect } from 'vitest';
-import { insertDocstring, appendChangelog } from '../../../src/document/apply.js';
+import {
+  insertDocstring,
+  appendChangelog,
+  normalizeDocstringContent,
+} from '../../../src/document/apply.js';
+
+describe('normalizeDocstringContent', () => {
+  it('collapses six-quote wrapping — the original bug', () => {
+    expect(normalizeDocstringContent('python', '""""""Represents a user.""""""')).toBe(
+      'Represents a user.',
+    );
+  });
+
+  it('strips a single triple-quote wrapper', () => {
+    expect(normalizeDocstringContent('python', '"""Hello."""')).toBe('Hello.');
+  });
+
+  it("strips ''' wrapping", () => {
+    expect(normalizeDocstringContent('python', "'''Hello.'''")).toBe('Hello.');
+  });
+
+  it('strips /** */ for typescript', () => {
+    expect(normalizeDocstringContent('typescript', '/** Hello. */')).toBe('Hello.');
+  });
+
+  it('strips a code fence', () => {
+    expect(normalizeDocstringContent('python', '```\nHello.\n```')).toBe('Hello.');
+  });
+
+  it('leaves bare content untouched', () => {
+    expect(normalizeDocstringContent('python', 'Hello.')).toBe('Hello.');
+  });
+});
+
+describe('insertDocstring — double-wrap regression', () => {
+  it('a triple-quote-wrapped LLM answer yields exactly one wrapper', () => {
+    const out = insertDocstring('python', 'def f(x):\n    return x\n', 'f', '"""Add."""');
+    expect(out).toBe('def f(x):\n    """Add."""\n    return x\n');
+    expect(out).not.toContain('""""""');
+  });
+});
 
 describe('insertDocstring — python', () => {
   it('inserts a single-line docstring as first body statement', () => {

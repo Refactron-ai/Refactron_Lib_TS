@@ -1,14 +1,17 @@
 // src/document/apply.ts
 // Pure string-manipulation helpers for the documentation engine. No I/O.
 //
-// Two operations:
-//   * insertDocstring — splice a docstring into source for a named symbol.
+//   * planDocstringInsertion — locate the insertion point for a symbol's
+//     docstring and return a LineInsertion (so docstrings and inline comments
+//     share one bottom-up splice path and can never disagree on line math).
+//   * insertDocstring — convenience wrapper: plan + apply in one call.
+//   * normalizeDocstringContent — strip any wrapping an LLM added.
 //   * appendChangelog — prepend a new [Unreleased] section to a CHANGELOG.
 //
-// Idempotency is intentionally the caller's responsibility — callers should
-// run `hasExistingDocstring` first. If the symbol header can't be found, the
-// source is returned unchanged so a stale or misrouted patch can never
-// corrupt the file.
+// If the symbol header can't be found the plan is `null`, so a stale or
+// misrouted patch can never corrupt the file.
+
+import { type LineInsertion, applyLineInsertions } from './line-edits.js';
 
 export type Language = 'python' | 'typescript';
 
@@ -21,7 +24,45 @@ function leadingWhitespace(line: string): string {
   return m && m[1] !== undefined ? m[1] : '';
 }
 
-function insertPythonDocstring(source: string, symbol: string, content: string): string {
+/**
+ * Strip any wrapping an LLM may have added around a docstring body — surrounding
+ * triple quotes (collapsing `""""""` and deeper), `/** *\/` delimiters, and
+ * code fences — so the insert helpers wrap the content exactly once. Defensive:
+ * the model is told to return bare content, but is not trusted to.
+ */
+export function normalizeDocstringContent(language: Language, raw: string): string {
+  let s = raw.trim();
+  s = s
+    .replace(/^```[A-Za-z0-9_-]*\n?/, '')
+    .replace(/\n?```$/, '')
+    .trim();
+  if (language === 'python') {
+    let changed = true;
+    while (changed) {
+      changed = false;
+      for (const q of ['"""', "'''"]) {
+        if (s.length >= q.length * 2 && s.startsWith(q) && s.endsWith(q)) {
+          s = s.slice(q.length, s.length - q.length).trim();
+          changed = true;
+        }
+      }
+    }
+  } else if (s.startsWith('/**') && s.endsWith('*/')) {
+    s = s.slice(3, s.length - 2).trim();
+    s = s
+      .split('\n')
+      .map((l) => l.replace(/^\s*\*\s?/, ''))
+      .join('\n')
+      .trim();
+  }
+  return s;
+}
+
+function planPythonDocstring(
+  source: string,
+  symbol: string,
+  content: string,
+): LineInsertion | null {
   const lines = source.split('\n');
   const sym = escapeRegex(symbol);
   const defRe = new RegExp(`^(\\s*)(async\\s+)?def\\s+${sym}\\s*\\(`);
@@ -32,15 +73,13 @@ function insertPythonDocstring(source: string, symbol: string, content: string):
     if (!defRe.test(line) && !classRe.test(line)) continue;
     const headerIndent = leadingWhitespace(line).length;
 
-    // Walk forward to the first non-blank line that constitutes the body.
-    // Skip continuation lines of a multi-line signature.
+    // Walk forward to the first body line, skipping a multi-line signature.
     let bodyIdx = -1;
     for (let j = i + 1; j < lines.length; j++) {
       const cand = lines[j] ?? '';
       if (cand.trim() === '') continue;
       const candIndent = leadingWhitespace(cand).length;
       if (candIndent <= headerIndent) {
-        // Either a continuation of the signature or we already exited.
         const stripped = cand.trim();
         if (
           stripped.startsWith(')') ||
@@ -50,34 +89,36 @@ function insertPythonDocstring(source: string, symbol: string, content: string):
         ) {
           continue;
         }
-        // No body found — give up.
-        return source;
+        return null; // no body found
       }
       bodyIdx = j;
       break;
     }
-    if (bodyIdx === -1) return source;
+    if (bodyIdx === -1) return null;
 
     const bodyIndent = leadingWhitespace(lines[bodyIdx] ?? '');
-    let docLine: string;
-    if (content.includes('\n')) {
-      const parts = content.split('\n');
-      const first = parts[0] ?? '';
-      const rest = parts.slice(1);
-      const indented = rest.map((p) => `${bodyIndent}${p}`).join('\n');
-      docLine = `${bodyIndent}"""${first}\n${indented}"""`;
+    const parts = content.split('\n');
+    let docLines: string[];
+    if (parts.length === 1) {
+      docLines = [`${bodyIndent}"""${parts[0]}"""`];
     } else {
-      docLine = `${bodyIndent}"""${content}"""`;
+      docLines = [
+        `${bodyIndent}"""${parts[0]}`,
+        ...parts.slice(1).map((p) => (p === '' ? '' : `${bodyIndent}${p}`)),
+      ];
+      const last = docLines.length - 1;
+      docLines[last] = `${docLines[last]}"""`;
     }
-
-    const before = lines.slice(0, bodyIdx);
-    const after = lines.slice(bodyIdx);
-    return [...before, docLine, ...after].join('\n');
+    return { line: bodyIdx + 1, lines: docLines };
   }
-  return source;
+  return null;
 }
 
-function insertTypeScriptDocstring(source: string, symbol: string, content: string): string {
+function planTypeScriptDocstring(
+  source: string,
+  symbol: string,
+  content: string,
+): LineInsertion | null {
   const lines = source.split('\n');
   const sym = escapeRegex(symbol);
   const declRes = [
@@ -90,33 +131,45 @@ function insertTypeScriptDocstring(source: string, symbol: string, content: stri
     const line = lines[i] ?? '';
     if (!declRes.some((re) => re.test(line))) continue;
     const indent = leadingWhitespace(line);
-
-    let docLine: string;
-    if (content.includes('\n')) {
-      const parts = content.split('\n');
-      const body = parts.map((p) => `${indent} * ${p}`).join('\n');
-      docLine = `${indent}/**\n${body}\n${indent} */`;
+    const parts = content.split('\n');
+    let docLines: string[];
+    if (parts.length === 1) {
+      docLines = [`${indent}/** ${parts[0]} */`];
     } else {
-      docLine = `${indent}/** ${content} */`;
+      docLines = [
+        `${indent}/**`,
+        ...parts.map((p) => `${indent} *${p === '' ? '' : ` ${p}`}`),
+        `${indent} */`,
+      ];
     }
-
-    const before = lines.slice(0, i);
-    const after = lines.slice(i);
-    return [...before, docLine, ...after].join('\n');
+    return { line: i + 1, lines: docLines };
   }
-  return source;
+  return null;
 }
 
 /**
- * Insert a docstring into `source` for the named symbol.
- *
- * Python: inserts as the first body statement after the def/class header;
- *   indentation matches the body indent.
- * TypeScript: inserts a /** ... *\/ block above the declaration; the
- *   declaration's leading indentation is preserved.
- *
- * Idempotency is the caller's responsibility; if the symbol cannot be
- * located, `source` is returned unchanged.
+ * Plan the insertion of a docstring for `symbol` into `source`. Returns the
+ * LineInsertion (1-indexed line to insert above + the formatted lines), or
+ * `null` when the symbol header can't be located. The LLM's `content` is
+ * normalized first, so a wrapped answer never double-wraps.
+ */
+export function planDocstringInsertion(
+  language: Language,
+  source: string,
+  symbol: string,
+  content: string,
+): LineInsertion | null {
+  const normalized = normalizeDocstringContent(language, content);
+  if (normalized === '') return null;
+  return language === 'python'
+    ? planPythonDocstring(source, symbol, normalized)
+    : planTypeScriptDocstring(source, symbol, normalized);
+}
+
+/**
+ * Insert a docstring into `source` for the named symbol. Convenience wrapper
+ * over `planDocstringInsertion` + `applyLineInsertions`. Returns `source`
+ * unchanged when the symbol can't be located.
  */
 export function insertDocstring(
   language: Language,
@@ -124,8 +177,8 @@ export function insertDocstring(
   symbol: string,
   content: string,
 ): string {
-  if (language === 'python') return insertPythonDocstring(source, symbol, content);
-  return insertTypeScriptDocstring(source, symbol, content);
+  const plan = planDocstringInsertion(language, source, symbol, content);
+  return plan ? applyLineInsertions(source, [plan]) : source;
 }
 
 /**
@@ -148,7 +201,6 @@ export function appendChangelog(existing: string, bullets: string[], date: strin
     return `# Changelog\n\n${newSection}${existing}`;
   }
 
-  // Insert after the H1 line and the blank line that typically follows it.
   let insertAt = h1Idx + 1;
   while (insertAt < lines.length && (lines[insertAt] ?? '').trim() === '') {
     insertAt++;

@@ -40,16 +40,24 @@ describe('document flow', () => {
     await fs.mkdir(cacheDir, { recursive: true });
 
     const documenter = new RefactronDocumenter({
-      provider: new MockLLMProvider((p) =>
-        p.includes('CHANGELOG')
+      provider: new MockLLMProvider((p) => {
+        if (p.includes('[REFACTRON:DOCSTRING-BATCH]')) {
+          const obj: Record<string, string> = {};
+          for (const m of p.matchAll(/^### tag (\d+) —/gm)) {
+            obj[m[1] ?? '0'] = 'Fetch the URL and return the body.';
+          }
+          return JSON.stringify(obj);
+        }
+        return p.includes('CHANGELOG')
           ? '- migrated old-style formatting'
-          : 'Fetch the URL and return the body.',
-      ),
+          : 'Fetch the URL and return the body.';
+      }),
       model: 'mock',
       tokenBudget: 4000,
       cacheDir,
       redactPatterns: [],
       originals: new Map([[filePath, 'def fetch(url):\n    return get(url)\n']]),
+      projectRoot: root,
     });
 
     const verified: VerificationResult = {

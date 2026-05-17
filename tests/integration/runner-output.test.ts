@@ -47,11 +47,11 @@ describe('redesigned runner output streams', () => {
     expect(text).toMatch(/formatting\.py|callbacks\.py|legacy_http\.py|models\.py/);
     // Transform ids should be visible in the body.
     expect(text).toMatch(/format_to_fstring|callback_to_async_await|class_to_dataclass/);
-    // Per-finding suggestion line marker from format-analysis.
-    expect(text).toContain('suggestion:');
-    // Summary block.
-    expect(text).toContain('Summary');
-    expect(text).toMatch(/Files affected\s+\d+/);
+    // TRANSFORMS legend table from format-analysis (per-transform guidance).
+    expect(text).toContain('TRANSFORMS');
+    // SUMMARY box.
+    expect(text).toContain('SUMMARY');
+    expect(text).toMatch(/Files affected.+\d/);
   }, 60_000);
 
   it('run --dry-run emits per-file unified diffs with +/- markers and a Summary block', async () => {
@@ -73,13 +73,13 @@ describe('redesigned runner output streams', () => {
     const text = lines.join('\n');
     // Unified-diff hunks contain `@@`.
     expect(text).toContain('@@');
-    // At least one `+`-prefixed body line and one `-`-prefixed body line.
-    // We look for the leading whitespace + +/- pattern the formatter emits.
-    expect(text).toMatch(/^\s+\+[^+]/m);
-    expect(text).toMatch(/^\s+-[^-]/m);
-    // Summary block from format-plan.
-    expect(text).toContain('Summary');
-    expect(text).toMatch(/Files\s+\d+/);
+    // At least one `+`-prefixed and one `-`-prefixed body line. Each diff line
+    // sits inside the per-file box, so it reads `│ +…` / `│ -…`.
+    expect(text).toMatch(/│ \+[^+]/m);
+    expect(text).toMatch(/│ -[^-]/m);
+    // SUMMARY box from format-plan.
+    expect(text).toContain('SUMMARY');
+    expect(text).toMatch(/Files.+\d/);
     expect(text).toMatch(/\+\d+ \/ -\d+/);
     expect(text).toContain('Nothing has been written');
   }, 60_000);
@@ -110,8 +110,12 @@ describe('redesigned runner output streams', () => {
       expect(text).toMatch(/syntax/i);
       expect(text).toMatch(/imports/i);
       expect(text).toMatch(/tests/i);
-      // On success we expect either the success-block header or per-file
-      // atomic-write entries with transform tags.
+      // Live progress: a "verifying <gate> …" line precedes the gates, and an
+      // "applying …" line precedes the write.
+      expect(text).toMatch(/verifying syntax/);
+      expect(text).toMatch(/applying \d+ file/);
+      // On success we expect the success-block header / per-file atomic-write
+      // entries with transform tags.
       expect(text).toMatch(/written|applied|verified|Gate/i);
     } finally {
       await fs.rm(applyScratch, { recursive: true, force: true });

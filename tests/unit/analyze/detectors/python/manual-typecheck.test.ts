@@ -27,4 +27,38 @@ describe('python: manual-typecheck', () => {
       detect(ctx('def f(x):\n    if isinstance(x, str):\n        return 1\n    return 2\n')),
     ).toHaveLength(0);
   });
+
+  it('skips an isinstance chain on an already-annotated parameter', () => {
+    // The transform refuses an annotated parameter (manual_typecheck_to_hints
+    // has nothing to add) — the detector must not flag it either.
+    const src = `def _get_function_name(self, node: ast.AST) -> str:
+    if isinstance(node, ast.Name):
+        return node.id
+    elif isinstance(node, ast.Attribute):
+        return node.attr
+    return ""
+`;
+    expect(detect(ctx(src))).toHaveLength(0);
+  });
+
+  it('flags the same chain when the parameter is not annotated', () => {
+    const src = `def _get_function_name(self, node) -> str:
+    if isinstance(node, ast.Name):
+        return node.id
+    elif isinstance(node, ast.Attribute):
+        return node.attr
+    return ""
+`;
+    expect(detect(ctx(src))).toHaveLength(1);
+  });
+
+  it('skips a chain that discriminates more than one parameter', () => {
+    const src = `def f(a, b):
+    if isinstance(a, int):
+        return 1
+    elif isinstance(b, str):
+        return 2
+`;
+    expect(detect(ctx(src))).toHaveLength(0);
+  });
 });

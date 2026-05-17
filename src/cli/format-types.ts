@@ -16,3 +16,32 @@ export interface RenderedLine {
 export function toPosix(p: string): string {
   return p.replace(/\\/g, '/');
 }
+
+/** Truncate a path from the LEFT so the filename tail survives. */
+export function clipPathLeft(text: string, max: number): string {
+  if (text.length <= max) return text;
+  return `…${text.slice(text.length - (max - 1))}`;
+}
+
+/**
+ * cli-table3 glyph config — outer frame + verticals only, no rule under the
+ * header and no rule between data rows. Shared by every bordered table the
+ * CLI formatters draw so they look identical.
+ */
+export const tableChars = {
+  top: '─',
+  'top-mid': '┬',
+  'top-left': '┌',
+  'top-right': '┐',
+  bottom: '─',
+  'bottom-mid': '┴',
+  'bottom-left': '└',
+  'bottom-right': '┘',
+  left: '│',
+  right: '│',
+  middle: '│',
+  mid: '',
+  'mid-mid': '',
+  'left-mid': '',
+  'right-mid': '',
+} as const;

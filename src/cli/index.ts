@@ -73,6 +73,11 @@ if (cmd === 'document') {
   process.exit(await runDocumentCommand(process.argv.slice(3)));
 }
 
+if (cmd === 'rollback') {
+  const { runRollbackCommand } = await import('./rollback-command.js');
+  process.exit(await runRollbackCommand(process.argv.slice(3)));
+}
+
 if (cmd === 'init') {
   const { runInitCommand } = await import('./init-command.js');
   process.exit(await runInitCommand(process.argv.slice(3)));

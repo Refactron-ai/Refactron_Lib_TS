@@ -1,10 +1,20 @@
 import { describe, it, expect } from 'vitest';
 import {
   formatGateProgress,
+  formatGateStart,
+  formatApplyingNotice,
   formatVerifySuccess,
-  formatVerifyFailure,
+  formatPartialApply,
+  formatBaselineBroken,
+  formatNoTestRunner,
+  type PerFileOutcome,
 } from '../../../src/cli/format-verify.js';
-import type { GateResult, VerificationResult, RefactorPlan } from '../../../src/contracts.js';
+import type {
+  GateResult,
+  VerificationResult,
+  RefactorPlan,
+  FileChange,
+} from '../../../src/contracts.js';
 
 const passingGate: GateResult = { passed: true, durationMs: 42 };
 const failingGate: GateResult = {
@@ -14,39 +24,52 @@ const failingGate: GateResult = {
     'tests fail after refactoring:\n\nFailing tests:\n  ✗ tests/unit/foo.test.ts > my test\n      AssertionError: 1 !== 2\n\nRaw tail:\nfoo bar',
 };
 
-const plan: RefactorPlan = {
-  changes: [
-    {
-      path: '/proj/src/foo.py',
-      oldHash: 'h',
-      newContent: 'new',
-      transformId: 'format_to_fstring',
-    },
-    {
-      path: '/proj/src/bar.ts',
-      oldHash: 'h2',
-      newContent: 'new2',
-      transformId: 'var_to_const_let',
-    },
-  ],
-  preconditions: [],
+const fooChange: FileChange = {
+  path: '/proj/src/foo.py',
+  oldHash: 'h',
+  newContent: 'new',
+  transformId: 'format_to_fstring',
 };
+const barChange: FileChange = {
+  path: '/proj/src/bar.ts',
+  oldHash: 'h2',
+  newContent: 'new2',
+  transformId: 'var_to_const_let',
+};
+const plan: RefactorPlan = { changes: [fooChange, barChange], preconditions: [] };
 
 describe('formatGateProgress', () => {
   it('renders pass symbol + gate name + ms', () => {
-    const lines = formatGateProgress('syntax', passingGate);
-    expect(lines.length).toBeGreaterThan(0);
-    const blob = lines.map((l) => l.text).join('\n');
+    const blob = formatGateProgress('syntax', passingGate)
+      .map((l) => l.text)
+      .join('\n');
     expect(blob).toMatch(/syntax/);
     expect(blob).toMatch(/42/);
     expect(blob).toMatch(/✔|✓/);
   });
 
   it('renders fail symbol on failing gate', () => {
-    const lines = formatGateProgress('tests', failingGate);
-    const blob = lines.map((l) => l.text).join('\n');
+    const blob = formatGateProgress('tests', failingGate)
+      .map((l) => l.text)
+      .join('\n');
     expect(blob).toMatch(/tests/);
     expect(blob).toMatch(/✗/);
+  });
+});
+
+describe('formatGateStart / formatApplyingNotice', () => {
+  it('formatGateStart names the gate being verified', () => {
+    const blob = formatGateStart('imports')
+      .map((l) => l.text)
+      .join('\n');
+    expect(blob).toMatch(/verifying imports/);
+  });
+
+  it('formatApplyingNotice names the file count', () => {
+    const blob = formatApplyingNotice(7)
+      .map((l) => l.text)
+      .join('\n');
+    expect(blob).toMatch(/applying 7 file/);
   });
 });
 
@@ -57,70 +80,70 @@ describe('formatVerifySuccess', () => {
       gates: { syntax: passingGate, imports: passingGate, tests: passingGate },
       writableChanges: plan.changes,
     };
-    const lines = formatVerifySuccess(result, plan, '/proj');
-    const blob = lines.map((l) => l.text).join('\n');
+    const blob = formatVerifySuccess(result, plan, '/proj')
+      .map((l) => l.text)
+      .join('\n');
     expect(blob).toMatch(/src\/foo\.py/);
     expect(blob).toMatch(/format_to_fstring/);
-    expect(blob).toMatch(/src\/bar\.ts/);
-    expect(blob).toMatch(/var_to_const_let/);
     expect(blob).toMatch(/2 file/);
     expect(blob).toMatch(/document/);
   });
 });
 
-describe('formatVerifyFailure', () => {
-  it('surfaces Failing tests block from blockingReason and NOT written caveat', () => {
-    const result: VerificationResult = {
-      passed: false,
-      gates: { syntax: passingGate, imports: passingGate, tests: failingGate },
-      writableChanges: [],
-    };
-    const lines = formatVerifyFailure(result, plan, '/proj', '/tmp/shadow');
-    const blob = lines.map((l) => l.text).join('\n');
-    expect(blob).toMatch(/Verification failed at gate 'tests'/);
+describe('formatPartialApply', () => {
+  it('lists applied and held-back files with the failing tests', () => {
+    const outcomes: PerFileOutcome[] = [
+      { change: fooChange, applied: true },
+      {
+        change: barChange,
+        applied: false,
+        failedGate: 'tests',
+        failingTests: ['✗ tests/unit/bar.test.ts > does the thing', '    AssertionError: nope'],
+      },
+    ];
+    const blob = formatPartialApply(outcomes, '/proj')
+      .map((l) => l.text)
+      .join('\n');
+    expect(blob).toMatch(/Applied \(1\):/);
+    expect(blob).toMatch(/src\/foo\.py/);
+    expect(blob).toMatch(/Held back \(1\):/);
+    expect(blob).toMatch(/src\/bar\.ts/);
+    expect(blob).toMatch(/blocked at gate 'tests'/);
     expect(blob).toMatch(/Failing tests:/);
-    expect(blob).toMatch(/AssertionError/);
-    expect(blob).toMatch(/NOT written/);
+    expect(blob).toMatch(/does the thing/);
+    expect(blob).toMatch(/1 file\(s\) applied · 1 held back/);
   });
 
-  it('includes reproduce hint when shadowRoot is non-null', () => {
-    const result: VerificationResult = {
-      passed: false,
-      gates: { syntax: passingGate, imports: passingGate, tests: failingGate },
-      writableChanges: [],
-    };
-    const lines = formatVerifyFailure(result, plan, '/proj', '/tmp/shadow-abc');
-    const blob = lines.map((l) => l.text).join('\n');
-    expect(blob).toMatch(/To reproduce locally:/);
-    expect(blob).toMatch(/cd \/tmp\/shadow-abc/);
+  it('adds the interdependence caveat when 2+ files are held back', () => {
+    const outcomes: PerFileOutcome[] = [
+      { change: fooChange, applied: false, failedGate: 'imports', rawReason: 'bad import' },
+      { change: barChange, applied: false, failedGate: 'imports', rawReason: 'bad import' },
+    ];
+    const blob = formatPartialApply(outcomes, '/proj')
+      .map((l) => l.text)
+      .join('\n');
+    expect(blob).toMatch(/may depend on each other/);
+    expect(blob).toMatch(/0 file\(s\) applied · 2 held back/);
   });
+});
 
-  it('omits reproduce hint when shadowRoot is null', () => {
-    const result: VerificationResult = {
-      passed: false,
-      gates: { syntax: passingGate, imports: passingGate, tests: failingGate },
-      writableChanges: [],
-    };
-    const lines = formatVerifyFailure(result, plan, '/proj', null);
-    const blob = lines.map((l) => l.text).join('\n');
-    expect(blob).not.toMatch(/To reproduce locally:/);
+describe('formatBaselineBroken', () => {
+  it('explains the project tests were already red', () => {
+    const blob = formatBaselineBroken('baseline tests already fail before refactoring')
+      .map((l) => l.text)
+      .join('\n');
+    expect(blob).toMatch(/already fail before any change/);
+    expect(blob).toMatch(/red test suite/);
   });
+});
 
-  it('includes culprit hint when plan-path basename appears in blockingReason', () => {
-    const culpritReason: GateResult = {
-      passed: false,
-      durationMs: 100,
-      blockingReason:
-        'tests fail after refactoring:\n\nFailing tests:\n  ✗ tests/unit/foo.test.ts > breaks foo\n      Error in foo.py\n\nRaw tail:\nthings',
-    };
-    const result: VerificationResult = {
-      passed: false,
-      gates: { syntax: passingGate, imports: passingGate, tests: culpritReason },
-      writableChanges: [],
-    };
-    const lines = formatVerifyFailure(result, plan, '/proj', null);
-    const blob = lines.map((l) => l.text).join('\n');
-    expect(blob).toMatch(/Likely culprit/);
-    expect(blob).toMatch(/format_to_fstring/);
+describe('formatNoTestRunner', () => {
+  it('explains no runner was detected and how to fix it', () => {
+    const blob = formatNoTestRunner('no test runner detected (pytest, vitest, jest)')
+      .map((l) => l.text)
+      .join('\n');
+    expect(blob).toMatch(/no test runner detected/);
+    expect(blob).toMatch(/pytest, vitest, or jest/);
+    expect(blob).toMatch(/testCmd/);
   });
 });

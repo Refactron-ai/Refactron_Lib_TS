@@ -24,8 +24,9 @@ describe('formatPlanAsDryRun', () => {
     expect(text).toContain('format_to_fstring');
     expect(text).toMatch(/\+1/);
     expect(text).toMatch(/-1/);
-    // Summary section always present
-    expect(text).toContain('Summary');
+    // Section heading + SUMMARY box always present
+    expect(text).toContain('Dry run');
+    expect(text).toContain('SUMMARY');
     expect(text).toContain('Nothing has been written');
   });
 
@@ -84,8 +85,8 @@ describe('formatPlanAsDryRun', () => {
     expect(headerCount).toBeGreaterThan(0);
     expect(text).toContain('format_to_fstring');
     expect(text).toContain('callback_to_async_await');
-    // Summary should count 1 file, not 2.
-    expect(text).toMatch(/Files\s+1\b/);
+    // SUMMARY should count 1 file, not 2.
+    expect(lines.some((l) => l.text.includes('Files') && /\b1\b/.test(l.text))).toBe(true);
   });
 
   it('filters by filesGlob when provided', async () => {
@@ -125,7 +126,7 @@ describe('formatPlanAsDryRun', () => {
     expect(text).toContain('a.py');
     expect(text).toContain('c.py');
     expect(text).not.toContain('b.ts');
-    expect(text).toMatch(/Files\s+2\b/);
+    expect(lines.some((l) => l.text.includes('Files') && /\b2\b/.test(l.text))).toBe(true);
   });
 
   it('renders the Summary block with file count and total +/- lines', async () => {
@@ -152,10 +153,34 @@ describe('formatPlanAsDryRun', () => {
     ]);
     const lines = await formatPlanAsDryRun(plan, originals, { projectRoot: '/p' });
     const text = lines.map((l) => l.text).join('\n');
-    expect(text).toContain('Summary');
-    expect(text).toMatch(/Files\s+2\b/);
+    expect(text).toContain('SUMMARY');
+    expect(lines.some((l) => l.text.includes('Files') && /\b2\b/.test(l.text))).toBe(true);
     // total +4 / -4 across the two files
-    expect(text).toMatch(/Lines\s+\+4 \/ -4/);
+    expect(lines.some((l) => l.text.includes('Lines') && l.text.includes('+4 / -4'))).toBe(true);
+  });
+
+  it('keeps every bordered-table line within the terminal width', async () => {
+    const plan: RefactorPlan = {
+      changes: [
+        {
+          path: '/p/src/very/deeply/nested/SomeLongModuleName.ts',
+          oldHash: '',
+          newContent: 'const x = 1;\n',
+          transformId: 'var_to_const_let',
+        },
+      ],
+      preconditions: [],
+    };
+    const originals = new Map([
+      ['/p/src/very/deeply/nested/SomeLongModuleName.ts', 'var x = 1;\n'],
+    ]);
+    for (const width of [60, 80, 120, 200]) {
+      const lines = await formatPlanAsDryRun(plan, originals, { projectRoot: '/p', width });
+      // Box-drawing corners only appear in real tables, never in diff content.
+      for (const l of lines.filter((x) => /[┌┐└┘]/.test(x.text))) {
+        expect(l.text.length, `width=${width}: "${l.text}"`).toBeLessThanOrEqual(width);
+      }
+    }
   });
 
   it('treats a missing entry in originals as empty (all additions)', async () => {

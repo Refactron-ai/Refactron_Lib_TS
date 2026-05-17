@@ -1,29 +1,27 @@
 // src/cli/format-analysis.ts
-// Analyze-command formatter. Groups findings by FILE (preserving the order
-// they were emitted by the analyzer), pulls a small source excerpt around
-// each finding's line, and renders the transform id + human message + the
-// per-transform suggestion. Returns RenderedLine[] so the REPL (Ink) and the
-// one-shot CLI (stdout) can choose how to realize the color hint.
+// Analyze-command formatter. Renders one bordered box per file (Line · Severity
+// · Transform · Code, one row per finding), followed by three more bordered
+// boxes — TRANSFORMS (guidance), BY TRANSFORM (counts), SUMMARY. Returns
+// RenderedLine[] so the REPL (Ink) and the one-shot CLI (stdout) render it
+// identically.
 
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
+import Table from 'cli-table3';
 import type { ExtendedAnalysisReport } from '../analyze/engine.js';
 import type { DetectorFinding, Confidence } from '../analyze/detectors/types.js';
 import type { TransformId } from '../contracts.js';
-import { MESSAGE_BY_TRANSFORM, SUGGESTION_BY_TRANSFORM } from './v2-adapters.js';
+import { SUGGESTION_BY_TRANSFORM } from './v2-adapters.js';
 import { theme } from '../ui/theme.js';
-import { type RenderedLine, toPosix } from './format-types.js';
+import { type RenderedLine, toPosix, clipPathLeft, tableChars } from './format-types.js';
 
 export interface FormatAnalysisOptions {
   projectRoot: string;
-  excerptLinesBefore?: number; // default 1
-  excerptLinesAfter?: number; // default 1
+  /** Terminal width hint; defaults to process.stdout.columns, then 100. */
+  width?: number;
 }
 
 type Severity = 'critical' | 'high' | 'medium' | 'low';
-
-const SEPARATOR = '─'.repeat(66);
-const SUGGESTION_WRAP_COLS = 60;
 
 function confidenceToSeverity(c: Confidence): Severity {
   if (c === 'high') return 'high';
@@ -31,33 +29,6 @@ function confidenceToSeverity(c: Confidence): Severity {
   return 'low';
 }
 
-function severityColor(s: Severity): string {
-  return theme.severityColors[s];
-}
-
-// Word-wrap that preserves whole words. Returns at least one line.
-function wrapWords(text: string, width: number): string[] {
-  if (width <= 0) return [text];
-  const words = text.split(/\s+/).filter(Boolean);
-  if (words.length === 0) return [''];
-  const out: string[] = [];
-  let cur = '';
-  for (const w of words) {
-    if (cur.length === 0) {
-      cur = w;
-    } else if (cur.length + 1 + w.length <= width) {
-      cur = `${cur} ${w}`;
-    } else {
-      out.push(cur);
-      cur = w;
-    }
-  }
-  if (cur.length > 0) out.push(cur);
-  return out;
-}
-
-// Splits a file's contents into 1-indexed lines. Tolerates both LF and CRLF;
-// the trailing newline (if any) does not produce an extra empty line.
 function splitLines(source: string): string[] {
   const normalized = source.replace(/\r\n/g, '\n');
   const lines = normalized.split('\n');
@@ -65,7 +36,7 @@ function splitLines(source: string): string[] {
   return lines;
 }
 
-// Lazy per-file source cache. `null` = we tried and failed, don't retry.
+// Lazy per-file source cache. `null` = read failed, don't retry.
 class SourceCache {
   private readonly cache = new Map<string, string[] | null>();
 
@@ -76,8 +47,7 @@ class SourceCache {
     if (cached !== undefined) return cached;
     try {
       const abs = path.resolve(this.projectRoot, relFile);
-      const source = await fs.readFile(abs, 'utf8');
-      const lines = splitLines(source);
+      const lines = splitLines(await fs.readFile(abs, 'utf8'));
       this.cache.set(relFile, lines);
       return lines;
     } catch {
@@ -87,60 +57,46 @@ class SourceCache {
   }
 }
 
-// Some transforms fire on the *declaration* line of a function/class, so a
-// ±1 window only shows the signature + docstring and hides the actual code
-// being refactored (e.g. callback_to_async_await fires on `def fn(callback):`
-// but the user needs to see the `callback(result)` invocation a few lines
-// below). Per-transform `linesAfter` overrides give the right context for
-// each pattern without bloating output for single-line transforms.
-const EXTENDED_AFTER_BY_TRANSFORM: Partial<Record<string, number>> = {
-  callback_to_async_await: 6,
-  class_to_dataclass: 5,
-  promise_chains_to_async: 5,
-  promise_constructor_to_async: 6,
-  commonjs_to_esm: 3,
-  manual_typecheck_to_hints: 4,
-};
-
-function excerptFor(
-  lines: string[],
-  targetLine: number,
-  linesBefore: number,
-  linesAfter: number,
-): Array<{ lineNo: number; text: string; isTarget: boolean }> {
-  const idx = targetLine - 1;
-  const start = Math.max(0, idx - linesBefore);
-  const end = Math.min(lines.length - 1, idx + linesAfter);
-  const out: Array<{ lineNo: number; text: string; isTarget: boolean }> = [];
-  for (let i = start; i <= end; i++) {
-    out.push({ lineNo: i + 1, text: lines[i] ?? '', isTarget: i === idx });
-  }
-  return out;
-}
-
 function groupByFile(findings: DetectorFinding[]): Map<string, DetectorFinding[]> {
   const out = new Map<string, DetectorFinding[]>();
   for (const f of findings) {
     const bucket = out.get(f.file);
-    if (bucket) {
-      bucket.push(f);
-    } else {
-      out.set(f.file, [f]);
-    }
+    if (bucket) bucket.push(f);
+    else out.set(f.file, [f]);
   }
-  // Sort each bucket by line so findings within a file render top-to-bottom
-  // matching the source order. Without this, findings appear in detector-
-  // emission order which is detector-by-detector — confusing on read-through.
+  // Source order within each file — matches a top-to-bottom read of the file.
   for (const bucket of out.values()) bucket.sort((a, b) => a.line - b.line);
   return out;
+}
+
+// Minimum widths for the two flexible columns. Their sum (28) plus the fixed
+// line/severity columns, the 4-column frame, and the row indent is 52 — well
+// inside the 60-column floor we render to without wrapping.
+const COL_MIN = { transform: 12, code: 16 } as const;
+
+/**
+ * Distribute `flex` columns across TRANSFORM / CODE so the table fits. Starts
+ * at preferred widths, shrinks the larger column still above its minimum until
+ * the total fits, and hands any leftover budget to CODE so the table fills the
+ * terminal. Returns [transformW, codeW].
+ */
+function fitColumns(flex: number): [number, number] {
+  let transformW = 25;
+  let codeW = Math.max(COL_MIN.code, flex - transformW);
+  let guard = 4000;
+  while (transformW + codeW > flex && guard-- > 0) {
+    if (transformW <= COL_MIN.transform && codeW <= COL_MIN.code) break; // graceful overflow
+    if (transformW > COL_MIN.transform && transformW >= codeW) transformW--;
+    else if (codeW > COL_MIN.code) codeW--;
+    else transformW--;
+  }
+  return [transformW, codeW];
 }
 
 export async function formatAnalysisReport(
   report: ExtendedAnalysisReport,
   opts: FormatAnalysisOptions,
 ): Promise<RenderedLine[]> {
-  const linesBefore = opts.excerptLinesBefore ?? 1;
-  const linesAfter = opts.excerptLinesAfter ?? 1;
   const out: RenderedLine[] = [];
 
   if (report.findings.length === 0) {
@@ -151,55 +107,70 @@ export async function formatAnalysisReport(
   const cache = new SourceCache(opts.projectRoot);
   const groups = groupByFile(report.findings);
 
-  for (const [file, fileFindings] of groups) {
-    out.push({ text: '' });
-    out.push({ text: SEPARATOR, color: theme.colors.border });
-    const heading = `${toPosix(file)}  ${theme.symbols.bullet}  ${fileFindings.length} finding(s)`;
-    out.push({ text: heading, color: theme.colors.accent });
-    out.push({ text: SEPARATOR, color: theme.colors.border });
-    out.push({ text: '' });
+  // ── Column widths, fitted to the terminal ─────────────────────────────────
+  // Each per-file box's rendered line is `INDENT + sum(colWidths) + FRAME`.
+  // colWidths are padding-inclusive; the 4-column frame is 5 chars. Budget
+  // every part so the line never exceeds `width` — otherwise the terminal
+  // wraps it and the box-drawing shatters. Widths are computed once and shared
+  // by every per-file box so the boxes align vertically.
+  const INDENT = 2;
+  const FRAME = 5;
+  const LINE_W = 7;
+  const SEV_W = 10;
+  const width = Math.max(60, Math.min(opts.width ?? process.stdout.columns ?? 100, 200));
+  const flex = width - INDENT - FRAME - LINE_W - SEV_W;
+  const [TRANSFORM_W, CODE_W] = fitColumns(flex);
 
+  // Heading first — this is the first non-empty line, so the REPL's `⏺`
+  // first-output indicator lands here and not on a table's top border.
+  const findingCount = report.findings.length;
+  out.push({ text: '' });
+  out.push({
+    text: `  Analysis  ${theme.symbols.bullet}  ${findingCount} finding${
+      findingCount === 1 ? '' : 's'
+    }`,
+    color: theme.colors.accent,
+  });
+  out.push({ text: '' });
+
+  // One bordered box per file — filename heading, then its own table, then a
+  // blank line of breathing room before the next file.
+  for (const [file, fileFindings] of groups) {
     const sourceLines = await cache.get(file);
+    out.push({
+      text: `  ${clipPathLeft(toPosix(file), width - INDENT)}`,
+      color: theme.colors.accent,
+    });
+
+    const table = new Table({
+      head: ['Line', 'Severity', 'Transform', 'Code'],
+      colWidths: [LINE_W, SEV_W, TRANSFORM_W, CODE_W],
+      colAligns: ['right', 'left', 'left', 'left'],
+      style: { head: [], border: [], 'padding-left': 1, 'padding-right': 1 },
+      wordWrap: false, // long code/ids truncate with `truncate` rather than wrap
+      truncate: '…',
+      chars: tableChars,
+    });
 
     for (const finding of fileFindings) {
       const sev = confidenceToSeverity(finding.confidence);
-      const sevLabel = sev.toUpperCase().padEnd(6); // 'HIGH  ', 'MEDIUM', 'LOW   '
-      const message = MESSAGE_BY_TRANSFORM[finding.transformId as TransformId];
-      const suggestion = SUGGESTION_BY_TRANSFORM[finding.transformId as TransformId];
-
-      out.push({ text: `  ${sevLabel} ${message}`, color: severityColor(sev) });
-      out.push({
-        text: `         transform: ${finding.transformId}  ${theme.symbols.bullet}  line ${finding.line}`,
-        color: theme.colors.textDim,
-      });
-
-      if (sourceLines === null) {
-        out.push({ text: `           (source unavailable)`, color: theme.colors.textDim });
-      } else {
-        const effAfter = EXTENDED_AFTER_BY_TRANSFORM[finding.transformId] ?? linesAfter;
-        const excerpt = excerptFor(sourceLines, finding.line, linesBefore, effAfter);
-        for (const e of excerpt) {
-          out.push({
-            text: `           ${e.text}`,
-            color: e.isTarget ? theme.colors.text : theme.colors.textDim,
-          });
-        }
-      }
-
-      const suggestionPrefix = '         suggestion: ';
-      const continuationIndent = ' '.repeat(suggestionPrefix.length);
-      const wrapped = wrapWords(suggestion, SUGGESTION_WRAP_COLS);
-      const first = wrapped[0] ?? '';
-      out.push({ text: `${suggestionPrefix}${first}`, color: theme.colors.textDim });
-      for (let i = 1; i < wrapped.length; i++) {
-        out.push({ text: `${continuationIndent}${wrapped[i] ?? ''}`, color: theme.colors.textDim });
-      }
-      out.push({ text: '' });
+      const raw = sourceLines ? (sourceLines[finding.line - 1] ?? '').trim() : '';
+      table.push([
+        String(finding.line),
+        sev,
+        finding.transformId,
+        raw.length > 0 ? raw : '(no source)',
+      ]);
     }
+
+    for (const row of table.toString().split('\n')) {
+      out.push({ text: `  ${row}`, color: theme.colors.border });
+    }
+    out.push({ text: '' });
   }
 
-  // ── Summary ───────────────────────────────────────────────────────────────
-  const filesAffected = groups.size;
+  // ── Tallies ───────────────────────────────────────────────────────────────
+  const distinctTransforms = [...new Set(report.findings.map((f) => f.transformId))];
   const byTransform = new Map<TransformId, number>();
   const bySeverity: Record<Severity, number> = { critical: 0, high: 0, medium: 0, low: 0 };
   for (const f of report.findings) {
@@ -208,27 +179,81 @@ export async function formatAnalysisReport(
   }
   const total = report.findings.length;
 
-  const transformParts: string[] = [];
-  for (const [tid, n] of byTransform) transformParts.push(`${tid}: ${n}`);
-  const transformSummary = transformParts.join(`  ${theme.symbols.bullet}  `);
+  // Shared id-column width — TRANSFORMS and BY TRANSFORM align on it. The cap
+  // keeps the guidance column ≥ MIN_GUIDANCE (and so BY TRANSFORM fits too).
+  const MIN_GUIDANCE = 22;
+  const rawIdW = Math.max(9, ...distinctTransforms.map((t) => t.length)) + 2;
+  const idColW = Math.min(rawIdW, width - INDENT - 3 - MIN_GUIDANCE);
 
-  out.push({ text: 'Summary', color: theme.colors.accent });
-  out.push({
-    text: `  Files affected   ${filesAffected}`,
-    color: theme.colors.text,
-  });
-  out.push({
-    text: `  By transform     ${transformSummary}`,
-    color: theme.colors.text,
-  });
-  out.push({
-    text: `  By severity      ${bySeverity.critical} critical  ${theme.symbols.bullet}  ${bySeverity.high} high  ${theme.symbols.bullet}  ${bySeverity.medium} medium  ${theme.symbols.bullet}  ${bySeverity.low} low`,
-    color: theme.colors.text,
-  });
-  out.push({
-    text: `  Fixable          ${total} / ${total}`,
-    color: theme.colors.text,
-  });
+  const section = (heading: string, t: InstanceType<typeof Table>): void => {
+    out.push({ text: `  ${heading}`, color: theme.colors.accent });
+    for (const row of t.toString().split('\n')) {
+      out.push({ text: `  ${row}`, color: theme.colors.border });
+    }
+    out.push({ text: '' });
+  };
 
-  return out;
+  // ── TRANSFORMS — Transform · What it does ─────────────────────────────────
+  const tTable = new Table({
+    head: ['Transform', 'What it does'],
+    colWidths: [idColW, width - INDENT - 3 - idColW],
+    colAligns: ['left', 'left'],
+    style: { head: [], border: [], 'padding-left': 1, 'padding-right': 1 },
+    wordWrap: false,
+    truncate: '…',
+    chars: tableChars,
+  });
+  for (const tid of distinctTransforms) {
+    tTable.push([tid, SUGGESTION_BY_TRANSFORM[tid as TransformId] ?? '']);
+  }
+  section('TRANSFORMS', tTable);
+
+  // ── BY TRANSFORM — Transform · Count, most-frequent first ─────────────────
+  const btTable = new Table({
+    head: ['Transform', 'Count'],
+    colWidths: [idColW, 9],
+    colAligns: ['left', 'right'],
+    style: { head: [], border: [], 'padding-left': 1, 'padding-right': 1 },
+    wordWrap: false,
+    truncate: '…',
+    chars: tableChars,
+  });
+  for (const [tid, n] of [...byTransform.entries()].sort((a, b) => b[1] - a[1])) {
+    btTable.push([tid, String(n)]);
+  }
+  section('BY TRANSFORM', btTable);
+
+  // ── SUMMARY — Metric · Value, no header row ───────────────────────────────
+  const sevLine = `${bySeverity.critical} critical  ${theme.symbols.bullet}  ${bySeverity.high} high  ${theme.symbols.bullet}  ${bySeverity.medium} medium  ${theme.symbols.bullet}  ${bySeverity.low} low`;
+  // `analyze` only DETECTS — it never runs a transform, so it cannot promise a
+  // finding will produce a change (a transform may hit a precondition and skip
+  // safely). Report findings as auto-fix *candidates* and defer the real count
+  // to `run --dry-run`, rather than the misleading "N / N" that read as a
+  // guarantee every finding would be fixed.
+  const summaryRows: Array<[string, string]> = [
+    ['Files affected', String(groups.size)],
+    ['By severity', sevLine],
+    ['Auto-fixable', `${total} candidate(s) — \`run --dry-run\` shows real changes`],
+  ];
+  const METRIC_W = 18;
+  const sTable = new Table({
+    colWidths: [
+      METRIC_W,
+      Math.min(Math.max(...summaryRows.map((r) => r[1].length)) + 2, width - INDENT - 3 - METRIC_W),
+    ],
+    colAligns: ['left', 'left'],
+    style: { border: [], 'padding-left': 1, 'padding-right': 1 },
+    wordWrap: false,
+    truncate: '…',
+    chars: tableChars,
+  });
+  for (const r of summaryRows) sTable.push(r);
+  section('SUMMARY', sTable);
+
+  // Guarantee no emitted line exceeds the terminal width. Table lines already
+  // fit exactly by construction; this only ever clips the legend / summary
+  // prose, which would otherwise wrap.
+  return out.map((l) =>
+    l.text.length > width ? { ...l, text: `${l.text.slice(0, width - 1)}…` } : l,
+  );
 }

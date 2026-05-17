@@ -14,6 +14,10 @@ export default defineConfig({
     // opts back in via vitest.e2e.config.ts so this exclude doesn't filter the
     // explicit e2e run (config-level exclude beats CLI positional includes).
     exclude: ['node_modules/**', 'dist/**', 'fixtures/**', 'tests/e2e/**'],
-    timeout: 30000,
+    // `testTimeout` is the per-test budget — the Python/LibCST transform tests
+    // each spawn a subprocess and run >5s under full parallel load. The key
+    // was previously `timeout`, which vitest ignores, so tests silently fell
+    // back to the 5000ms default and flaked.
+    testTimeout: 30000,
   },
 });

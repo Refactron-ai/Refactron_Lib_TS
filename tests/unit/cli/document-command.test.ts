@@ -39,6 +39,20 @@ async function mkTmp(): Promise<string> {
   return d;
 }
 
+/** A mock provider that answers the batched-docstring prompt with strict JSON
+ *  (one entry per `### tag N` block) and the changelog prompt with `changelog`. */
+function docMock(docstring: string, changelog = '- entry'): MockLLMProvider {
+  return new MockLLMProvider((p: string): string => {
+    if (p.includes('[REFACTRON:DOCSTRING-BATCH]')) {
+      const obj: Record<string, string> = {};
+      for (const m of p.matchAll(/^### tag (\d+) —/gm)) obj[m[1] ?? '0'] = docstring;
+      return JSON.stringify(obj);
+    }
+    if (p.includes('CHANGELOG')) return changelog;
+    return docstring;
+  });
+}
+
 describe('runDocumentCommand', () => {
   it('exits 8 when no last-apply snapshot exists', async () => {
     const root = await mkTmp();
@@ -89,9 +103,7 @@ describe('runDocumentCommand', () => {
       ],
     });
     const code = await runDocumentCommand([root, '--apply'], {
-      providerOverride: new MockLLMProvider((p) =>
-        p.includes('CHANGELOG') ? '- single transform applied' : 'Return two.',
-      ),
+      providerOverride: docMock('Return two.', '- single transform applied'),
     });
     expect(code).toBe(0);
     expect(await fs.readFile(filePath, 'utf8')).toContain('"""Return two."""');
@@ -121,9 +133,7 @@ describe('runDocumentCommand', () => {
     });
     const captured: Array<{ text: string; stream: 'stdout' | 'stderr' }> = [];
     const code = await runDocumentCommand([root], {
-      providerOverride: new MockLLMProvider((p) =>
-        p.includes('CHANGELOG') ? '- entry' : 'Return two.',
-      ),
+      providerOverride: docMock('Return two.', '- entry'),
       out: (text, stream) => captured.push({ text, stream }),
     });
     expect(code).toBe(0);
@@ -250,9 +260,7 @@ describe('runDocumentCommand', () => {
       ],
     });
     const code = await runDocumentCommand([outer, '--apply'], {
-      providerOverride: new MockLLMProvider((p) =>
-        p.includes('CHANGELOG') ? '- format_to_fstring applied' : 'Returns two.',
-      ),
+      providerOverride: docMock('Returns two.', '- format_to_fstring applied'),
     });
     expect(code).toBe(0);
     // Outer (the cwd-equivalent) must NOT have a CHANGELOG.md.

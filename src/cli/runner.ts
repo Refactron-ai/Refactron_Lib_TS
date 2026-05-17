@@ -6,15 +6,16 @@ import type { RefactronConfig } from '../core/config.js';
 import type { Severity } from '../core/models.js';
 import { RefactronAnalyzer } from '../analyze/engine.js';
 import { RefactronRefactorer } from '../transform/engine.js';
-import { RefactronVerifier } from '../verify/engine.js';
-import { writeBatchAtomic } from '../verify/atomic-batch-writer.js';
+import { runApplyWithVerification } from './apply-orchestrator.js';
 import type { FileChange, TransformId } from '../contracts.js';
 import { findingsToIssues } from './v2-adapters.js';
 import { persistLastApply } from './last-apply.js';
+import { appendJournalEntry } from './journal.js';
 import { loadRefactronConfig } from './config-loader.js';
 import { formatAnalysisReport } from './format-analysis.js';
-import { formatGateProgress, formatVerifySuccess, formatVerifyFailure } from './format-verify.js';
 import { formatPlanAsDryRun } from './format-plan.js';
+import { writeRenderedReport, displayReportPath } from './report-file.js';
+import type { RenderedLine } from './format-types.js';
 import * as fsp from 'node:fs/promises';
 import { WorkSessionManager } from '../session/manager.js';
 import type { WorkSession } from '../session/types.js';
@@ -65,6 +66,10 @@ const BOOLEAN_FLAGS = new Set([
   'no-cache',
   'no-browser',
   'no-tui',
+  'no-comments',
+  'no-report',
+  'all',
+  'force',
   'verbose',
   'quiet',
 ]);
@@ -162,6 +167,31 @@ function printSessionCard(
 
 export interface CommandResult {
   shouldExit?: boolean;
+}
+
+// Persist a rendered report to .refactron/reports/ and print a footer pointing
+// to it — a large analyze / dry-run prints more lines than the terminal's
+// scrollback can hold, so the file is the durable fully-scrollable copy.
+async function emitReportFooter(
+  onLine: (line: string, color?: string) => void,
+  projectRoot: string,
+  command: string,
+  sessionId: string,
+  lines: RenderedLine[],
+): Promise<void> {
+  try {
+    const abs = await writeRenderedReport({ projectRoot, command, sessionId, lines });
+    onLine(
+      `  Full report  ${theme.symbols.bullet}  ${displayReportPath(abs)}`,
+      theme.colors.textDim,
+    );
+    onLine(
+      '  (open it in any editor or pager to scroll the complete output)',
+      theme.colors.textDim,
+    );
+  } catch (err) {
+    onLine(`  (could not write full report: ${(err as Error).message})`, theme.colors.textDim);
+  }
 }
 
 export async function executeCommand(
@@ -331,6 +361,8 @@ export async function executeCommand(
     const renderedLines = await formatAnalysisReport(report, { projectRoot: absTarget });
     for (const line of renderedLines) onLine(line.text, line.color);
     onLine('', undefined);
+    await emitReportFooter(onLine, absTarget, 'analyze', session.id, renderedLines);
+    onLine('', undefined);
     onLine(`  Session ${session.id}  —  ${issues.length} pattern(s) found.`, theme.colors.textDim);
     onLine(
       '  Next: `run --dry-run` to preview changes · `run --apply` to verify + write.',
@@ -435,6 +467,8 @@ export async function executeCommand(
       });
       for (const line of dryRunLines) onLine(line.text, line.color);
       onLine('', undefined);
+      await emitReportFooter(onLine, sessionTarget, 'dry-run', active.id, dryRunLines);
+      onLine('', undefined);
       return {};
     }
 
@@ -452,42 +486,35 @@ export async function executeCommand(
       }
     }
 
-    onLine(`  Verifying ${plan.changes.length} change(s) …`, theme.colors.textDim);
-    let capturedShadowRoot: string | null = null;
-    const verifier = new RefactronVerifier({
-      projectRoot: sessionTarget,
-      onGateComplete: (gate, gateResult) => {
-        for (const line of formatGateProgress(gate, gateResult)) {
-          onLine(line.text, line.color);
-        }
-      },
-      onShadowRoot: (p) => {
-        capturedShadowRoot = p;
-      },
-    });
-    const result = await verifier.verify(plan);
+    const { appliedChanges } = await runApplyWithVerification(
+      plan,
+      sessionTarget,
+      { line: onLine },
+      { signal },
+    );
     if (signal.aborted) return {};
 
-    if (!result.passed) {
-      for (const line of formatVerifyFailure(result, plan, sessionTarget, capturedShadowRoot)) {
-        onLine(line.text, line.color);
-      }
-      return {};
-    }
-
-    await writeBatchAtomic(result.writableChanges);
-    await persistLastApply({
-      projectRoot: sessionTarget,
-      verifiedAt: new Date().toISOString(),
-      changes: result.writableChanges.map((c) => ({
-        path: c.path,
-        oldContent: originalsBeforeWrite.get(c.path) ?? '',
-        newContent: c.newContent,
-        transformId: c.transformId,
-      })),
-    });
-    for (const line of formatVerifySuccess(result, plan, sessionTarget)) {
-      onLine(line.text, line.color);
+    if (appliedChanges.length > 0) {
+      await persistLastApply({
+        projectRoot: sessionTarget,
+        verifiedAt: new Date().toISOString(),
+        changes: appliedChanges.map((c) => ({
+          path: c.path,
+          oldContent: originalsBeforeWrite.get(c.path) ?? '',
+          newContent: c.newContent,
+          transformId: c.transformId,
+        })),
+      });
+      await appendJournalEntry(
+        sessionTarget,
+        'apply',
+        `run --apply — ${appliedChanges.length} file(s)`,
+        appliedChanges.map((c) => ({
+          path: c.path,
+          before: originalsBeforeWrite.get(c.path) ?? null,
+          after: c.newContent,
+        })),
+      );
     }
     return {};
   }
@@ -571,6 +598,8 @@ export async function executeCommand(
     if (flags['apply'] === true) argv.push('--apply');
     if (flags['no-cache'] === true) argv.push('--no-cache');
     if (flags['json'] === true) argv.push('--json');
+    if (flags['no-comments'] === true) argv.push('--no-comments');
+    if (flags['no-report'] === true) argv.push('--no-report');
     const providerFlag = flags['provider'];
     if (typeof providerFlag === 'string') argv.push('--provider', providerFlag);
     const modelFlag = flags['model'];
@@ -599,11 +628,33 @@ export async function executeCommand(
     return {};
   }
 
-  // ── rollback ──────────────────────────────────────────────────────────────
+  // ── rollback — undo the last run --apply / document --apply ───────────────
 
   if (command === 'rollback') {
-    onLine('  Rollback restores files from the last autofix backup.', theme.colors.textDim);
-    onLine('  Run: autofix <target> to create a new session with backups.', theme.colors.textDim);
+    const { runRollbackCommand } = await import('./rollback-command.js');
+    // The journal lives where `run --apply` wrote it — the active session's
+    // analyze target, falling back to a positional arg or ctx.projectRoot.
+    const activeForRollback = ctx.sessions.getActive();
+    let rollbackTarget: string;
+    if (target && target !== '.') {
+      rollbackTarget = path.isAbsolute(target) ? target : path.resolve(ctx.projectRoot, target);
+    } else if (activeForRollback?.analysis.target) {
+      rollbackTarget = activeForRollback.analysis.target;
+    } else {
+      rollbackTarget = ctx.projectRoot;
+    }
+    const argv: string[] = [rollbackTarget];
+    if (flags['all'] === true) argv.push('--all');
+    if (flags['force'] === true) argv.push('--force');
+    if (flags['dry-run'] === true) argv.push('--dry-run');
+    await runRollbackCommand(argv, {
+      out: (text, stream) => {
+        const color = stream === 'stderr' ? theme.colors.error : undefined;
+        const lines = text.split('\n');
+        if (lines.length > 0 && lines[lines.length - 1] === '') lines.pop();
+        for (const line of lines) onLine(line, color);
+      },
+    });
     return {};
   }
 

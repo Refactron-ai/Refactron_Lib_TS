@@ -23,10 +23,14 @@ describe('RefactronVerifier callbacks', () => {
   it('calls onGateComplete once per gate (syntax, imports, tests) in order on success', async () => {
     const root = await fixtureWithPassingTest();
     const calls: Array<{ gate: string; passed: boolean }> = [];
+    const starts: string[] = [];
     let shadowRootCalls = 0;
     let capturedShadow: string | null = null;
     const verifier = new RefactronVerifier({
       projectRoot: root,
+      onGateStart: (gate) => {
+        starts.push(gate);
+      },
       onGateComplete: (gate, result: GateResult) => {
         calls.push({ gate, passed: result.passed });
       },
@@ -39,6 +43,8 @@ describe('RefactronVerifier callbacks', () => {
     const r = await verifier.verify(plan);
     expect(r.passed).toBe(true);
     expect(calls.map((c) => c.gate)).toEqual(['syntax', 'imports', 'tests']);
+    // onGateStart fires once per gate, before completion, in order.
+    expect(starts).toEqual(['syntax', 'imports', 'tests']);
     expect(calls.every((c) => c.passed)).toBe(true);
     expect(shadowRootCalls).toBe(1);
     expect(capturedShadow).toBeTruthy();
@@ -52,8 +58,12 @@ describe('RefactronVerifier callbacks', () => {
     // intentionally broken
     await fs.writeFile(badFile, 'function (\n');
     const calls: Array<{ gate: string; result: GateResult }> = [];
+    const starts: string[] = [];
     const verifier = new RefactronVerifier({
       projectRoot: root,
+      onGateStart: (gate) => {
+        starts.push(gate);
+      },
       onGateComplete: (gate, result) => {
         calls.push({ gate, result });
       },
@@ -72,6 +82,8 @@ describe('RefactronVerifier callbacks', () => {
     const r = await verifier.verify(plan);
     expect(r.passed).toBe(false);
     expect(calls.map((c) => c.gate)).toEqual(['syntax', 'imports', 'tests']);
+    // Only the syntax gate actually started — imports/tests were skipped.
+    expect(starts).toEqual(['syntax']);
     expect(calls[0]?.result.passed).toBe(false);
     expect(calls[1]?.result.passed).toBe(false);
     expect(calls[1]?.result.blockingReason).toMatch(/skipped/i);
