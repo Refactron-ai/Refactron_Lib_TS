@@ -8,16 +8,16 @@ description: Convert old-style %-formatting and .format() calls into f-strings.
 
 ## What it does
 
-Rewrites legacy string-formatting expressions to PEP 498 f-strings. Both the `%` operator (`"hello %s" % name`) and `str.format()` calls (`"hello {}".format(name)`) are converted in place.
+Rewrites legacy string-formatting expressions to PEP 498 f-strings. Both the `%` operator (`"hello %s" % name`) and `str.format()` calls (`"hello {}".format(name)`) are converted in place. The `%` operator is handled by Refactron's own printf-grammar converter, which covers the full conversion grammar — `%s`, `%r`, `%d`, `%x` / `%o` / `%e` / `%g`, width and precision specifiers, and literal `%%` — not just plain `%s`. `str.format()` calls go through LibCST's `ConvertFormatStringCommand`.
 
 ## Detector pattern
 
-The detector at `src/analyze/detectors/python/format-detector.ts` finds `BinaryOperator(left=String, op='%', right=...)` and `Call(func=Attribute(value=String, attr='format'), ...)` nodes via LibCST.
+The detector at `src/analyze/detectors/python/old-string-format.ts` finds `BinaryOperator(left=String, op='%', right=...)` and `Call(func=Attribute(value=String, attr='format'), ...)` nodes, anchoring each finding on the operator (not the opening quote, which on a multi-line literal can sit many lines above).
 
 ## Preconditions
 
 1. The expression is one of the two recognised forms above.
-2. The substituted values are simple references (names or attribute accesses) — LibCST's `ConvertFormatStringCommand` skips patterns it cannot losslessly inline.
+2. The substituted values are safe to inline as f-string fields — an argument containing a backslash, a brace, or a quote matching the literal's is conservatively skipped, as are mapping `%(name)s` specifiers and dynamic `*` width/precision.
 3. The string literal is not an existing f-string.
 
 ## Before / after

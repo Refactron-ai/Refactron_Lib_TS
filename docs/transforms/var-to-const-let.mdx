@@ -17,7 +17,7 @@ Each binding is judged independently — multiple `var` statements in one file m
 
 ## Detector pattern
 
-The detector at `src/analyze/detectors/typescript/var-detector.ts` collects all `VariableStatement` nodes with the `var` keyword via ts-morph and then walks the surrounding scope to count reassignments per binding name.
+The detector at `src/analyze/detectors/typescript/var-declarations.ts` collects all `VariableStatement` nodes with the `var` keyword via ts-morph and then walks the surrounding scope to count reassignments per binding name.
 
 ## Preconditions
 

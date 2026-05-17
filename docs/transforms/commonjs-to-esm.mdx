@@ -17,7 +17,7 @@ Rewrites the CommonJS module surface into ES modules:
 
 ## Detector pattern
 
-The detector at `src/analyze/detectors/typescript/commonjs-detector.ts` finds ts-morph `CallExpression` nodes with the callee `require` and `BinaryExpression` nodes with `module.exports` on the left.
+The detector at `src/analyze/detectors/typescript/commonjs.ts` finds ts-morph `CallExpression` nodes with the callee `require` and `BinaryExpression` nodes with `module.exports` on the left.
 
 ## Preconditions
 

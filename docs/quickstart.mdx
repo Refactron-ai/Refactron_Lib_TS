@@ -1,148 +1,91 @@
 ---
 title: Quickstart
-description: Install Refactron and run your first analysis in under 2 minutes.
+description: Install Refactron and run your first verified refactor in 60 seconds.
 ---
 
-## Prerequisites
-
-- **Node.js 18+**
-- **Git** (optional but recommended — enables temporal analysis and blast radius)
-- **Python 3.8+** (required for Python projects)
-
----
-
-## Installation
-
-<CodeGroup>
-```bash npm
-npm install -g refactron
-```
-
-```bash npx (no install)
-npx refactron
-```
-</CodeGroup>
-
-Verify the installation:
+## 1 — Install
 
 ```bash
-refactron --version
-# 0.1.0-beta.2
+npm install -g refactron@0.2.2
 ```
 
----
-
-## First Run
-
-Navigate to any project directory and run:
+Or via PyPI (Python wrapper around the npm package — Node.js 18+ still required):
 
 ```bash
-cd your-project
-refactron
+pip install refactron
 ```
 
-If you are not logged in, Refactron will open the authentication flow in your browser. After login, the REPL starts.
+Confirm:
 
----
-
-## Analyze Your Project
-
-From the Refactron REPL prompt (`❯`), type:
-
-```
-❯ analyze .
-```
-
-Or analyze a specific directory:
-
-```
-❯ analyze src/
-```
-
-Refactron will:
-1. Detect your language (Python or TypeScript)
-2. Run 7 analyzers in parallel
-3. Build import and call graphs
-4. Score every issue with a blast radius
-5. **Automatically open the interactive issue browser**
-
----
-
-## The Issue Browser
-
-After analysis, you land in the interactive browser:
-
-```
- Issues  session abc123 · 42 issues · 18 fixable
-────────────────────────────────────────────────────
-     #   SEV   MESSAGE                              FILE:LINE
-▶    1   CRIT  SQL injection via string format      db/query.py:47    ·
-     2   HIGH  Cyclomatic complexity 14 > 10        api/views.py:123  ·
-     3   HIGH  Unused import: os                    utils/file.py:1   ·
-     4   MED   Missing return type annotation       core/auth.py:88   ·
-────────────────────────────────────────────────────
-Msg:  SQL injection via string format
-Fix:  Use parameterised queries instead of f-string formatting
-File: db/query.py:47  blast:high  [fixable]
-────────────────────────────────────────────────────
-↑↓ · a fix · A all · d diff · v verify · / filter · q quit
-```
-
-### Key Actions
-
-| Key | Action |
-|-----|--------|
-| `↑` / `↓` or `j` / `k` | Navigate issues |
-| `d` | Preview diff (dry-run, nothing written) |
-| `a` | Fix selected issue (atomic write) |
-| `A` | Fix **all** fixable issues in one pass |
-| `v` | Verify a fixed issue's file |
-| `/` | Filter by message, file, severity, or type |
-| `g` / `G` | Jump to first / last issue |
-| `q` | Quit browser, return to REPL |
-
----
-
-## Your First Fix
-
-1. Navigate to a fixable issue (marked `·` on the right)
-2. Press `d` to preview the diff — nothing is written yet
-3. Press `Esc` to dismiss the diff
-4. Press `a` to apply the fix — the issue is now marked `✔`
-5. Press `v` to verify the fix is safe
-
-<Tip>
-Press `A` to fix all fixable issues in one pass. Refactron applies each fix atomically with a backup, so you can always `rollback`.
-</Tip>
-
----
-
-## Workflow Summary
-
-```
-analyze .          → scan + open browser
-  a / A            → fix one or all issues
-  v                → verify fixed files
-  q                → return to REPL
-
-autofix . --verify → fix + verify in one command
-status             → review session summary
-rollback           → undo all fixes
-diff               → show unified diff of fixes
+```bash
+refactron --version       # → 0.2.2
 ```
 
 ---
 
-## Authentication
+## 2 — Authenticate (one-time)
 
-Refactron uses OAuth 2.0 Device Authorization. The first time you run it:
-
-1. Your browser opens automatically to the approval page
-2. You approve access — no password is ever stored
-3. Credentials are saved to `~/.refactron/credentials.json`
-
+```bash
+refactron login
 ```
-❯ auth     # check login status
-❯ logout   # remove credentials
-❯ login    # re-authenticate
+
+Opens a browser-based OAuth device flow. In CI, set `REFACTRON_TOKEN` instead.
+
+---
+
+## 3 — Analyze
+
+From your project root:
+
+```bash
+refactron analyze .
 ```
+
+Output (sample) — findings render as one bordered box per file, followed by
+summary tables:
+
+```text
+┌─ src/api/users.py ───────────────────────────────────────────────┐
+│ format_to_fstring   line 14   "Hello, %s" % name                 │
+│ format_to_fstring   line 22   "User {} not found".format(uid)    │
+└───────────────────────────────────────────────────────────────────┘
+
+SUMMARY
+┌────────────────┬──────────────────────────────────────────────────┐
+│ Files affected │ 1                                                │
+│ By severity    │ 0 critical · 2 high · 0 medium · 0 low            │
+│ Auto-fixable   │ 2 candidate(s) — `run --dry-run` shows real diff  │
+└────────────────┴──────────────────────────────────────────────────┘
+```
+
+`analyze` reports every finding as an auto-fix *candidate* — it never runs a
+transform, so `run --dry-run` is the source of truth for what actually changes.
+
+---
+
+## 4 — Preview the refactor
+
+```bash
+refactron run --dry-run .
+```
+
+Shows the unified diff per file. Nothing has been written.
+
+---
+
+## 5 — Apply with verification
+
+```bash
+refactron run --apply .
+```
+
+The 3 gates run in order: syntax → imports → tests. If any gate fails, your tree is **untouched** — there is nothing to roll back. If all gates pass, the refactor is committed atomically (every file or none).
+
+---
+
+## Next steps
+
+- Scope a refactor to specific transforms: see the [transform catalog](/transforms)
+- Configure thresholds + exclusions: see [`.refactronrc.json`](/configuration/refactronrc)
+- Generate documentation for the refactor: `refactron document --apply` (requires an LLM provider — see [Configuration](/configuration/refactronrc#documentation))
+- Undo an applied refactor or doc run: `refactron rollback` — a drift-safe LIFO undo (see the [CLI reference](/cli/reference#rollback))

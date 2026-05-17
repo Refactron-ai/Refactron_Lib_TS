@@ -12,7 +12,7 @@ Rewrites `requests` imports and call sites to the API-compatible `httpx` equival
 
 ## Detector pattern
 
-The detector at `src/analyze/detectors/python/deprecated-api-detector.ts` looks for:
+The detector at `src/analyze/detectors/python/deprecated-api.ts` looks for:
 
 - `import requests`
 - `from requests import <name>`
@@ -21,7 +21,8 @@ The detector at `src/analyze/detectors/python/deprecated-api-detector.ts` looks 
 ## Preconditions
 
 1. `httpx` is **not already imported** in the file (avoid double-imports / shadowing).
-2. **Cross-file:** no external file in the project references `<this_module>.requests` in any context. The check covers:
+2. The file only touches the **safe httpx drop-in surface** — the HTTP verb helpers `get` / `post` / `put` / `delete` / `patch` / `head` / `options` / `request`. If it references any other `requests` API — exception classes like `Timeout` or `ConnectionError`, `Session`, the `requests.exceptions` submodule — the transform refuses the whole file via the `unsafe-api-surface` precondition. `httpx` diverges there (`httpx.Timeout` is a config class, not an exception; there is no `httpx.ConnectionError` — it is `ConnectError`), so a blind rename would emit code that breaks at runtime.
+3. **Cross-file:** no external file in the project references `<this_module>.requests` in any context. The check covers:
    - `import this_module; print(this_module.requests)` (attribute reads).
    - `from unittest.mock import patch; patch("this_module.requests.get", ...)` (string-target mock patches — these would silently break post-rename).
 
@@ -79,7 +80,7 @@ def submit(url, payload):
 
 - File already imports `httpx` (manual migration probably in progress).
 - An external file in the project patches or references `<module>.requests`.
-- Code that uses `requests`-specific surfaces not in `httpx` (e.g. `requests.utils.requote_uri`, `requests.models.Response` constructed by hand). The transform is conservative and skips files where it cannot prove the mapping is total.
+- Files using `requests` API outside the safe verb set — exception classes (`Timeout`, `ConnectionError`, `HTTPError`), `Session`, `requests.exceptions`. Blocked by the `unsafe-api-surface` precondition rather than rewritten into runtime-broken code — `httpx`'s exception and client surface is not a drop-in for `requests`.
 
 <Note>
 After the transform applies, you must add `httpx` to your dependencies (`pip install httpx` or `pyproject.toml`). Refactron does not modify your dependency manifest.

@@ -12,7 +12,7 @@ Detects `isinstance(x, T1) / elif isinstance(x, T2) / ...` chains where every br
 
 ## Detector pattern
 
-The detector at `src/analyze/detectors/python/typecheck-detector.ts` walks `If` / `Elif` chains looking for `Call(func=Name("isinstance"), args=[Name(param), Name(type)])` shapes and groups by parameter name.
+The detector at `src/analyze/detectors/python/manual-typecheck.ts` walks `If` / `Elif` chains looking for `isinstance(<param>, <type>)` shapes, groups them by parameter name, and surfaces a finding only when the discriminated parameter has no existing annotation — so every finding maps to a change the transform will actually make.
 
 ## Preconditions
 

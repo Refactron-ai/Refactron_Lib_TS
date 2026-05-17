@@ -1,125 +1,77 @@
 ---
 title: Introduction
-description: Safety-first refactoring — finds, fixes, and verifies changes are safe before touching the filesystem.
+description: Refactron finds legacy patterns in your Python and TypeScript code, refactors them deterministically, and proves nothing broke before writing a single byte.
 ---
-
-<img
-  className="block dark:hidden"
-  src="/images/hero-light.png"
-  alt="Refactron Hero"
-/>
 
 ## What is Refactron?
 
-Refactron is a TypeScript CLI that analyzes your codebase for issues, automatically fixes what it can, and **verifies every change is safe before writing a single byte to disk**.
-
-It is built around one core idea: **every code change has a blast radius**. A one-liner fix in an isolated utility is low-risk. A change to a function imported by 40 files that has no tests is extremely high-risk. Refactron measures this mathematically and scales its verification strictness accordingly.
+Refactron is a CLI for **safety-first refactoring** of Python and TypeScript codebases. The refactoring engine is 100% deterministic AST transforms — no LLM touches your code. Before any file is written, three gates must pass: syntax validity, import integrity, and your project's full test suite on a shadow tree. Atomic write or rollback — never partial state.
 
 ```bash
-npm install -g refactron
-cd your-project
-refactron
+npm install -g refactron@0.2.2
+cd your-project && refactron login
+refactron analyze .
+refactron run --apply
 ```
 
 ---
 
-## The Problem Refactron Solves
+## Why Refactron exists
 
-Most refactoring tools answer "what should I fix?" but leave you to figure out "is it safe to fix?". Refactron answers both.
+Every existing "AI refactoring" tool generates code and hopes you'll catch the bugs. NYU's study of 1,692 Copilot programs found ~40% had exploitable vulnerabilities. An ACM AST 2024 study found 92.45% of Copilot-generated tests fail or are broken when there's no existing suite. That's a non-starter for production codebases.
 
-| Tool Category | Finds Issues | Auto-fixes | Verifies Safety | Blast Radius |
-|---|---|---|---|---|
-| Linters (ESLint, Pylint) | ✓ | Partial | ✗ | ✗ |
-| Formatters (Prettier, Black) | ✓ | ✓ | ✗ | ✗ |
-| **Refactron** | ✓ | ✓ | **✓** | **✓** |
+Refactron does the opposite. The engine is deterministic; the LLM is confined to Step 4 — generating documentation for already-verified refactors.
 
 ---
 
-## Core Differentiators
+## Core differentiators
 
 <CardGroup cols={2}>
-  <Card title="Blast Radius Scoring" icon="explosion">
-    Every issue carries a mandatory 0–100 impact score computed from transitive import and call graphs. You always know how dangerous a change is before making it.
+  <Card title="Deterministic engine" icon="microchip">
+    10 transforms (5 Python, 5 TypeScript) implemented as pure AST rewrites via LibCST and ts-morph. No statistical inference; no model temperature.
   </Card>
-  <Card title="Verification Gate" icon="shield-check">
-    Changes are verified (syntax, imports, test suite) before being written to disk. Strictness scales automatically with blast radius.
+  <Card title="3-gate verification" icon="shield-check">
+    Syntax → imports → tests on a shadow tree. Every gate must pass before any byte hits your filesystem.
   </Card>
-  <Card title="Atomic Writes" icon="lock">
-    All file writes use a temp-file-then-rename strategy. Partial writes and corrupted files are impossible.
+  <Card title="Atomic batch write" icon="lock">
+    All-or-nothing rename via write-file-atomic. Either every change in a refactor commits, or none does.
   </Card>
-  <Card title="Backup & Rollback" icon="rotate-left">
-    Every session is backed up automatically. Run `rollback` to restore the previous state at any time.
+  <Card title="Cross-file preconditions" icon="diagram-project">
+    Transforms refuse to apply when callers, mocks, or other-file dependencies would break. Skipped, not silently broken.
   </Card>
-  <Card title="Interactive Browser" icon="table-list">
-    After analysis, an interactive TUI opens automatically. Navigate issues, preview diffs, fix and verify — all without leaving the terminal.
+  <Card title="LLM only for docs" icon="book-open">
+    Documentation generation (Step 4) runs only on already-verified diffs. Five providers: Ollama, Groq, OpenAI, Anthropic, or our managed backend.
   </Card>
-  <Card title="Work Sessions" icon="layer-group">
-    Every `analyze` run creates a persistent session. Fix and verify against it later — no re-scanning needed.
+  <Card title="Honest limitations" icon="circle-info">
+    No Ruby/Go/Rust adapters yet. Self-analysis fails by design. We tell you what doesn't work in [the FAQ](/faq).
   </Card>
 </CardGroup>
 
 ---
 
-## How It Works
+## How a refactor flows
 
-```
-analyze src/    (at REPL prompt)
-        │
-        ▼
-  Analysis Engine
-  ┌─────────────────────────────────┐
-  │  7 analyzers run in parallel    │
-  │  Import graph + call graph built│
-  │  Blast radius scored per issue  │
-  │  Temporal profile from git log  │
-  └─────────────────────────────────┘
-        │
-        ▼
-  Issue Browser (interactive TUI)
-  ┌─────────────────────────────────┐
-  │  Navigate issues  ↑↓ / j k     │
-  │  Preview diff     d             │
-  │  Fix in place     a             │
-  │  Fix all          A             │
-  │  Verify fix       v             │
-  └─────────────────────────────────┘
-        │
-        ▼
-  Verification Engine
-  ┌─────────────────────────────────┐
-  │  Blast trivial → syntax only    │
-  │  Blast medium  → syntax+imports │
-  │  Blast critical→ full test suite│
-  └─────────────────────────────────┘
-        │
-        ▼
-  Atomic write to disk (or blocked)
+```text
+analyze .              ← scan for legacy patterns
+   │
+   ▼
+run --dry-run .        ← preview the diff (atomic; no write)
+   │
+   ▼
+run --apply .          ← 3 gates → atomic batch write
+   │
+   ├─ Gate 1: syntax     (every changed file re-parses)
+   ├─ Gate 2: imports    (every import resolves)
+   └─ Gate 3: tests      (your suite passes on a shadow tree)
+   │
+   ▼
+document --apply       ← LLM writes docstrings, inline comments,
+                          CHANGELOG + a modernization report
+                          on the already-verified diff
+   │
+   ▼
+rollback               ← drift-safe LIFO undo of the last
+                          run / document --apply, if needed
 ```
 
----
-
-## Quick Example
-
-```bash
-# Install
-npm install -g refactron
-
-# Start Refactron, then at the ❯ prompt (same commands as below):
-refactron
-
-# Analyze your project — issue browser opens automatically
-analyze src/
-
-# In the browser:
-#   j/k  navigate issues
-#   d    preview diff
-#   a    fix selected issue
-#   A    fix all fixable issues
-#   v    verify a fixed issue
-#   q    quit
-
-# From the REPL:
-autofix --verify    # fix + verify in one pass (uses active session)
-status              # see active session
-rollback            # backup / restore guidance (see docs)
-```
+Full breakdown of the safety model: [The 3-Gate Safety Model](/concepts/safety-model).
