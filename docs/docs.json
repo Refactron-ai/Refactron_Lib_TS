@@ -1,0 +1,88 @@
+{
+  "$schema": "https://mintlify.com/docs.json",
+  "theme": "mint",
+  "name": "Refactron",
+  "description": "Safety-first refactoring for Python and TypeScript — deterministic AST transforms verified before any byte is written.",
+  "colors": {
+    "primary": "#1E3A8A",
+    "light": "#3B82F6",
+    "dark": "#1E3A8A"
+  },
+  "fonts": {
+    "body": {
+      "family": "Space Grotesk"
+    },
+    "heading": {
+      "family": "Space Grotesk"
+    }
+  },
+  "styling": {
+    "eyebrows": "breadcrumbs"
+  },
+  "logo": {
+    "light": "/logo/logo.svg",
+    "dark": "/logo/logo.svg"
+  },
+  "favicon": "/logo/logo.svg",
+  "navigation": {
+    "groups": [
+      {
+        "group": "Get Started",
+        "pages": ["introduction", "quickstart"]
+      },
+      {
+        "group": "Concepts",
+        "pages": ["concepts/safety-model", "concepts/why-no-llm"]
+      },
+      {
+        "group": "Transforms",
+        "pages": [
+          "transforms/index",
+          "transforms/callback-to-async-await",
+          "transforms/format-to-fstring",
+          "transforms/manual-typecheck-to-hints",
+          "transforms/deprecated-api-requests-to-httpx",
+          "transforms/class-to-dataclass",
+          "transforms/var-to-const-let",
+          "transforms/promise-chains-to-async",
+          "transforms/implicit-any",
+          "transforms/commonjs-to-esm",
+          "transforms/promise-constructor-to-async"
+        ]
+      },
+      {
+        "group": "CLI",
+        "pages": ["cli/reference"]
+      },
+      {
+        "group": "Configuration",
+        "pages": ["configuration", "configuration/refactronrc"]
+      },
+      {
+        "group": "Reference",
+        "pages": ["faq"]
+      }
+    ]
+  },
+  "navbar": {
+    "links": [
+      {
+        "label": "Issues",
+        "href": "https://github.com/Refactron-ai/Refactron_Lib_TS/issues"
+      }
+    ],
+    "primary": {
+      "type": "button",
+      "label": "GitHub",
+      "href": "https://github.com/Refactron-ai/Refactron_Lib_TS"
+    }
+  },
+  "footer": {
+    "socials": {
+      "github": "https://github.com/Refactron-ai/Refactron_Lib_TS",
+      "x": "https://x.com/refactron",
+      "linkedin": "https://www.linkedin.com/company/refactron",
+      "discord": "https://discord.gg/HY8WawSH"
+    }
+  }
+}
