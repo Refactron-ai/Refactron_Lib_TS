@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import * as path from 'node:path';
 import {
   buildReportModel,
   renderModernizationReport,
@@ -76,8 +77,9 @@ describe('renderModernizationReport', () => {
 
 describe('reportPath', () => {
   it('places the report under docs/refactron/', () => {
+    // reportPath is a real filesystem path — assert OS-agnostically.
     expect(reportPath('/proj', '2026-05-17')).toBe(
-      '/proj/docs/refactron/modernization-2026-05-17.md',
+      path.join('/proj', 'docs', 'refactron', 'modernization-2026-05-17.md'),
     );
   });
 });

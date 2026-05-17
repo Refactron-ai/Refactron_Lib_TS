@@ -42,7 +42,10 @@ export function buildReportModel(
   for (const change of verified.writableChanges) {
     const oldText = originals.get(change.path);
     if (oldText === undefined) continue;
-    const relPath = path.relative(projectRoot, change.path) || change.path;
+    // Forward slashes always: relPath is markdown display text (and a lookup
+    // key against the LLM's prose) — it must not vary by OS. path.relative
+    // yields `\` on Windows.
+    const relPath = (path.relative(projectRoot, change.path) || change.path).replaceAll('\\', '/');
     const diff = generateUnifiedDiff(relPath, oldText, change.newContent);
     const counts = countChangedLines(diff);
     files.push({

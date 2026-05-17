@@ -52,6 +52,12 @@ function detectLanguage(filePath: string): Language | null {
   return null;
 }
 
+/** Project-relative path with forward slashes — stable across OSes for
+ *  CHANGELOG output and LLM prompts. `path.relative` yields `\` on Windows. */
+function relPosix(projectRoot: string, absPath: string): string {
+  return (path.relative(projectRoot, absPath) || absPath).replaceAll('\\', '/');
+}
+
 /** Best-effort: strip a leading and/or trailing triple-backtick fence. */
 function stripCodeFences(text: string): string {
   return text.replace(/^\s*```[A-Za-z0-9_-]*\s*\n?/, '').replace(/\n?```\s*$/, '');
@@ -267,7 +273,7 @@ export class RefactronDocumenter implements Documenter {
     for (const change of verified.writableChanges) {
       const oldText = this.opts.originals.get(change.path);
       if (oldText === undefined) continue;
-      const relPath = path.relative(this.opts.projectRoot, change.path) || change.path;
+      const relPath = relPosix(this.opts.projectRoot, change.path);
       const diff = generateUnifiedDiff(relPath, oldText, change.newContent);
       const counts = countChangedLines(diff);
       entries.push({
@@ -321,7 +327,7 @@ export class RefactronDocumenter implements Documenter {
         try {
           response = await this.generate(
             inlineCommentPrompt({
-              relPath: path.relative(this.opts.projectRoot, change.path) || change.path,
+              relPath: relPosix(this.opts.projectRoot, change.path),
               language,
               numberedSource: numberSource(change.newContent),
             }),
