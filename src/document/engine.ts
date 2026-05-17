@@ -1,15 +1,11 @@
 // src/document/engine.ts
-// RefactronDocumenter — implements the locked Documenter contract.
+// RefactronDocumenter — implements the locked Documenter contract (`document`)
+// and adds two non-contract capabilities the CLI orchestrates: `commentFiles`
+// (inline comments) and `reportProse` (modernization-report prose).
 //
-// Pipeline for each verified writable change:
-//   1. Look up the pre-write source (skip the file if not captured).
-//   2. Slice the new content into per-symbol chunks.
-//   3. For each symbol, skip when a docstring already exists; otherwise
-//      build a prompt (redacted, truncated), consult the cache, and call
-//      the configured LLM provider on miss. Provider errors are absorbed —
-//      a single failure must never abort documentation of the rest.
-//   4. Aggregate diff-line statistics and ask the provider for a CHANGELOG
-//      entry. If the provider fails here, fall back to a canned line.
+// Every LLM call goes through the private `generate` helper: redact → truncate
+// → cache lookup → provider call → cache store. Provider errors propagate as
+// ProviderError so each caller decides how to degrade.
 
 import * as path from 'node:path';
 import type { Documenter, DocPatch, VerificationResult } from '../contracts.js';
@@ -19,11 +15,23 @@ import { hasExistingDocstring, type Language } from './idempotency.js';
 import {
   CHANGELOG_TEMPLATE_VERSION,
   DOCSTRING_TEMPLATE_VERSION,
+  INLINE_COMMENT_TEMPLATE_VERSION,
+  REPORT_TEMPLATE_VERSION,
   changelogPrompt,
   docstringPrompt,
+  inlineCommentPrompt,
+  reportProsePrompt,
   type ChangelogEntryInput,
+  type ReportFileInput,
 } from './prompts.js';
 import { normalizeDocstringContent } from './apply.js';
+import {
+  numberSource,
+  parseRawComments,
+  resolveComments,
+  type InlineCommentPatch,
+} from './inline-comments.js';
+import { parseReportProse, type ReportProse } from './report.js';
 import { truncateToBudget } from './budget.js';
 import { redact } from './redact.js';
 import { cacheKey, getCached, setCached } from './cache.js';
@@ -31,6 +39,17 @@ import { countChangedLines, generateUnifiedDiff } from '../infrastructure/diff.j
 
 /** Files past this count fold into a "+N more" overflow note in the prompt. */
 const CHANGELOG_ENTRY_CAP = 12;
+
+function detectLanguage(filePath: string): Language | null {
+  if (filePath.endsWith('.py')) return 'python';
+  if (filePath.endsWith('.ts') || filePath.endsWith('.tsx')) return 'typescript';
+  return null;
+}
+
+/** Best-effort: strip a leading and/or trailing triple-backtick fence. */
+function stripCodeFences(text: string): string {
+  return text.replace(/^\s*```[A-Za-z0-9_-]*\s*\n?/, '').replace(/\n?```\s*$/, '');
+}
 
 /** Compact a unified diff to its first ~25 body lines for prompt context. */
 function diffExcerpt(diff: string): string {
@@ -41,24 +60,39 @@ function diffExcerpt(diff: string): string {
     .join('\n');
 }
 
-function detectLanguage(filePath: string): Language | null {
-  if (filePath.endsWith('.py')) return 'python';
-  if (filePath.endsWith('.ts') || filePath.endsWith('.tsx')) return 'typescript';
-  return null;
-}
-
-/** Best-effort: strip a leading and/or trailing triple-backtick fence. */
-function stripCodeFences(text: string): string {
-  let out = text;
-  // Leading ``` (optionally with a language tag) on the first line.
-  out = out.replace(/^\s*```[A-Za-z0-9_-]*\s*\n?/, '');
-  // Trailing fence.
-  out = out.replace(/\n?```\s*$/, '');
-  return out;
-}
-
 export class RefactronDocumenter implements Documenter {
   constructor(private readonly opts: DocumenterOptions) {}
+
+  /**
+   * Redact → truncate → cache lookup → provider call → cache store.
+   * Throws ProviderError when a cache-miss call is rejected by the provider.
+   */
+  private async generate(rawPrompt: string, templateVersion: string): Promise<string> {
+    const prompt = truncateToBudget(
+      redact(rawPrompt, this.opts.redactPatterns),
+      this.opts.tokenBudget,
+    );
+    const key = cacheKey({
+      provider: this.opts.provider.name,
+      model: this.opts.model,
+      templateVersion,
+      prompt,
+    });
+    if (this.opts.cacheDir !== null) {
+      const cached = await getCached(this.opts.cacheDir, key);
+      if (cached !== null) return cached;
+    }
+    const response = await this.opts.provider.generate(prompt, {
+      model: this.opts.model,
+      maxTokens: this.opts.tokenBudget,
+    });
+    if (this.opts.cacheDir !== null) {
+      await setCached(this.opts.cacheDir, key, response);
+    }
+    return response;
+  }
+
+  // ── Documenter contract ────────────────────────────────────────────────────
 
   async document(verified: VerificationResult): Promise<DocPatch> {
     const docstrings: DocPatch['docstrings'] = [];
@@ -66,68 +100,37 @@ export class RefactronDocumenter implements Documenter {
     for (const change of verified.writableChanges) {
       const oldText = this.opts.originals.get(change.path);
       if (oldText === undefined) continue;
-
       const language = detectLanguage(change.path);
       if (language === null) continue;
 
-      const symbols = chunkByFunction(change.path, oldText, change.newContent);
-      for (const sym of symbols) {
+      for (const sym of chunkByFunction(change.path, oldText, change.newContent)) {
         if (hasExistingDocstring(language, sym.symbol, change.newContent)) continue;
 
-        const rawPrompt = docstringPrompt({
-          symbol: sym.symbol,
-          kind: sym.kind,
-          language,
-          oldText: sym.oldText,
-          newText: sym.newText,
-        });
-        const prompt = truncateToBudget(
-          redact(rawPrompt, this.opts.redactPatterns),
-          this.opts.tokenBudget,
-        );
-
-        const key = cacheKey({
-          provider: this.opts.provider.name,
-          model: this.opts.model,
-          templateVersion: DOCSTRING_TEMPLATE_VERSION,
-          prompt,
-        });
-
-        let response: string | null = null;
-        let fromCache = false;
-        if (this.opts.cacheDir !== null) {
-          response = await getCached(this.opts.cacheDir, key);
-          fromCache = response !== null;
-        }
-        if (response === null) {
-          try {
-            response = await this.opts.provider.generate(prompt, {
-              model: this.opts.model,
-              maxTokens: this.opts.tokenBudget,
-            });
-          } catch (err) {
-            // Absorb provider errors per-symbol so one bad call doesn't
-            // sink the rest of the run.
-            if (err instanceof ProviderError) continue;
-            continue;
-          }
+        let response: string;
+        try {
+          response = await this.generate(
+            docstringPrompt({
+              symbol: sym.symbol,
+              kind: sym.kind,
+              language,
+              oldText: sym.oldText,
+              newText: sym.newText,
+            }),
+            DOCSTRING_TEMPLATE_VERSION,
+          );
+        } catch {
+          // Absorb provider errors per symbol — one bad call must not sink
+          // documentation of the rest.
+          continue;
         }
 
         const cleaned = normalizeDocstringContent(language, stripCodeFences(response).trim());
         if (cleaned === '') continue;
-
         docstrings.push({ file: change.path, symbol: sym.symbol, content: cleaned });
-
-        if (!fromCache && this.opts.cacheDir !== null) {
-          await setCached(this.opts.cacheDir, key, response);
-        }
       }
     }
 
-    // ── Changelog ──────────────────────────────────────────────────────────
-    // One entry per file: path + transform + line stats + a compact diff
-    // excerpt, so the LLM can write a specific bullet per file rather than a
-    // bland aggregate.
+    // ── Changelog — one entry per file so the model writes a specific bullet ──
     const entries: ChangelogEntryInput[] = [];
     for (const change of verified.writableChanges) {
       const oldText = this.opts.originals.get(change.path);
@@ -145,45 +148,67 @@ export class RefactronDocumenter implements Documenter {
     }
 
     const capped = entries.slice(0, CHANGELOG_ENTRY_CAP);
-    const rawChangelog = changelogPrompt({
-      entries: capped,
-      overflow: entries.length - capped.length,
-    });
-    const clPrompt = truncateToBudget(
-      redact(rawChangelog, this.opts.redactPatterns),
-      this.opts.tokenBudget,
-    );
-    const clKey = cacheKey({
-      provider: this.opts.provider.name,
-      model: this.opts.model,
-      templateVersion: CHANGELOG_TEMPLATE_VERSION,
-      prompt: clPrompt,
-    });
-
-    let clResponse: string | null = null;
-    let clFromCache = false;
-    if (this.opts.cacheDir !== null) {
-      clResponse = await getCached(this.opts.cacheDir, clKey);
-      clFromCache = clResponse !== null;
-    }
-    if (clResponse === null) {
-      try {
-        clResponse = await this.opts.provider.generate(clPrompt, {
-          model: this.opts.model,
-          maxTokens: this.opts.tokenBudget,
-        });
-      } catch (err) {
-        const kind = err instanceof ProviderError ? err.kind : 'unknown';
-        const fallback = `Documentation skipped: ${kind}. Refactor was applied and verified.`;
-        return { docstrings, changelogEntry: fallback };
-      }
-    }
-
-    const changelogEntry = stripCodeFences(clResponse).trim();
-    if (!clFromCache && this.opts.cacheDir !== null) {
-      await setCached(this.opts.cacheDir, clKey, clResponse);
+    let changelogEntry: string;
+    try {
+      const response = await this.generate(
+        changelogPrompt({ entries: capped, overflow: entries.length - capped.length }),
+        CHANGELOG_TEMPLATE_VERSION,
+      );
+      changelogEntry = stripCodeFences(response).trim();
+    } catch (err) {
+      const kind = err instanceof ProviderError ? err.kind : 'unknown';
+      changelogEntry = `Documentation skipped: ${kind}. Refactor was applied and verified.`;
     }
 
     return { docstrings, changelogEntry };
+  }
+
+  // ── Inline comments (non-contract) ─────────────────────────────────────────
+
+  async commentFiles(verified: VerificationResult): Promise<InlineCommentPatch> {
+    const files: InlineCommentPatch['files'] = [];
+    let dropped = 0;
+
+    for (const change of verified.writableChanges) {
+      const language = detectLanguage(change.path);
+      if (language === null) continue;
+
+      let response: string;
+      try {
+        response = await this.generate(
+          inlineCommentPrompt({
+            relPath: path.relative(this.opts.projectRoot, change.path) || change.path,
+            language,
+            numberedSource: numberSource(change.newContent),
+          }),
+          INLINE_COMMENT_TEMPLATE_VERSION,
+        );
+      } catch {
+        continue; // skip this file's comments; never sink the run
+      }
+
+      const resolved = resolveComments(
+        language,
+        change.newContent,
+        parseRawComments(stripCodeFences(response)),
+      );
+      dropped += resolved.dropped;
+      if (resolved.insertions.length > 0) {
+        files.push({ file: change.path, insertions: resolved.insertions });
+      }
+    }
+    return { files, dropped };
+  }
+
+  // ── Modernization-report prose (non-contract) ──────────────────────────────
+
+  async reportProse(files: ReportFileInput[]): Promise<ReportProse> {
+    if (files.length === 0) return { summary: '', files: {} };
+    try {
+      const response = await this.generate(reportProsePrompt({ files }), REPORT_TEMPLATE_VERSION);
+      return parseReportProse(stripCodeFences(response));
+    } catch {
+      return { summary: '', files: {} };
+    }
   }
 }

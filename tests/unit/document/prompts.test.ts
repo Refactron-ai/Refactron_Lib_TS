@@ -84,14 +84,13 @@ describe('docstringPrompt', () => {
     expect(p).toContain('anchorContent');
   });
 
-  it('reportProsePrompt sends before/after and asks for strict JSON', () => {
+  it('reportProsePrompt sends the diff and asks for strict JSON', () => {
     const p = reportProsePrompt({
       files: [
         {
           relPath: 'src/a.py',
           transformId: 'format_to_fstring',
-          beforeSnippet: 'x = "%s" % y',
-          afterSnippet: 'x = f"{y}"',
+          diffExcerpt: '-x = "%s" % y\n+x = f"{y}"',
         },
       ],
     });

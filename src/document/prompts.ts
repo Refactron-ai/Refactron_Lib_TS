@@ -159,8 +159,7 @@ export function inlineCommentPrompt(inp: InlineCommentInputs): string {
 export interface ReportFileInput {
   relPath: string;
   transformId: TransformId;
-  beforeSnippet: string;
-  afterSnippet: string;
+  diffExcerpt: string;
 }
 
 export interface ReportProseInputs {
@@ -169,14 +168,9 @@ export interface ReportProseInputs {
 
 export function reportProsePrompt(inp: ReportProseInputs): string {
   const blocks = inp.files.map((f) =>
-    [
-      `File: ${f.relPath}`,
-      `Transform: ${f.transformId}`,
-      `Before:`,
-      f.beforeSnippet.trimEnd(),
-      `After:`,
-      f.afterSnippet.trimEnd(),
-    ].join('\n'),
+    [`File: ${f.relPath}`, `Transform: ${f.transformId}`, `Diff:`, f.diffExcerpt.trimEnd()].join(
+      '\n',
+    ),
   );
   return [
     `[REFACTRON:REPORT]`,

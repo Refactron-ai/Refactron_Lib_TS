@@ -9,11 +9,12 @@
 //   3. .refactronrc documentation block via pickProvider()
 //
 // Exit codes:
-//   0  success (dry-run or apply)
+//   0  success (dry-run or apply; apply may be partial — see code 11)
 //   7  missing auth
 //   8  no .refactron/last-apply.json snapshot
 //   9  provider configuration error (missing API key, factory throw)
 //  10  parse / internal error
+//  11  every documented file failed the post-apply syntax re-check (all rolled back)
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 import writeAtomic from 'write-file-atomic';
@@ -22,7 +23,15 @@ import { MockLLMProvider } from '../document/provider/mock.js';
 import { pickProvider, type ProviderConfig } from '../document/provider/factory.js';
 import { loadCredentials } from '../auth/credentials.js';
 import { RefactronDocumenter } from '../document/engine.js';
-import { insertDocstring, appendChangelog } from '../document/apply.js';
+import { planDocstringInsertion, appendChangelog } from '../document/apply.js';
+import { applyLineInsertions, type LineInsertion } from '../document/line-edits.js';
+import {
+  buildReportModel,
+  reportProseInputs,
+  renderModernizationReport,
+  reportPath,
+} from '../document/report.js';
+import { recheckSyntax } from '../document/post-check.js';
 import type { VerificationResult } from '../contracts.js';
 import { requireAuth } from './auth-gate.js';
 import { loadRefactronConfig } from './config-loader.js';
@@ -58,6 +67,8 @@ interface ParsedFlags {
   json: boolean;
   provider: string | null;
   model: string | null;
+  noComments: boolean;
+  noReport: boolean;
 }
 
 class DocumentFlagError extends Error {}
@@ -69,6 +80,8 @@ function parseFlags(argv: string[]): ParsedFlags {
   let json = false;
   let provider: string | null = null;
   let model: string | null = null;
+  let noComments = false;
+  let noReport = false;
 
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i]!;
@@ -78,6 +91,14 @@ function parseFlags(argv: string[]): ParsedFlags {
     }
     if (a === '--no-cache') {
       noCache = true;
+      continue;
+    }
+    if (a === '--no-comments') {
+      noComments = true;
+      continue;
+    }
+    if (a === '--no-report') {
+      noReport = true;
       continue;
     }
     if (a === '--json') {
@@ -102,7 +123,7 @@ function parseFlags(argv: string[]): ParsedFlags {
     }
     target = a;
   }
-  return { target: target ?? '.', apply, noCache, json, provider, model };
+  return { target: target ?? '.', apply, noCache, json, provider, model, noComments, noReport };
 }
 
 function buildMockProvider(): LLMProvider {
@@ -376,7 +397,11 @@ export async function runDocumentCommand(
     }
     out('\nCHANGELOG entry:\n', 'stdout');
     out(`${patch.changelogEntry}\n`, 'stdout');
-    out('\nRe-run with --apply to write docstrings and CHANGELOG.md.\n', 'stdout');
+    out(
+      '\nRe-run with --apply to write docstrings, inline comments, CHANGELOG.md,\n' +
+        'and a modernization report under docs/refactron/.\n',
+      'stdout',
+    );
     return 0;
   }
 
@@ -403,16 +428,29 @@ export async function runDocumentCommand(
     return 0;
   }
 
-  // --apply: write each docstring back to its file, then append changelog.
-  // Group by file so multiple symbols in one file are inserted into the same
-  // (latest) source view.
-  const byFile = new Map<string, Array<{ symbol: string; content: string }>>();
+  // --apply path. Inline comments unless the user opted out.
+  const commentPatch = flags.noComments
+    ? { files: [], dropped: 0 }
+    : await documenter.commentFiles(verified);
+
+  // Group docstrings + comment insertions by file. Docstring plans and comment
+  // insertions are both line-relative to the file as it sits on disk now
+  // (post-`run --apply`), so they merge into one bottom-up splice per file.
+  const docByFile = new Map<string, Array<{ symbol: string; content: string }>>();
   for (const d of patch.docstrings) {
-    const list = byFile.get(d.file) ?? [];
+    const list = docByFile.get(d.file) ?? [];
     list.push({ symbol: d.symbol, content: d.content });
-    byFile.set(d.file, list);
+    docByFile.set(d.file, list);
   }
-  for (const [file, entries] of byFile) {
+  const commentByFile = new Map<string, LineInsertion[]>();
+  for (const f of commentPatch.files) commentByFile.set(f.file, f.insertions);
+
+  const touched = new Set<string>([...docByFile.keys(), ...commentByFile.keys()]);
+  const preDoc = new Map<string, string>(); // file → content before document wrote it
+  let docstringsWritten = 0;
+  let commentsWritten = 0;
+
+  for (const file of touched) {
     const language = detectLanguage(file);
     if (language === null) continue;
     let source: string;
@@ -421,16 +459,40 @@ export async function runDocumentCommand(
     } catch {
       continue;
     }
-    for (const e of entries) {
-      source = insertDocstring(language, source, e.symbol, e.content);
+
+    const insertions: LineInsertion[] = [];
+    for (const e of docByFile.get(file) ?? []) {
+      const plan = planDocstringInsertion(language, source, e.symbol, e.content);
+      if (plan !== null) {
+        insertions.push(plan);
+        docstringsWritten++;
+      }
     }
-    await writeAtomic(file, source);
+    const comments = commentByFile.get(file) ?? [];
+    insertions.push(...comments);
+    commentsWritten += comments.length;
+    if (insertions.length === 0) continue;
+
+    preDoc.set(file, source);
+    await writeAtomic(file, applyLineInsertions(source, insertions));
   }
 
-  // Write CHANGELOG next to the actually-changed files, NOT next to the
-  // user's cwd. Previously this defaulted to `path.join(target, ...)` which
-  // on a Refactron-self test put fixture-CHANGELOG entries into Refactron's
-  // own repo CHANGELOG.md.
+  // Post-apply syntax re-check — document output is otherwise ungated. A file
+  // whose generated docs broke its syntax is rolled back to its pre-document
+  // content; the good files stand.
+  const writtenFiles = [...preDoc.keys()];
+  const recheck = await recheckSyntax(writtenFiles);
+  const rolledBack: string[] = [];
+  for (const file of recheck.broken) {
+    const original = preDoc.get(file);
+    if (original !== undefined) {
+      await writeAtomic(file, original);
+      rolledBack.push(path.relative(snapshot.projectRoot, file) || file);
+    }
+  }
+  const recheckOk = rolledBack.length === 0;
+
+  // Write CHANGELOG next to the actually-changed files (not the user's cwd).
   const changelogDir = await pickChangelogDir(snapshot.changes, snapshot.projectRoot);
   const changelogPath = path.join(changelogDir, 'CHANGELOG.md');
   let existingChangelog = '';
@@ -440,12 +502,39 @@ export async function runDocumentCommand(
     existingChangelog = '';
   }
   const today = new Date().toISOString().slice(0, 10);
-  const newChangelog = appendChangelog(existingChangelog, [patch.changelogEntry], today);
-  await writeAtomic(changelogPath, newChangelog);
+  await writeAtomic(
+    changelogPath,
+    appendChangelog(existingChangelog, [patch.changelogEntry], today),
+  );
 
+  // Modernization report under docs/refactron/ (unless --no-report).
+  let reportRel = '';
+  if (!flags.noReport) {
+    const model = buildReportModel(verified, originals, snapshot.projectRoot);
+    const prose = await documenter.reportProse(reportProseInputs(model));
+    const md = renderModernizationReport(model, prose, { ok: recheckOk, rolledBack }, today);
+    const rp = reportPath(changelogDir, today);
+    await fs.mkdir(path.dirname(rp), { recursive: true });
+    await writeAtomic(rp, md);
+    reportRel = path.relative(snapshot.projectRoot, rp) || rp;
+  }
+
+  // ── Summary ───────────────────────────────────────────────────────────────
+  const dropNote = commentPatch.dropped > 0 ? ` (${commentPatch.dropped} dropped)` : '';
   out(
-    `refactron document: wrote ${patch.docstrings.length} docstring(s) and updated ${path.relative(target, changelogPath) || changelogPath}\n`,
+    `refactron document:\n` +
+      `  docstrings      ${docstringsWritten}\n` +
+      `  inline comments ${commentsWritten}${dropNote}\n` +
+      `  CHANGELOG       ${path.relative(snapshot.projectRoot, changelogPath) || changelogPath}\n` +
+      (reportRel !== '' ? `  report          ${reportRel}\n` : '') +
+      `  syntax re-check ${recheckOk ? 'PASS' : `ROLLED BACK ${rolledBack.join(', ')}`}\n`,
     'stdout',
   );
+  for (const file of rolledBack) {
+    out(`  warning: generated docs broke ${file}'s syntax — that file was restored.\n`, 'stderr');
+  }
+
+  // Exit 11 only when EVERY documented file failed its re-check.
+  if (writtenFiles.length > 0 && rolledBack.length === writtenFiles.length) return 11;
   return 0;
 }

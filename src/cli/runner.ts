@@ -65,6 +65,8 @@ const BOOLEAN_FLAGS = new Set([
   'no-cache',
   'no-browser',
   'no-tui',
+  'no-comments',
+  'no-report',
   'verbose',
   'quiet',
 ]);
@@ -583,6 +585,8 @@ export async function executeCommand(
     if (flags['apply'] === true) argv.push('--apply');
     if (flags['no-cache'] === true) argv.push('--no-cache');
     if (flags['json'] === true) argv.push('--json');
+    if (flags['no-comments'] === true) argv.push('--no-comments');
+    if (flags['no-report'] === true) argv.push('--no-report');
     const providerFlag = flags['provider'];
     if (typeof providerFlag === 'string') argv.push('--provider', providerFlag);
     const modelFlag = flags['model'];
