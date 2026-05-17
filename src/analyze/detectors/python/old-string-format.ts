@@ -9,18 +9,28 @@ export function detect(ctx: DetectorContext): DetectorFinding[] {
   const findings: DetectorFinding[] = [];
   let counter = 0;
 
+  // Attribute the finding to the formatting OPERATION, not the string literal.
+  // A multi-line `"""…""" % args` / `"""…""".format(…)` site starts at the
+  // opening `"""`, which can be many lines above the `%` / `.format()`; using
+  // the literal's row makes the finding point at a line with no visible
+  // formatting at all. Anchor on the operator / `.format` token instead.
+  function push(row: number): void {
+    findings.push({
+      id: `fmt-${ctx.relPath}-${row}-${counter++}`,
+      file: ctx.relPath,
+      line: row + 1,
+      transformId: 'format_to_fstring',
+      remediationMinutes: REMEDIATION,
+      confidence: 'high',
+    });
+  }
+
   function visit(node: SyntaxNode): void {
-    if (node.type === 'binary_operator' && node.childForFieldName('operator')?.text === '%') {
+    if (node.type === 'binary_operator') {
+      const op = node.childForFieldName('operator');
       const lhs = node.childForFieldName('left');
-      if (lhs && lhs.type === 'string') {
-        findings.push({
-          id: `fmt-${ctx.relPath}-${node.startPosition.row}-${counter++}`,
-          file: ctx.relPath,
-          line: node.startPosition.row + 1,
-          transformId: 'format_to_fstring',
-          remediationMinutes: REMEDIATION,
-          confidence: 'high',
-        });
+      if (op?.text === '%' && lhs && lhs.type === 'string') {
+        push(op.startPosition.row);
       }
     }
     if (node.type === 'call') {
@@ -29,14 +39,7 @@ export function detect(ctx: DetectorContext): DetectorFinding[] {
         const obj = fn.childForFieldName('object');
         const attr = fn.childForFieldName('attribute');
         if (obj && obj.type === 'string' && attr && attr.text === 'format') {
-          findings.push({
-            id: `fmt-${ctx.relPath}-${node.startPosition.row}-${counter++}`,
-            file: ctx.relPath,
-            line: node.startPosition.row + 1,
-            transformId: 'format_to_fstring',
-            remediationMinutes: REMEDIATION,
-            confidence: 'high',
-          });
+          push(attr.startPosition.row);
         }
       }
     }
