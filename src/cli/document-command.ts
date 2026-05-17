@@ -155,7 +155,15 @@ function buildMockProvider(): LLMProvider {
         fileObj[f] = 'Behaviour-preserving modernization; verified by the test gate.';
       return JSON.stringify({ summary: 'Deterministic modernization run.', files: fileObj });
     }
-    // Docstring prompt.
+    if (prompt.includes('[REFACTRON:DOCSTRING-BATCH]')) {
+      // Strict-JSON keyed by each `### tag N — symbol` block's tag.
+      const obj: Record<string, string> = {};
+      for (const m of prompt.matchAll(/^### tag (\d+) — (\w+)/gm)) {
+        obj[m[1] ?? '0'] = `Documents the ${m[2] ?? 'symbol'} symbol.`;
+      }
+      return JSON.stringify(obj);
+    }
+    // Single-symbol docstring prompt.
     const m = prompt.match(/Symbol:\s*(\w+)/);
     const name = m?.[1] ?? 'symbol';
     return `Documents the ${name} symbol.`;
@@ -328,6 +336,14 @@ export async function runDocumentCommand(
     redactPatterns: config.documentation.redactPatterns,
     originals,
     projectRoot: snapshot.projectRoot,
+    batchTokenBudget: config.documentation.batchTokenBudget,
+    scheduler: {
+      maxConcurrency: config.documentation.maxConcurrency,
+      requestsPerMinute: config.documentation.requestsPerMinute,
+      tokensPerMinute: config.documentation.tokensPerMinute,
+      maxRetries: 4,
+      baseDelayMs: 800,
+    },
   };
 
   const verified: VerificationResult = {

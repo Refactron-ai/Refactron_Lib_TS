@@ -26,6 +26,13 @@ function makeVerified(changes: Array<{ path: string; newContent: string }>): Ver
 
 function makeResponder(): (prompt: string) => string {
   return (prompt: string) => {
+    if (prompt.includes('[REFACTRON:DOCSTRING-BATCH]')) {
+      const obj: Record<string, string> = {};
+      for (const m of prompt.matchAll(/^### tag (\d+) —/gm)) {
+        obj[m[1] ?? '0'] = 'Generated docstring body.';
+      }
+      return JSON.stringify(obj);
+    }
     if (prompt.includes('CHANGELOG')) {
       return '- Modernized formatting.';
     }

@@ -12,6 +12,16 @@ export interface DocumentationConfig {
   tokenBudget: number;
   redactPatterns: string[];
   cache: boolean;
+  /** Max LLM requests in flight at once. */
+  maxConcurrency: number;
+  /** Soft cap on LLM requests started per minute. */
+  requestsPerMinute: number;
+  /** Soft cap on (estimated) tokens started per minute — the binding limit on
+   *  most free tiers. Raise it for a paid tier / local Ollama. */
+  tokensPerMinute: number;
+  /** Source-token budget per batched docstring request — bigger = fewer calls,
+   *  but each call costs more tokens-per-minute. */
+  batchTokenBudget: number;
 }
 
 export interface RefactronRc {
@@ -56,6 +66,10 @@ const DOCS_DEFAULT: DocumentationConfig = {
   tokenBudget: 4000,
   redactPatterns: [],
   cache: true,
+  maxConcurrency: 4,
+  requestsPerMinute: 25,
+  tokensPerMinute: 200000,
+  batchTokenBudget: 4000,
 };
 
 const DEFAULTS: RefactronRc = {
@@ -77,6 +91,10 @@ const DOCS_SCHEMA = {
     tokenBudget: { type: 'integer', minimum: 256, maximum: 32000 },
     redactPatterns: { type: 'array', items: { type: 'string' } },
     cache: { type: 'boolean' },
+    maxConcurrency: { type: 'integer', minimum: 1, maximum: 32 },
+    requestsPerMinute: { type: 'integer', minimum: 1, maximum: 10000 },
+    tokensPerMinute: { type: 'integer', minimum: 500, maximum: 10000000 },
+    batchTokenBudget: { type: 'integer', minimum: 500, maximum: 64000 },
   },
 };
 

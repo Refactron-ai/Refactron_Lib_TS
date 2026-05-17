@@ -8,7 +8,7 @@
 
 import type { TransformId } from '../contracts.js';
 
-export const DOCSTRING_TEMPLATE_VERSION = '2';
+export const DOCSTRING_TEMPLATE_VERSION = '3';
 export const CHANGELOG_TEMPLATE_VERSION = '2';
 export const INLINE_COMMENT_TEMPLATE_VERSION = '1';
 export const REPORT_TEMPLATE_VERSION = '1';
@@ -69,6 +69,49 @@ export function docstringPrompt(inp: DocstringInputs): string {
     ``,
     `Current source:`,
     inp.newText.trimEnd(),
+  ].join('\n');
+}
+
+/** One symbol in a batched docstring request. */
+export interface BatchDocstringItem {
+  /** Unique integer key — used to route the response back to the symbol. */
+  tag: number;
+  symbol: string;
+  kind: 'function' | 'class';
+  language: 'python' | 'typescript';
+  /** The symbol's current source. */
+  source: string;
+}
+
+/**
+ * Document many symbols in ONE request. The response is a strict-JSON object
+ * keyed by each item's integer `tag` — so a single call replaces N per-symbol
+ * calls, and duplicate symbol names never collide.
+ */
+export function batchDocstringPrompt(items: BatchDocstringItem[]): string {
+  const blocks = items.map((it) =>
+    [`### tag ${it.tag} — ${it.symbol} (${it.kind}, ${it.language})`, it.source.trimEnd()].join(
+      '\n',
+    ),
+  );
+  return [
+    `[REFACTRON:DOCSTRING-BATCH]`,
+    `You are a senior software engineer writing precise reference documentation.`,
+    `Document what EACH of the ${items.length} symbol(s) below does, in its current form.`,
+    ``,
+    `Rules:`,
+    `- Python symbols → a Google-style docstring body; TypeScript → a TSDoc body.`,
+    `- Describe ONLY current behaviour. Never mention refactoring or prior versions.`,
+    `- Per symbol, output the docstring CONTENT ONLY — no surrounding triple quotes,`,
+    `  no /** */, no code fences, no signature, no preamble.`,
+    ``,
+    `Output STRICT JSON only — an object mapping each tag (as a string) to that`,
+    `symbol's docstring content. No prose outside the JSON, no code fences:`,
+    `  {"1": "<docstring for tag 1>", "2": "<docstring for tag 2>"}`,
+    `Use \\n for line breaks inside a docstring value.`,
+    ``,
+    `--- SYMBOLS ---`,
+    blocks.join('\n\n'),
   ].join('\n');
 }
 
