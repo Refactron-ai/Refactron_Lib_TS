@@ -43,4 +43,6 @@ export interface DocumenterOptions {
   redactPatterns: string[];
   /** Map<absPath, originalContent> captured before run --apply wrote the new file. */
   originals: Map<string, string>;
+  /** Project root — used to render file paths relative in changelog/report prompts. */
+  projectRoot: string;
 }

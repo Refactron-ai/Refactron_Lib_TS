@@ -11,6 +11,7 @@
 //   4. Aggregate diff-line statistics and ask the provider for a CHANGELOG
 //      entry. If the provider fails here, fall back to a canned line.
 
+import * as path from 'node:path';
 import type { Documenter, DocPatch, VerificationResult } from '../contracts.js';
 import { type DocumenterOptions, ProviderError } from './types.js';
 import { chunkByFunction } from './chunker.js';
@@ -20,11 +21,25 @@ import {
   DOCSTRING_TEMPLATE_VERSION,
   changelogPrompt,
   docstringPrompt,
+  type ChangelogEntryInput,
 } from './prompts.js';
+import { normalizeDocstringContent } from './apply.js';
 import { truncateToBudget } from './budget.js';
 import { redact } from './redact.js';
 import { cacheKey, getCached, setCached } from './cache.js';
 import { countChangedLines, generateUnifiedDiff } from '../infrastructure/diff.js';
+
+/** Files past this count fold into a "+N more" overflow note in the prompt. */
+const CHANGELOG_ENTRY_CAP = 12;
+
+/** Compact a unified diff to its first ~25 body lines for prompt context. */
+function diffExcerpt(diff: string): string {
+  return diff
+    .split('\n')
+    .filter((l) => !l.startsWith('+++') && !l.startsWith('---') && !l.startsWith('==='))
+    .slice(0, 25)
+    .join('\n');
+}
 
 function detectLanguage(filePath: string): Language | null {
   if (filePath.endsWith('.py')) return 'python';
@@ -61,6 +76,7 @@ export class RefactronDocumenter implements Documenter {
 
         const rawPrompt = docstringPrompt({
           symbol: sym.symbol,
+          kind: sym.kind,
           language,
           oldText: sym.oldText,
           newText: sym.newText,
@@ -97,7 +113,7 @@ export class RefactronDocumenter implements Documenter {
           }
         }
 
-        const cleaned = stripCodeFences(response).trim();
+        const cleaned = normalizeDocstringContent(language, stripCodeFences(response).trim());
         if (cleaned === '') continue;
 
         docstrings.push({ file: change.path, symbol: sym.symbol, content: cleaned });
@@ -109,23 +125,29 @@ export class RefactronDocumenter implements Documenter {
     }
 
     // ── Changelog ──────────────────────────────────────────────────────────
-    const transformIds = verified.writableChanges.map((c) => c.transformId);
-    const fileCount = verified.writableChanges.length;
-    let added = 0;
-    let removed = 0;
+    // One entry per file: path + transform + line stats + a compact diff
+    // excerpt, so the LLM can write a specific bullet per file rather than a
+    // bland aggregate.
+    const entries: ChangelogEntryInput[] = [];
     for (const change of verified.writableChanges) {
       const oldText = this.opts.originals.get(change.path);
       if (oldText === undefined) continue;
-      const diff = generateUnifiedDiff(change.path, oldText, change.newContent);
+      const relPath = path.relative(this.opts.projectRoot, change.path) || change.path;
+      const diff = generateUnifiedDiff(relPath, oldText, change.newContent);
       const counts = countChangedLines(diff);
-      added += counts.added;
-      removed += counts.removed;
+      entries.push({
+        relPath,
+        transformId: change.transformId,
+        added: counts.added,
+        removed: counts.removed,
+        diffExcerpt: diffExcerpt(diff),
+      });
     }
 
+    const capped = entries.slice(0, CHANGELOG_ENTRY_CAP);
     const rawChangelog = changelogPrompt({
-      transformIds,
-      fileCount,
-      summaryStats: { added, removed },
+      entries: capped,
+      overflow: entries.length - capped.length,
     });
     const clPrompt = truncateToBudget(
       redact(rawChangelog, this.opts.redactPatterns),

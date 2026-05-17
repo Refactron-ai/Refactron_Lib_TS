@@ -3,15 +3,21 @@
 //
 // Each template has a versioned constant so the on-disk cache (keyed by
 // sha256(provider + model + templateVersion + prompt)) auto-invalidates when
-// we tweak wording.
+// we tweak wording. Every prompt opens with a unique `[REFACTRON:*]` tag line
+// so the mock provider — and any dispatch — can detect the prompt type exactly.
 
 import type { TransformId } from '../contracts.js';
 
-export const DOCSTRING_TEMPLATE_VERSION = '1';
-export const CHANGELOG_TEMPLATE_VERSION = '1';
+export const DOCSTRING_TEMPLATE_VERSION = '2';
+export const CHANGELOG_TEMPLATE_VERSION = '2';
+export const INLINE_COMMENT_TEMPLATE_VERSION = '1';
+export const REPORT_TEMPLATE_VERSION = '1';
+
+// ── Docstrings ───────────────────────────────────────────────────────────────
 
 export interface DocstringInputs {
   symbol: string;
+  kind: 'function' | 'class';
   language: 'python' | 'typescript';
   oldText: string;
   newText: string;
@@ -20,16 +26,45 @@ export interface DocstringInputs {
 export function docstringPrompt(inp: DocstringInputs): string {
   const styleLine =
     inp.language === 'python'
-      ? 'Write a Google-style Python docstring (triple-quoted) describing the function. Use Args:, Returns:, Raises: sections only if relevant.'
-      : 'Write a TSDoc-style block comment (/** ... */) describing the function. Use @param and @returns tags only if relevant.';
+      ? 'Use Google style: a one-line summary, a blank line, an optional extended description, then Args:, Returns:, Raises: — include only the sections that apply.'
+      : 'Use TSDoc style: a summary line, then @param / @returns / @throws tags — include only the tags that apply.';
+  const example =
+    inp.language === 'python'
+      ? [
+          'Example output (note: NO surrounding quotes):',
+          'Compute the SHA-256 digest of a file, streaming it in fixed-size chunks.',
+          '',
+          'Args:',
+          '    path: Absolute path to the file to hash.',
+          'Returns:',
+          '    The lowercase hexadecimal digest.',
+          'Raises:',
+          '    FileNotFoundError: If `path` does not exist.',
+        ].join('\n')
+      : [
+          'Example output (note: NO /** */ delimiters):',
+          'Compute the SHA-256 digest of a file, streaming it in fixed-size chunks.',
+          '@param path - Absolute path to the file to hash.',
+          '@returns The lowercase hexadecimal digest.',
+        ].join('\n');
   return [
-    `You will describe what a function does, in the form of a docstring.`,
+    `[REFACTRON:DOCSTRING]`,
+    `You are a senior software engineer writing precise reference documentation.`,
+    `Document exactly what this ${inp.language} ${inp.kind} does in its CURRENT form.`,
     ``,
-    styleLine,
-    `Describe ONLY what the function does today. Do not describe the refactor, do not narrate how the code changed, and do not mention any earlier version of the function.`,
-    `Return ONLY the docstring body. Do not include the function signature or surrounding code. Do not wrap your answer in code fences.`,
+    `Rules:`,
+    `- ${styleLine}`,
+    `- Describe ONLY current behaviour. Never mention refactoring, prior versions, or how the code changed.`,
+    `- Be concrete and specific. Avoid filler ("this function is used to").`,
+    `- Output the docstring CONTENT ONLY — prose and section tags. Do NOT include`,
+    `  surrounding triple quotes, /** */, code fences, the signature, or a preamble`,
+    `  like "Here is the docstring".`,
     ``,
-    `Function name: ${inp.symbol}`,
+    example,
+    ``,
+    `--- TASK ---`,
+    `Symbol: ${inp.symbol}`,
+    `Kind: ${inp.kind}`,
     `Language: ${inp.language}`,
     ``,
     `Current source:`,
@@ -37,22 +72,126 @@ export function docstringPrompt(inp: DocstringInputs): string {
   ].join('\n');
 }
 
+// ── Changelog ────────────────────────────────────────────────────────────────
+
+export interface ChangelogEntryInput {
+  relPath: string;
+  transformId: TransformId;
+  added: number;
+  removed: number;
+  diffExcerpt: string;
+}
+
 export interface ChangelogInputs {
-  transformIds: TransformId[];
-  fileCount: number;
-  summaryStats: { added: number; removed: number };
+  entries: ChangelogEntryInput[];
+  /** Files beyond the excerpt cap — surfaced as a trailing "+N more" note. */
+  overflow: number;
 }
 
 export function changelogPrompt(inp: ChangelogInputs): string {
-  const transformList = [...new Set(inp.transformIds)].join(', ');
-  const filesNoun = inp.fileCount === 1 ? '1 file' : `${inp.fileCount} files`;
+  const blocks = inp.entries.map((e) =>
+    [
+      `File: ${e.relPath}`,
+      `Transform: ${e.transformId}`,
+      `Lines: +${e.added} / -${e.removed}`,
+      `Diff:`,
+      e.diffExcerpt.trimEnd(),
+    ].join('\n'),
+  );
+  if (inp.overflow > 0) {
+    blocks.push(`(+${inp.overflow} more file(s) changed by the same transforms)`);
+  }
   return [
-    `Summarise the following deterministic code-modernization run in 1 to 3 short bullet points for a user-facing CHANGELOG.`,
-    `Be specific. Do not editorialise. No emojis. No marketing language.`,
-    `Return ONLY the bullet points (one per line, starting with "- "). No headers, no preamble.`,
+    `[REFACTRON:CHANGELOG]`,
+    `You are writing a user-facing CHANGELOG for a deterministic code-modernization tool.`,
+    `Produce one specific bullet per file changed below.`,
     ``,
-    `Transforms applied: ${transformList}`,
-    `Files changed: ${filesNoun}`,
-    `Lines added: ${inp.summaryStats.added}, removed: ${inp.summaryStats.removed}`,
+    `Rules:`,
+    `- One line per bullet, starting with "- ".`,
+    `- Name the file (relative path) and state concretely what changed. Refer to the`,
+    `  transform by its human meaning, not its raw id.`,
+    `- Factual and terse. No emojis, no marketing, no aggregate-only summary, no headers,`,
+    `  no preamble.`,
+    ``,
+    `Example:`,
+    `- src/auth/login.py: converted 4 %-format strings to f-strings`,
+    `- src/db/pool.py: replaced the callback-style connect() with async/await`,
+    ``,
+    `--- CHANGES ---`,
+    blocks.join('\n\n'),
+  ].join('\n');
+}
+
+// ── Inline comments ──────────────────────────────────────────────────────────
+
+export interface InlineCommentInputs {
+  relPath: string;
+  language: 'python' | 'typescript';
+  /** The file content with 1-indexed `NNN| ` line-number prefixes. */
+  numberedSource: string;
+}
+
+export function inlineCommentPrompt(inp: InlineCommentInputs): string {
+  return [
+    `[REFACTRON:INLINE]`,
+    `You are a senior engineer adding explanatory inline comments to ${inp.language} code.`,
+    `The source below has 1-indexed line numbers prefixed as "NNN| ".`,
+    ``,
+    `Goal: generous coverage — comment most non-trivial logic — but every comment must`,
+    `add understanding. Explain intent, the "why", non-obvious control flow, edge cases,`,
+    `and invariants. NEVER restate what the code literally says ("increment i"). Skip`,
+    `lines that are genuinely self-explanatory.`,
+    ``,
+    `Output STRICT JSON only — an array, no prose, no code fences:`,
+    `[{"line": <n>, "anchorContent": "<verbatim trimmed text of line n>",`,
+    `  "occurrence": <1-based index if that exact text repeats, else 1>,`,
+    `  "comment": ["first comment line", "second line if needed"]}]`,
+    `Each comment is inserted on its OWN line(s) directly ABOVE the anchor line.`,
+    `Write the comment text WITHOUT the leading ${inp.language === 'python' ? '#' : '//'} marker.`,
+    ``,
+    `--- SOURCE (${inp.relPath}) ---`,
+    inp.numberedSource.trimEnd(),
+  ].join('\n');
+}
+
+// ── Modernization report prose ───────────────────────────────────────────────
+
+export interface ReportFileInput {
+  relPath: string;
+  transformId: TransformId;
+  beforeSnippet: string;
+  afterSnippet: string;
+}
+
+export interface ReportProseInputs {
+  files: ReportFileInput[];
+}
+
+export function reportProsePrompt(inp: ReportProseInputs): string {
+  const blocks = inp.files.map((f) =>
+    [
+      `File: ${f.relPath}`,
+      `Transform: ${f.transformId}`,
+      `Before:`,
+      f.beforeSnippet.trimEnd(),
+      `After:`,
+      f.afterSnippet.trimEnd(),
+    ].join('\n'),
+  );
+  return [
+    `[REFACTRON:REPORT]`,
+    `You are documenting an automated, deterministic code-modernization run for engineers.`,
+    `Every transform is behaviour-preserving and the result was verified (syntax, imports,`,
+    `and tests all passed).`,
+    ``,
+    `Output STRICT JSON only — no prose outside the JSON, no code fences:`,
+    `{"summary": "<2-4 sentence overview of the whole run>",`,
+    ` "files": {"<relPath>": "<1-2 sentences: what changed and why it is behaviour-preserving>"}}`,
+    ``,
+    `Be factual and specific. Tie each explanation to the actual before/after shown.`,
+    `No marketing language.`,
+    ``,
+    `--- CHANGES ---`,
+    blocks.join('\n\n'),
   ].join('\n');
 }

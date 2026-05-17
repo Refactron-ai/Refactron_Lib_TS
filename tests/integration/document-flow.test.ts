@@ -50,6 +50,7 @@ describe('document flow', () => {
       cacheDir,
       redactPatterns: [],
       originals: new Map([[filePath, 'def fetch(url):\n    return get(url)\n']]),
+      projectRoot: root,
     });
 
     const verified: VerificationResult = {

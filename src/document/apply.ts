@@ -21,6 +21,42 @@ function leadingWhitespace(line: string): string {
   return m && m[1] !== undefined ? m[1] : '';
 }
 
+/**
+ * Strip any wrapping an LLM may have added around a docstring body — surrounding
+ * triple quotes (collapsing `""""""` and deeper), `/** *\/` delimiters, and
+ * code fences — so the insert helpers wrap the content exactly once. Defensive:
+ * the model is told to return bare content, but is not trusted to.
+ */
+export function normalizeDocstringContent(language: Language, raw: string): string {
+  let s = raw.trim();
+  // Leading/trailing triple-backtick fence.
+  s = s
+    .replace(/^```[A-Za-z0-9_-]*\n?/, '')
+    .replace(/\n?```$/, '')
+    .trim();
+  if (language === 'python') {
+    // Collapse any number of nested triple-quote wrappers (handles `""""""`).
+    let changed = true;
+    while (changed) {
+      changed = false;
+      for (const q of ['"""', "'''"]) {
+        if (s.length >= q.length * 2 && s.startsWith(q) && s.endsWith(q)) {
+          s = s.slice(q.length, s.length - q.length).trim();
+          changed = true;
+        }
+      }
+    }
+  } else if (s.startsWith('/**') && s.endsWith('*/')) {
+    s = s.slice(3, s.length - 2).trim();
+    s = s
+      .split('\n')
+      .map((l) => l.replace(/^\s*\*\s?/, ''))
+      .join('\n')
+      .trim();
+  }
+  return s;
+}
+
 function insertPythonDocstring(source: string, symbol: string, content: string): string {
   const lines = source.split('\n');
   const sym = escapeRegex(symbol);
@@ -124,8 +160,11 @@ export function insertDocstring(
   symbol: string,
   content: string,
 ): string {
-  if (language === 'python') return insertPythonDocstring(source, symbol, content);
-  return insertTypeScriptDocstring(source, symbol, content);
+  // Defend against an LLM that wrapped its answer in quotes / `/** */` / fences.
+  const normalized = normalizeDocstringContent(language, content);
+  if (normalized === '') return source;
+  if (language === 'python') return insertPythonDocstring(source, symbol, normalized);
+  return insertTypeScriptDocstring(source, symbol, normalized);
 }
 
 /**

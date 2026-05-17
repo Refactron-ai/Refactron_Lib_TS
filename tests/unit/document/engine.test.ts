@@ -57,6 +57,7 @@ describe('RefactronDocumenter', () => {
       cacheDir: null,
       redactPatterns: [],
       originals,
+      projectRoot: tmp,
     });
 
     const patch = await doc.document(makeVerified([{ path: filePath, newContent: newText }]));
@@ -87,6 +88,7 @@ describe('RefactronDocumenter', () => {
       cacheDir: null,
       redactPatterns: [],
       originals,
+      projectRoot: tmp,
     });
 
     const patch = await doc.document(makeVerified([{ path: filePath, newContent: newText }]));
@@ -112,6 +114,7 @@ describe('RefactronDocumenter', () => {
       cacheDir: null,
       redactPatterns: [],
       originals,
+      projectRoot: tmp,
     });
 
     const patch = await doc.document(makeVerified([{ path: filePath, newContent: newText }]));
@@ -140,6 +143,7 @@ describe('RefactronDocumenter', () => {
       cacheDir,
       redactPatterns: [],
       originals,
+      projectRoot: tmp,
     });
     await docA.document(makeVerified([{ path: filePath, newContent: newText }]));
     const callsAfterFirst = calls;
@@ -152,6 +156,7 @@ describe('RefactronDocumenter', () => {
       cacheDir,
       redactPatterns: [],
       originals,
+      projectRoot: tmp,
     });
     await docB.document(makeVerified([{ path: filePath, newContent: newText }]));
     expect(calls).toBe(callsAfterFirst);

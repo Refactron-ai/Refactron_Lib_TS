@@ -107,10 +107,36 @@ function parseFlags(argv: string[]): ParsedFlags {
 
 function buildMockProvider(): LLMProvider {
   return new MockLLMProvider((prompt: string): string => {
-    if (prompt.includes('CHANGELOG')) return '- refactor applied across project';
-    const m = prompt.match(/Function name:\s*(\w+)/);
+    // Branch on the `[REFACTRON:*]` tag line each prompt opens with.
+    if (prompt.includes('[REFACTRON:CHANGELOG]')) {
+      const files = [...prompt.matchAll(/^File:\s*(.+)$/gm)].map((m) => m[1]);
+      if (files.length === 0) return '- modernized the codebase';
+      return files.map((f) => `- ${f}: modernized by the applied transform`).join('\n');
+    }
+    if (prompt.includes('[REFACTRON:INLINE]')) {
+      // Comment the first numbered source line, anchored on its content.
+      const m = prompt.match(/^\s*(\d+)\|\s(.*)$/m);
+      if (!m) return '[]';
+      return JSON.stringify([
+        {
+          line: Number(m[1]),
+          anchorContent: (m[2] ?? '').trim(),
+          occurrence: 1,
+          comment: ['Entry point.'],
+        },
+      ]);
+    }
+    if (prompt.includes('[REFACTRON:REPORT]')) {
+      const files = [...prompt.matchAll(/^File:\s*(.+)$/gm)].map((m) => m[1] ?? '');
+      const fileObj: Record<string, string> = {};
+      for (const f of files)
+        fileObj[f] = 'Behaviour-preserving modernization; verified by the test gate.';
+      return JSON.stringify({ summary: 'Deterministic modernization run.', files: fileObj });
+    }
+    // Docstring prompt.
+    const m = prompt.match(/Symbol:\s*(\w+)/);
     const name = m?.[1] ?? 'symbol';
-    return `Documents the ${name} function.`;
+    return `Documents the ${name} symbol.`;
   });
 }
 
@@ -279,6 +305,7 @@ export async function runDocumentCommand(
     cacheDir,
     redactPatterns: config.documentation.redactPatterns,
     originals,
+    projectRoot: snapshot.projectRoot,
   };
 
   const verified: VerificationResult = {
