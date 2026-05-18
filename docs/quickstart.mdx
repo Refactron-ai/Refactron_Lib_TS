@@ -100,9 +100,24 @@ The 3 gates run in order: syntax → imports → tests. If any gate fails, your 
 
 ---
 
+## 6 — Document the refactor (optional)
+
+```bash
+refactron document --apply
+```
+
+Runs on the snapshot from the last `run --apply` and writes **docstrings**, **inline comments**, a **CHANGELOG entry**, and a **modernization report** under `docs/refactron/`.
+
+This is the one step that uses an LLM, and it runs **only on the already-verified diff** — the worst case is a wrong sentence, never broken code. It needs an LLM provider configured (managed backend, Ollama, OpenAI, Anthropic, or Groq) — see [`.refactronrc.json` → documentation](/configuration/refactronrc#documentation).
+
+<Note>
+Made a change you want to undo? `refactron rollback` reverts the last `run --apply` or `document --apply` — a drift-safe LIFO undo. See the [CLI reference](/cli/reference#rollback).
+</Note>
+
+---
+
 ## Next steps
 
 - Scope a refactor to specific transforms: see the [transform catalog](/transforms)
 - Configure thresholds + exclusions: see [`.refactronrc.json`](/configuration/refactronrc)
-- Generate documentation for the refactor: `refactron document --apply` (requires an LLM provider — see [Configuration](/configuration/refactronrc#documentation))
-- Undo an applied refactor or doc run: `refactron rollback` — a drift-safe LIFO undo (see the [CLI reference](/cli/reference#rollback))
+- Understand the guarantees: [The 3-Gate Safety Model](/concepts/safety-model)
