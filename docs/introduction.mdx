@@ -8,6 +8,10 @@ description: Refactron finds legacy patterns in your Python and TypeScript code,
 
 Refactron is a CLI for **safety-first refactoring** of Python and TypeScript codebases. The refactoring engine is 100% deterministic AST transforms — no LLM touches your code. Before any file is written, three gates must pass: syntax validity, import integrity, and your project's full test suite on a shadow tree. Atomic write or rollback — never partial state.
 
+<Frame caption="analyze → run --dry-run → run --apply, with the three verification gates running before any write">
+  <img src="/assets/demo.gif" alt="Refactron analyzing and refactoring a legacy Python project" />
+</Frame>
+
 ```bash
 npm install -g refactron@0.2.2
 cd your-project && refactron login
