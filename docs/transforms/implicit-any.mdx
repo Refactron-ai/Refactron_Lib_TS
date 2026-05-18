@@ -1,5 +1,6 @@
 ---
 title: implicit_any
+icon: js
 description: Annotate untyped parameters when call-site inference yields a single primitive.
 ---
 
@@ -12,7 +13,7 @@ Finds parameters and return positions where ts-morph reports `getType().isAny()`
 
 ## Detector pattern
 
-The detector at `src/analyze/detectors/typescript/implicit-any-detector.ts` enumerates ts-morph `ParameterDeclaration` nodes whose `getType().isAny()` returns true and have no explicit type node.
+The detector at `src/analyze/detectors/typescript/implicit-any.ts` enumerates ts-morph `ParameterDeclaration` nodes whose `getType().isAny()` returns true and have no explicit type node.
 
 ## Preconditions
 

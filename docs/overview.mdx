@@ -1,0 +1,91 @@
+---
+title: Overview
+icon: house
+description: Refactron finds legacy patterns in your Python and TypeScript code, refactors them deterministically, and proves nothing broke before writing a single byte.
+---
+
+## What is Refactron?
+
+Refactron is a CLI for **safety-first refactoring** of Python and TypeScript codebases. The refactoring engine is 100% deterministic AST transforms — no LLM touches your code. Before any file is written, three gates must pass: syntax validity, import integrity, and your project's full test suite on a shadow tree. Atomic write or rollback — never partial state.
+
+<Frame caption="analyze → run --dry-run → run --apply, with the three verification gates running before any write">
+  <img src="/assets/demo.gif" alt="Refactron analyzing and refactoring a legacy Python project" />
+</Frame>
+
+```bash
+npm install -g refactron@0.2.2
+cd your-project && refactron login
+refactron analyze .
+refactron run --apply
+```
+
+---
+
+## Why Refactron exists
+
+Every existing "AI refactoring" tool generates code and hopes you'll catch the bugs. NYU's study of 1,692 Copilot programs found ~40% had exploitable vulnerabilities. An ACM AST 2024 study found 92.45% of Copilot-generated tests fail or are broken when there's no existing suite. That's a non-starter for production codebases.
+
+Refactron does the opposite. The engine is deterministic; the LLM is confined to Step 4 — generating documentation for already-verified refactors.
+
+---
+
+## Core differentiators
+
+<CardGroup cols={2}>
+  <Card title="Deterministic engine" icon="microchip">
+    10 transforms (5 Python, 5 TypeScript) implemented as pure AST rewrites via LibCST and ts-morph. No statistical inference; no model temperature.
+  </Card>
+  <Card title="3-gate verification" icon="shield-check">
+    Syntax → imports → tests on a shadow tree. Every gate must pass before any byte hits your filesystem.
+  </Card>
+  <Card title="Atomic batch write" icon="lock">
+    All-or-nothing rename via write-file-atomic. Either every change in a refactor commits, or none does.
+  </Card>
+  <Card title="Cross-file preconditions" icon="diagram-project">
+    Transforms refuse to apply when callers, mocks, or other-file dependencies would break. Skipped, not silently broken.
+  </Card>
+  <Card title="LLM only for docs" icon="book-open">
+    Documentation generation (Step 4) runs only on already-verified diffs. Five providers: Ollama, Groq, OpenAI, Anthropic, or our managed backend.
+  </Card>
+  <Card title="Honest limitations" icon="circle-info">
+    No Ruby/Go/Rust adapters yet. Self-analysis fails by design. We tell you what doesn't work in [the FAQ](/faq).
+  </Card>
+</CardGroup>
+
+---
+
+## How a refactor flows
+
+```mermaid
+%%{init: {'flowchart': {'nodeSpacing': 65, 'rankSpacing': 90, 'padding': 16}, 'themeVariables': {'fontSize': '20px'}}}%%
+flowchart LR
+  A([analyze]) --> B([run --dry-run])
+  B --> C([run --apply])
+  C --> V{"3 gates:<br/>syntax · imports · tests"}
+  V -->|pass| W["Atomic batch write"]
+  V -->|fail| R["Rejected —<br/>tree untouched"]
+  W --> D([document --apply])
+  D --> E([done])
+  W -.->|drift-safe undo| RB([rollback])
+```
+
+Full breakdown of the safety model: [The 3-Gate Safety Model](/concepts/safety-model).
+
+---
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Quickstart" icon="rocket" href="/quickstart">
+    Install Refactron and run your first verified refactor.
+  </Card>
+  <Card title="The 3-Gate Safety Model" icon="shield-check" href="/concepts/safety-model">
+    How syntax, imports, and tests gate every write.
+  </Card>
+  <Card title="Transform catalog" icon="wand-magic-sparkles" href="/transforms">
+    All ten transforms, with before/after and preconditions.
+  </Card>
+  <Card title="CLI reference" icon="terminal" href="/cli/reference">
+    Every command, flag, and exit code.
+  </Card>
+</CardGroup>

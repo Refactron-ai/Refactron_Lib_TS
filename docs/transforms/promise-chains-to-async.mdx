@@ -1,5 +1,6 @@
 ---
 title: promise_chains_to_async
+icon: js
 description: Convert .then() chains into async/await with named bindings per stage.
 ---
 
@@ -12,7 +13,7 @@ Rewrites `fn(...).then(a => ...).then(b => ...)` chains as `async` functions wit
 
 ## Detector pattern
 
-The detector at `src/analyze/detectors/typescript/promise-chain-detector.ts` walks ts-morph `CallExpression` nodes whose `expression` is a `PropertyAccessExpression` named `then`, climbing the chain to identify the originating call.
+The detector at `src/analyze/detectors/typescript/promise-chains.ts` walks ts-morph `CallExpression` nodes whose `expression` is a `PropertyAccessExpression` named `then`, climbing the chain to identify the originating call.
 
 ## Preconditions
 

@@ -1,5 +1,6 @@
 ---
 title: promise_constructor_to_async
+icon: js
 description: Replace new Promise((resolve) => resolve(value)) with an async function returning the value.
 ---
 
@@ -12,7 +13,7 @@ Detects `new Promise((resolve) => resolve(x))` (and equivalent block-bodied exec
 
 ## Detector pattern
 
-The detector at `src/analyze/detectors/typescript/promise-constructor-detector.ts` walks ts-morph `NewExpression` nodes with `Promise` as the callee, then inspects the executor arrow function body for a single resolve-only path.
+The detector at `src/analyze/detectors/typescript/promise-constructor.ts` walks ts-morph `NewExpression` nodes with `Promise` as the callee, then inspects the executor arrow function body for a single resolve-only path.
 
 ## Preconditions
 

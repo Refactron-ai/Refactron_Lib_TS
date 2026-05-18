@@ -1,5 +1,6 @@
 ---
 title: CLI Reference
+icon: terminal
 description: Every Refactron command, flag, and exit code.
 ---
 
@@ -16,7 +17,7 @@ The verbs in this reference work in both modes unless noted otherwise.
 refactron analyze [target] [flags]
 ```
 
-Read-only scan. Detects transform patterns across the project, prints findings, creates a session under `.refactron/work-sessions/`, and exits. Never mutates anything.
+Read-only scan. Detects transform patterns across the project, prints a findings report — one bordered box per file plus TRANSFORMS / BY TRANSFORM / SUMMARY tables — and exits. Never mutates anything.
 
 | Flag | Type | Default | Description |
 |---|---|---|---|
@@ -38,7 +39,7 @@ refactron analyze . --fail-on high   # CI gate
 ```
 </CodeGroup>
 
-**Exit codes:** `0` clean; `1` `--fail-on` matched; `2` flag parse error.
+**Exit codes:** `0` clean; `1` `--fail-on` matched; `2` flag parse or config error.
 
 ---
 
@@ -48,7 +49,7 @@ refactron analyze . --fail-on high   # CI gate
 refactron run [target] [flags]
 ```
 
-Plan + verify + (optionally) apply transforms. Without `--apply`, runs as a dry-run and prints unified diffs.
+Plan + verify + (optionally) apply transforms. Without `--apply`, runs as a dry-run and prints a bordered diff box per file. With `--apply`, the three gates run with live progress — gate-by-gate, falling back to per-file verification when the batch fails — and only the files that pass are written atomically.
 
 | Flag | Type | Default | Description |
 |---|---|---|---|
@@ -86,13 +87,15 @@ refactron run src/auth/ --apply                # scoped to a directory
 refactron document [target] [flags]
 ```
 
-Reads `.refactron/last-apply.json` (the snapshot from the most recent `run --apply`), generates docstrings + a CHANGELOG entry via the configured LLM provider, and either prints (`--dry-run`, default) or writes (`--apply`).
+Reads `.refactron/last-apply.json` (the snapshot from the most recent `run --apply`) and, via the configured LLM provider, generates **docstrings**, **inline comments**, a **CHANGELOG entry**, and a **modernization report** under `docs/refactron/`. It either prints the result (dry-run, the default) or writes it (`--apply`). After an `--apply`, every documented file is re-checked for syntax; a file that fails is rolled back on its own.
 
 This is the only command that touches an LLM, and it operates **only on already-verified diffs** — the worst-case is a wrong docstring, never broken code.
 
 | Flag | Type | Default | Description |
 |---|---|---|---|
-| `--apply` | bool | false | Insert generated docstrings into source files; append CHANGELOG.md. |
+| `--apply` | bool | false | Write docstrings + inline comments into source files, append `CHANGELOG.md`, and emit the modernization report. |
+| `--no-comments` | bool | false | Skip inline-comment generation (docstrings + CHANGELOG + report only). |
+| `--no-report` | bool | false | Skip the modernization report under `docs/refactron/`. |
 | `--no-cache` | bool | false | Bypass the prompt/response cache under `.refactron/cache/llm/`. |
 | `--json` | bool | false | Emit the `DocPatch` as JSON. |
 | `--provider=<name>` | `backend \| ollama \| openai \| anthropic \| groq` | `backend` | Override `.refactronrc.json`'s `documentation.provider`. |
@@ -111,7 +114,7 @@ refactron document --provider=ollama --model=qwen2.5-coder:7b --apply
 ```
 </CodeGroup>
 
-**Exit codes:** `0` success (dry-run or apply); `7` not authenticated; `8` no `.refactron/last-apply.json` snapshot — run `run --apply` first; `9` provider configuration error (missing API key, factory threw); `10` flag parse error or internal error.
+**Exit codes:** `0` success (dry-run or apply); `7` not authenticated; `8` no `.refactron/last-apply.json` snapshot — run `run --apply` first; `9` provider configuration error (missing API key, factory threw); `10` flag parse error or internal error; `11` partial success — every documented file failed the post-apply syntax re-check and was rolled back.
 
 ---
 
@@ -202,12 +205,32 @@ REPL only.
 ## `rollback`
 
 ```bash
-❯ rollback
+refactron rollback [target] [flags]
 ```
 
-Print rollback guidance — Refactron's atomic batch writes don't keep an in-CLI undo log; use `git checkout` to restore. The command exists as a discoverable hint surface.
+Undo the most recent `run --apply` or `document --apply` operation. Refactron journals every applied operation under `.refactron/journal/`; `rollback` reverts the newest entry (LIFO) — restoring changed files to their pre-operation content and deleting files the operation created.
 
-REPL only.
+It is **drift-safe**: if a file has been edited since the operation was applied, `rollback` refuses rather than discard your work — re-run with `--force` to override.
+
+| Flag | Type | Default | Description |
+|---|---|---|---|
+| `--all` | bool | false | Revert every journalled operation, newest-first — not just the last one. |
+| `--force` | bool | false | Roll back even when a target file has drifted since it was applied. |
+| `--dry-run` | bool | false | Print what would be reverted without writing anything. |
+
+<CodeGroup>
+```bash one-shot
+refactron rollback                    # undo the last run / document --apply
+refactron rollback --dry-run          # preview the revert
+refactron rollback --all              # unwind every journalled operation
+```
+
+```bash REPL
+❯ rollback
+```
+</CodeGroup>
+
+**Exit codes:** `0` reverted (or nothing to roll back, or `--dry-run`); `1` blocked by drift without `--force`, or bad flags; `2` internal error during revert.
 
 ---
 
