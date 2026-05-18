@@ -53,6 +53,7 @@ Refactron does the opposite. The engine is deterministic; the LLM is confined to
 ## How a refactor flows
 
 ```mermaid
+%%{init: {'flowchart': {'nodeSpacing': 65, 'rankSpacing': 90, 'padding': 16}, 'themeVariables': {'fontSize': '20px'}}}%%
 flowchart LR
   A([analyze]) --> B([run --dry-run])
   B --> C([run --apply])
