@@ -53,20 +53,15 @@ Refactron does the opposite. The engine is deterministic; the LLM is confined to
 ## How a refactor flows
 
 ```mermaid
-flowchart TD
-  A([analyze]) -->|scan for legacy patterns| B([run --dry-run])
-  B -->|preview the diff — no write| C([run --apply])
-  C --> G1{Gate 1<br/>syntax}
-  G1 -->|pass| G2{Gate 2<br/>imports}
-  G2 -->|pass| G3{Gate 3<br/>tests}
-  G1 -->|fail| R[Rejected<br/>tree untouched]
-  G2 -->|fail| R
-  G3 -->|fail| R
-  G3 -->|pass| W[Atomic batch write]
+flowchart LR
+  A([analyze]) --> B([run --dry-run])
+  B --> C([run --apply])
+  C --> V{"3 gates:<br/>syntax · imports · tests"}
+  V -->|pass| W["Atomic batch write"]
+  V -->|fail| R["Rejected —<br/>tree untouched"]
   W --> D([document --apply])
-  D -->|docstrings · comments · CHANGELOG · report| E([done])
-  W -.->|drift-safe LIFO undo| RB([rollback])
-  D -.-> RB
+  D --> E([done])
+  W -.->|drift-safe undo| RB([rollback])
 ```
 
 Full breakdown of the safety model: [The 3-Gate Safety Model](/concepts/safety-model).
