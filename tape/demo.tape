@@ -34,11 +34,7 @@ Sleep 5s
 
 Type "run --apply ."
 Enter
-Sleep 6s
-
-Type "document --apply"
-Enter
-Sleep 4s
+Sleep 11s
 
 Type "exit"
 Enter
