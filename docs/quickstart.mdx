@@ -26,11 +26,27 @@ refactron --version       # → 0.2.2
 
 ## 2 — Authenticate (one-time)
 
+Refactron needs an account to run `analyze`, `run`, and `document`.
+
 ```bash
 refactron login
 ```
 
-Opens a browser-based OAuth device flow. In CI, set `REFACTRON_TOKEN` instead.
+This opens a browser-based **OAuth device flow** — approve the request and the CLI stores your credentials in `~/.refactron/credentials.json`. You won't need to log in again on this machine.
+
+**For CI or headless environments**, skip the browser: create a long-lived API key from your Refactron dashboard and expose it as the `REFACTRON_TOKEN` environment variable.
+
+{/* TODO: add docs/assets/quickstart-api-keys.png — the API Keys dashboard screenshot */}
+
+<Frame caption="Refactron dashboard — create an API key for CI / headless use">
+  <img src="/assets/quickstart-api-keys.png" alt="Creating an API key in the Refactron dashboard" />
+</Frame>
+
+```bash
+export REFACTRON_TOKEN=<your-api-key>
+```
+
+`analyze`, `run`, and `document` all read `REFACTRON_TOKEN` when it is set, so no `refactron login` step is needed in CI.
 
 ---
 
