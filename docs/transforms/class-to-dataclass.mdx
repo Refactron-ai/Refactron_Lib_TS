@@ -1,6 +1,5 @@
 ---
 title: class_to_dataclass
-icon: python
 description: Promote pure data-holder classes (trivial __init__) to @dataclass.
 ---
 
@@ -13,7 +12,7 @@ Detects classes whose `__init__` method only does `self.<name> = <name>` assignm
 
 ## Detector pattern
 
-The detector at `src/analyze/detectors/python/class-init-only.ts` walks `ClassDef` nodes, accepts only those with a single `__init__` method, and verifies every body statement is an `Assign(targets=[Attribute(self, name)], value=Name(name))` shape.
+The detector at `src/analyze/detectors/python/dataclass-detector.ts` walks `ClassDef` nodes, accepts only those with a single `__init__` method, and verifies every body statement is an `Assign(targets=[Attribute(self, name)], value=Name(name))` shape.
 
 ## Preconditions
 

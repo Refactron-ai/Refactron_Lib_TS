@@ -69,7 +69,7 @@ The most expensive gate, and the only one that runs **your** code.
 3. **Run the baseline first** — execute the runner against the **unchanged** copy. If the baseline already fails, abort with `your tests don't pass before refactoring` rather than blame the refactor for pre-existing failures.
 4. **Run the mutated** — same runner, same temp tree, with the proposed changes in place. Any non-zero exit rejects the plan.
 
-**Typical wall-clock:** dominated by the user's own suite size. The test-gate timeout scales with the change's blast radius — 45s for a standard refactor, 120s for a critical one.
+**Typical wall-clock:** dominated by the user's own suite size. The default per-gate timeout is 45s; raise via `verification.timeout_seconds` for slower suites.
 
 ---
 

@@ -1,6 +1,5 @@
 ---
 title: .refactronrc.json
-icon: file-code
 description: Project-level configuration file. CLI flags always override values here.
 ---
 
@@ -20,13 +19,9 @@ Run `refactron init` to scaffold a starter file.
 | `documentation.provider` | `"backend" \| "ollama" \| "openai" \| "anthropic" \| "groq"` | `"backend"` | LLM provider for the `document` command. `"backend"` uses your stored Refactron credentials (Pro plan); the others are opt-in. |
 | `documentation.model` | `string` | `"llama-3.3-70b-versatile"` | Model name passed to the provider. |
 | `documentation.endpoint` | `string \| null` | `null` | Override the provider URL (e.g. self-hosted Ollama or a custom OpenAI-compatible gateway). |
-| `documentation.tokenBudget` | `integer (256-32000)` | `4000` | Completion-token cap per LLM call. Also bounds docstring batch size, so the model's JSON reply never overruns it. |
+| `documentation.tokenBudget` | `integer (256-32000)` | `4000` | Max tokens per LLM call. Lower = cheaper, more truncation. |
 | `documentation.redactPatterns` | `string[]` | `[]` | Extra regex patterns to strip from prompts before they leave your machine. The built-in set already covers AWS keys, OpenAI / Anthropic / GitHub tokens, JWTs, and generic `.env` style assignments. |
 | `documentation.cache` | `boolean` | `true` | Cache prompt → response under `.refactron/cache/llm/`. Bypass once with `--no-cache`. |
-| `documentation.maxConcurrency` | `integer (1-32)` | `4` | Maximum LLM requests in flight at once. |
-| `documentation.requestsPerMinute` | `integer (1-10000)` | `25` | Soft client-side cap on requests started per minute — paces bursts so they don't trip provider 429s. |
-| `documentation.tokensPerMinute` | `integer (500-10000000)` | `200000` | Soft client-side cap on (estimated) tokens started per minute — the binding limit on most free tiers. |
-| `documentation.batchTokenBudget` | `integer (500-64000)` | `4000` | Source-token budget per batched docstring request. Bigger = fewer LLM calls, but each call costs more. |
 
 ## Example
 
@@ -45,11 +40,7 @@ Run `refactron init` to scaffold a starter file.
     "endpoint": null,
     "tokenBudget": 4000,
     "redactPatterns": [],
-    "cache": true,
-    "maxConcurrency": 4,
-    "requestsPerMinute": 25,
-    "tokensPerMinute": 200000,
-    "batchTokenBudget": 4000
+    "cache": true
   }
 }
 ```
@@ -87,3 +78,7 @@ The first match wins. We recommend `.refactronrc.json` for editor JSON-schema su
 ## Validation
 
 Configs are validated against a JSON Schema 7 schema with [Ajv 8](https://ajv.js.org/). Unknown fields, wrong types, and out-of-range values cause the CLI to exit with code `2` and a clear error message — no silent ignoring.
+
+<Note>
+The legacy `refactron.yaml` ([Configuration overview](/configuration)) is still parsed for backwards compatibility but new keys land here in `.refactronrc.json`. The two files are merged when both exist; flags override either.
+</Note>

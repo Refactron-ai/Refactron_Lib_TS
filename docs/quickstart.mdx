@@ -1,123 +1,148 @@
 ---
 title: Quickstart
-icon: rocket
-description: Install Refactron and run your first verified refactor in 60 seconds.
+description: Install Refactron and run your first analysis in under 2 minutes.
 ---
 
-## 1 — Install
+## Prerequisites
 
-```bash
-npm install -g refactron@0.2.2
-```
-
-Or via PyPI (Python wrapper around the npm package — Node.js 18+ still required):
-
-```bash
-pip install refactron
-```
-
-Confirm:
-
-```bash
-refactron --version       # → 0.2.2
-```
+- **Node.js 18+**
+- **Git** (optional but recommended — enables temporal analysis and blast radius)
+- **Python 3.8+** (required for Python projects)
 
 ---
 
-## 2 — Authenticate (one-time)
+## Installation
 
-Refactron needs an account to run `analyze`, `run`, and `document`.
-
-```bash
-refactron login
+<CodeGroup>
+```bash npm
+npm install -g refactron
 ```
 
-This opens a browser-based **OAuth device flow** — approve the request and the CLI stores your credentials in `~/.refactron/credentials.json`. You won't need to log in again on this machine.
+```bash npx (no install)
+npx refactron
+```
+</CodeGroup>
 
-**For CI or headless environments**, skip the browser: open your Refactron dashboard, go to **API Keys**, and click **Create Key**. The key authenticates the CLI the same way a login session does.
-
-<Frame caption="The Refactron dashboard — API Keys → Create Key">
-  <img src="/assets/quickstart-api-keys.png" alt="The API Keys page in the Refactron dashboard" />
-</Frame>
-
-Expose the generated key as the `REFACTRON_TOKEN` environment variable:
+Verify the installation:
 
 ```bash
-export REFACTRON_TOKEN=refactron_live_...
+refactron --version
+# 0.1.0-beta.2
 ```
-
-`analyze`, `run`, and `document` all read `REFACTRON_TOKEN` when it is set, so no `refactron login` step is needed in CI.
 
 ---
 
-## 3 — Analyze
+## First Run
 
-From your project root:
+Navigate to any project directory and run:
 
 ```bash
-refactron analyze .
+cd your-project
+refactron
 ```
 
-Output (sample) — findings render as one bordered box per file, followed by
-summary tables:
-
-```text
-┌─ src/api/users.py ───────────────────────────────────────────────┐
-│ format_to_fstring   line 14   "Hello, %s" % name                 │
-│ format_to_fstring   line 22   "User {} not found".format(uid)    │
-└───────────────────────────────────────────────────────────────────┘
-
-SUMMARY
-┌────────────────┬──────────────────────────────────────────────────┐
-│ Files affected │ 1                                                │
-│ By severity    │ 0 critical · 2 high · 0 medium · 0 low            │
-│ Auto-fixable   │ 2 candidate(s) — `run --dry-run` shows real diff  │
-└────────────────┴──────────────────────────────────────────────────┘
-```
-
-`analyze` reports every finding as an auto-fix *candidate* — it never runs a
-transform, so `run --dry-run` is the source of truth for what actually changes.
+If you are not logged in, Refactron will open the authentication flow in your browser. After login, the REPL starts.
 
 ---
 
-## 4 — Preview the refactor
+## Analyze Your Project
 
-```bash
-refactron run --dry-run .
+From the Refactron REPL prompt (`❯`), type:
+
+```
+❯ analyze .
 ```
 
-Shows the unified diff per file. Nothing has been written.
+Or analyze a specific directory:
+
+```
+❯ analyze src/
+```
+
+Refactron will:
+1. Detect your language (Python or TypeScript)
+2. Run 7 analyzers in parallel
+3. Build import and call graphs
+4. Score every issue with a blast radius
+5. **Automatically open the interactive issue browser**
 
 ---
 
-## 5 — Apply with verification
+## The Issue Browser
 
-```bash
-refactron run --apply .
+After analysis, you land in the interactive browser:
+
+```
+ Issues  session abc123 · 42 issues · 18 fixable
+────────────────────────────────────────────────────
+     #   SEV   MESSAGE                              FILE:LINE
+▶    1   CRIT  SQL injection via string format      db/query.py:47    ·
+     2   HIGH  Cyclomatic complexity 14 > 10        api/views.py:123  ·
+     3   HIGH  Unused import: os                    utils/file.py:1   ·
+     4   MED   Missing return type annotation       core/auth.py:88   ·
+────────────────────────────────────────────────────
+Msg:  SQL injection via string format
+Fix:  Use parameterised queries instead of f-string formatting
+File: db/query.py:47  blast:high  [fixable]
+────────────────────────────────────────────────────
+↑↓ · a fix · A all · d diff · v verify · / filter · q quit
 ```
 
-The 3 gates run in order: syntax → imports → tests. If any gate fails, your tree is **untouched** — there is nothing to roll back. If all gates pass, the refactor is committed atomically (every file or none).
+### Key Actions
+
+| Key | Action |
+|-----|--------|
+| `↑` / `↓` or `j` / `k` | Navigate issues |
+| `d` | Preview diff (dry-run, nothing written) |
+| `a` | Fix selected issue (atomic write) |
+| `A` | Fix **all** fixable issues in one pass |
+| `v` | Verify a fixed issue's file |
+| `/` | Filter by message, file, severity, or type |
+| `g` / `G` | Jump to first / last issue |
+| `q` | Quit browser, return to REPL |
 
 ---
 
-## 6 — Document the refactor (optional)
+## Your First Fix
 
-```bash
-refactron document --apply
-```
+1. Navigate to a fixable issue (marked `·` on the right)
+2. Press `d` to preview the diff — nothing is written yet
+3. Press `Esc` to dismiss the diff
+4. Press `a` to apply the fix — the issue is now marked `✔`
+5. Press `v` to verify the fix is safe
 
-Runs on the snapshot from the last `run --apply` and writes **docstrings**, **inline comments**, a **CHANGELOG entry**, and a **modernization report** under `docs/refactron/`.
-
-This is the one step that uses an LLM, and it runs **only on the already-verified diff** — the worst case is a wrong sentence, never broken code. It needs an LLM provider configured (managed backend, Ollama, OpenAI, Anthropic, or Groq) — see [`.refactronrc.json` → documentation](/configuration/refactronrc#documentation).
-
-<Note>
-Made a change you want to undo? `refactron rollback` reverts the last `run --apply` or `document --apply` — a drift-safe LIFO undo. See the [CLI reference](/cli/reference#rollback).
-</Note>
+<Tip>
+Press `A` to fix all fixable issues in one pass. Refactron applies each fix atomically with a backup, so you can always `rollback`.
+</Tip>
 
 ---
 
-## Next steps
+## Workflow Summary
 
-- Scope a refactor to specific transforms: see the [transform catalog](/transforms)
-- Configure thresholds + exclusions: see [`.refactronrc.json`](/configuration/refactronrc)
-- Understand the guarantees: [The 3-Gate Safety Model](/concepts/safety-model)
+```
+analyze .          → scan + open browser
+  a / A            → fix one or all issues
+  v                → verify fixed files
+  q                → return to REPL
+
+autofix . --verify → fix + verify in one command
+status             → review session summary
+rollback           → undo all fixes
+diff               → show unified diff of fixes
+```
+
+---
+
+## Authentication
+
+Refactron uses OAuth 2.0 Device Authorization. The first time you run it:
+
+1. Your browser opens automatically to the approval page
+2. You approve access — no password is ever stored
+3. Credentials are saved to `~/.refactron/credentials.json`
+
+```
+❯ auth     # check login status
+❯ logout   # remove credentials
+❯ login    # re-authenticate
+```
