@@ -34,16 +34,16 @@ refactron login
 
 This opens a browser-based **OAuth device flow** — approve the request and the CLI stores your credentials in `~/.refactron/credentials.json`. You won't need to log in again on this machine.
 
-**For CI or headless environments**, skip the browser: create a long-lived API key from your Refactron dashboard and expose it as the `REFACTRON_TOKEN` environment variable.
+**For CI or headless environments**, skip the browser: open your Refactron dashboard, go to **API Keys**, and click **Create Key**. The key authenticates the CLI the same way a login session does.
 
-{/* TODO: add docs/assets/quickstart-api-keys.png — the API Keys dashboard screenshot */}
-
-<Frame caption="Refactron dashboard — create an API key for CI / headless use">
-  <img src="/assets/quickstart-api-keys.png" alt="Creating an API key in the Refactron dashboard" />
+<Frame caption="The Refactron dashboard — API Keys → Create Key">
+  <img src="/assets/quickstart-api-keys.png" alt="The API Keys page in the Refactron dashboard" />
 </Frame>
 
+Expose the generated key as the `REFACTRON_TOKEN` environment variable:
+
 ```bash
-export REFACTRON_TOKEN=<your-api-key>
+export REFACTRON_TOKEN=refactron_live_...
 ```
 
 `analyze`, `run`, and `document` all read `REFACTRON_TOKEN` when it is set, so no `refactron login` step is needed in CI.
