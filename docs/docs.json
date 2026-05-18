@@ -39,8 +39,8 @@
   "navigation": {
     "groups": [
       {
-        "group": "Get Started",
-        "pages": ["introduction", "quickstart"]
+        "group": "Getting Started",
+        "pages": ["overview", "quickstart"]
       },
       {
         "group": "Concepts",
