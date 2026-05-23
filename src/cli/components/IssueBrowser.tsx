@@ -26,6 +26,7 @@ import path from 'node:path';
 import { theme } from '../../ui/theme.js';
 import { RefactronAnalyzer } from '../../analyze/engine.js';
 import { RefactronRefactorer } from '../../transform/engine.js';
+import { loadRefactronConfig, resolvePythonVersion } from '../config-loader.js';
 import { RefactronVerifier } from '../../verify/engine.js';
 import { writeBatchAtomic } from '../../verify/atomic-batch-writer.js';
 import type { CodeIssue, Severity } from '../../core/models.js';
@@ -137,7 +138,14 @@ export function IssueBrowser({
         ...report,
         findings: report.findings.filter((f) => files.has(f.file)),
       };
-      const refactorer = new RefactronRefactorer({ projectRoot });
+      // Resolve the project's Python version so version-gated transforms
+      // (PEP 585 / 604, lru_cache → cache, ...) refuse to rewrite under an
+      // older interpreter rather than silently emit code that won't parse.
+      const rc = await loadRefactronConfig(projectRoot).catch(() => null);
+      const pythonVersion = rc
+        ? await resolvePythonVersion(projectRoot, rc)
+        : await resolvePythonVersion(projectRoot, { pythonVersion: null });
+      const refactorer = new RefactronRefactorer({ projectRoot, pythonVersion });
       return refactorer.plan(filteredReport, transforms);
     },
     [projectRoot],

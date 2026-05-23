@@ -17,6 +17,8 @@ export const MESSAGE_BY_TRANSFORM: Record<TransformId, string> = {
   implicit_any: 'parameter can be typed from call-site inference',
   commonjs_to_esm: 'CommonJS require/exports can be converted to ESM',
   promise_constructor_to_async: 'new Promise constructor can be expressed as an async function',
+  super_no_args: 'super(Class, self) can use the implicit Python 3 zero-arg super()',
+  lru_cache_to_cache: '@lru_cache(maxsize=None) can use the simpler @functools.cache',
 };
 
 export const SUGGESTION_BY_TRANSFORM: Record<TransformId, string> = {
@@ -34,6 +36,9 @@ export const SUGGESTION_BY_TRANSFORM: Record<TransformId, string> = {
   commonjs_to_esm: 'Replace `require()` with `import` and `module.exports` with `export`.',
   promise_constructor_to_async:
     'Rewrite as a top-level async function returning the resolved value.',
+  super_no_args: 'Replace `super(ClassName, self).method(...)` with `super().method(...)`.',
+  lru_cache_to_cache:
+    'On Python ≥ 3.9, prefer `@functools.cache` over `@functools.lru_cache(maxsize=None)`.',
 };
 
 function confidenceToSeverity(c: Confidence): Severity {

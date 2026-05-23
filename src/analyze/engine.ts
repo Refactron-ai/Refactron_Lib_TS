@@ -18,6 +18,9 @@ import './detectors/typescript/promise-chains.js';
 import './detectors/typescript/implicit-any.js';
 import './detectors/typescript/commonjs.js';
 import './detectors/typescript/promise-constructor.js';
+// v0.3.0 additions
+import './detectors/python/super-with-args.js';
+import './detectors/python/lru-cache-maxsize-none.js';
 
 export interface AnalyzeOptions {
   confidence?: Confidence;

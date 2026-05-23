@@ -13,6 +13,11 @@ export interface CrossFileContext {
   imports: Record<string, string[]>;
   // best-effort tag for files under tests/ or matching test_*.py / *_test.py
   testFiles: string[];
+  /** Resolved minimum Python version (e.g. "3.10") for version-gated
+   *  transforms. `null` means "unknown" — gated sidecars MUST refuse rather
+   *  than guess. Resolved once per run from `.refactronrc` →
+   *  `pyproject.toml` → null. */
+  pythonVersion?: string | null;
 }
 
 export interface TransformContext {

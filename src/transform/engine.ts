@@ -27,6 +27,9 @@ import { impl as t7 } from './transforms/typescript/promise-chains.js';
 import { impl as t8 } from './transforms/typescript/implicit-any.js';
 import { impl as t9 } from './transforms/typescript/commonjs.js';
 import { impl as t10 } from './transforms/typescript/promise-constructor.js';
+// v0.3.0 additions
+import { impl as t11 } from './transforms/python/super-no-args.js';
+import { impl as t12 } from './transforms/python/lru-cache-to-cache.js';
 
 const TRANSFORM_ORDER: TransformId[] = [
   'callback_to_async_await',
@@ -39,6 +42,9 @@ const TRANSFORM_ORDER: TransformId[] = [
   'implicit_any',
   'commonjs_to_esm',
   'promise_constructor_to_async',
+  // v0.3.0 additions — appended so existing transforms keep their slot order.
+  'super_no_args',
+  'lru_cache_to_cache',
 ];
 
 const REGISTRY: Record<TransformId, TransformImpl> = {
@@ -52,6 +58,8 @@ const REGISTRY: Record<TransformId, TransformImpl> = {
   implicit_any: t8,
   commonjs_to_esm: t9,
   promise_constructor_to_async: t10,
+  super_no_args: t11,
+  lru_cache_to_cache: t12,
 };
 
 function sha256(s: string): string {
@@ -60,6 +68,12 @@ function sha256(s: string): string {
 
 export interface RefactronRefactorerOptions {
   projectRoot: string;
+  /** Resolved minimum Python version for the project, surfaced to
+   *  version-gated Python sidecars (PEP 585, PEP 604, lru_cache → cache,
+   *  datetime.UTC, …). When `undefined`, the refactorer leaves the value
+   *  unset and gated sidecars refuse to rewrite. Resolved upstream by
+   *  `resolvePythonVersion()` in `src/cli/config-loader.ts`. */
+  pythonVersion?: string | null;
 }
 
 export class RefactronRefactorer implements Refactorer {
@@ -81,8 +95,10 @@ export class RefactronRefactorer implements Refactorer {
 
     // Build cross-file context once when the analyzer gave us an ExtendedAnalysisReport.
     // Transforms that don't need cross-file info simply ignore the field.
+    const crossFileOpts: { pythonVersion?: string | null } =
+      this.opts.pythonVersion !== undefined ? { pythonVersion: this.opts.pythonVersion } : {};
     const crossFile: CrossFileContext | undefined = isExtended(report)
-      ? await buildCrossFileContext(report, this.opts.projectRoot)
+      ? await buildCrossFileContext(report, this.opts.projectRoot, crossFileOpts)
       : undefined;
 
     // Per-file work is independent: cross-file context is precomputed and

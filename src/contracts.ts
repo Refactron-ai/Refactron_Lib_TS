@@ -10,7 +10,12 @@ export type TransformId =
   | 'promise_chains_to_async'
   | 'implicit_any'
   | 'commonjs_to_esm'
-  | 'promise_constructor_to_async';
+  | 'promise_constructor_to_async'
+  // v0.3.0 — added transform IDs only (additive, semver-minor under the v2.0
+  // locked-surface policy: new union members are non-breaking for consumers
+  // that exhaustively switch).
+  | 'super_no_args'
+  | 'lru_cache_to_cache';
 
 export interface Finding {
   id: string;
