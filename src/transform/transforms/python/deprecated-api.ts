@@ -1,36 +1,29 @@
 import { fileURLToPath } from 'node:url';
-import * as fs from 'node:fs/promises';
-import * as os from 'node:os';
 import * as path from 'node:path';
 import type { TransformContext, TransformResult, TransformImpl } from '../../types.js';
-import { runPythonTransform } from '../../runner.js';
+import { runPythonTransformWithSource } from '../../runner.js';
 
 const SIDECAR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '_py/deprecated_api.py');
 
 export async function transform(ctx: TransformContext): Promise<TransformResult> {
-  let crossFilePath: string | undefined;
-  let cleanupDir: string | undefined;
-  if (ctx.crossFile) {
-    cleanupDir = await fs.mkdtemp(path.join(os.tmpdir(), 'refactron-xf-dep-'));
-    crossFilePath = path.join(cleanupDir, 'cross-file.json');
-    await fs.writeFile(crossFilePath, JSON.stringify(ctx.crossFile));
-  }
-  try {
-    const opts = crossFilePath ? { crossFilePath } : {};
-    const r = await runPythonTransform(SIDECAR, ctx.absPath, opts);
-    if (!r.ok) {
-      return {
-        newContent: null,
-        preconditions: [{ id: 'sidecar-error', satisfied: false, reason: r.error }],
-      };
-    }
+  // Pass `ctx.source` (not `ctx.absPath`) so prior in-memory transforms
+  // compose — see runner.runPythonTransformWithSource for the data-loss bug.
+  // The runner handles cross-file JSON serialization (rewriting projectRoot
+  // so the sidecar's relpath() derivation still resolves to ctx.relPath).
+  const r = await runPythonTransformWithSource(SIDECAR, ctx.source, {
+    relPath: ctx.relPath,
+    ...(ctx.crossFile ? { crossFile: ctx.crossFile } : {}),
+  });
+  if (!r.ok) {
     return {
-      newContent: r.newContent === '' ? null : r.newContent,
-      preconditions: r.preconditions,
+      newContent: null,
+      preconditions: [{ id: 'sidecar-error', satisfied: false, reason: r.error }],
     };
-  } finally {
-    if (cleanupDir) await fs.rm(cleanupDir, { recursive: true, force: true });
   }
+  return {
+    newContent: r.newContent === '' ? null : r.newContent,
+    preconditions: r.preconditions,
+  };
 }
 
 export const impl: TransformImpl = {

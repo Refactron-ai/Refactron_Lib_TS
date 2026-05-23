@@ -8,7 +8,7 @@ import type { Confidence } from '../analyze/detectors/types.js';
 import type { TransformId } from '../contracts.js';
 import { requireAuth } from './auth-gate.js';
 import { loadRefactronConfig, resolvePythonVersion } from './config-loader.js';
-import { persistLastApply } from './last-apply.js';
+import { persistLastApply, collapseChangesByPath } from './last-apply.js';
 import { appendJournalEntry } from './journal.js';
 import { scopePlanChanges } from './runner.js';
 import { formatPlanAsDryRun } from './format-plan.js';
@@ -313,21 +313,20 @@ export async function runRunCommand(argv: string[]): Promise<number> {
   );
 
   if (appliedChanges.length > 0) {
+    // Collapse to one record per path — the engine emits one FileChange per
+    // touching transform, but persistence and rollback only need one record
+    // per file (rollback restores `oldContent`, not a per-transform replay).
+    const perPath = collapseChangesByPath(appliedChanges, originalsBeforeWrite);
     await persistLastApply({
       projectRoot,
       verifiedAt: new Date().toISOString(),
-      changes: appliedChanges.map((c) => ({
-        path: c.path,
-        oldContent: originalsBeforeWrite.get(c.path) ?? '',
-        newContent: c.newContent,
-        transformId: c.transformId,
-      })),
+      changes: perPath,
     });
     await appendJournalEntry(
       projectRoot,
       'apply',
-      `run --apply — ${appliedChanges.length} file(s)`,
-      appliedChanges.map((c) => ({
+      `run --apply — ${perPath.length} file(s)`,
+      perPath.map((c) => ({
         path: c.path,
         before: originalsBeforeWrite.get(c.path) ?? null,
         after: c.newContent,

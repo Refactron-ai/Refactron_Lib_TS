@@ -5,8 +5,10 @@ import * as path from 'node:path';
 import {
   persistLastApply,
   loadLastApply,
+  collapseChangesByPath,
   type LastApplySnapshot,
 } from '../../../src/cli/last-apply.js';
+import type { FileChange } from '../../../src/contracts.js';
 
 describe('persistLastApply / loadLastApply', () => {
   let tmp: string;
@@ -41,5 +43,23 @@ describe('persistLastApply / loadLastApply', () => {
   it('returns null when no snapshot is present', async () => {
     const loaded = await loadLastApply(tmp);
     expect(loaded).toBeNull();
+  });
+});
+
+describe('collapseChangesByPath', () => {
+  it('throws when an applied path has no captured original — refuses to store empty oldContent that would corrupt rollback', () => {
+    const changes: FileChange[] = [
+      {
+        path: '/x/a.py',
+        oldHash: 'h',
+        newContent: 'after\n',
+        transformId: 'super_no_args',
+      },
+    ];
+    // originals deliberately missing the path — simulates a file that
+    // became unreadable between plan and apply.
+    expect(() => collapseChangesByPath(changes, new Map())).toThrow(
+      /cannot record rollback for \/x\/a\.py/,
+    );
   });
 });

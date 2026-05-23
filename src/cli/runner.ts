@@ -9,7 +9,7 @@ import { RefactronRefactorer } from '../transform/engine.js';
 import { runApplyWithVerification } from './apply-orchestrator.js';
 import type { FileChange, TransformId } from '../contracts.js';
 import { findingsToIssues } from './v2-adapters.js';
-import { persistLastApply } from './last-apply.js';
+import { persistLastApply, collapseChangesByPath } from './last-apply.js';
 import { appendJournalEntry } from './journal.js';
 import { loadRefactronConfig, resolvePythonVersion } from './config-loader.js';
 import { TRANSFORM_IDS } from './run-command.js';
@@ -519,21 +519,19 @@ export async function executeCommand(
     if (signal.aborted) return {};
 
     if (appliedChanges.length > 0) {
+      // Collapse multi-transform-per-file FileChanges to one record per path —
+      // see collapseChangesByPath for the rationale.
+      const perPath = collapseChangesByPath(appliedChanges, originalsBeforeWrite);
       await persistLastApply({
         projectRoot: sessionTarget,
         verifiedAt: new Date().toISOString(),
-        changes: appliedChanges.map((c) => ({
-          path: c.path,
-          oldContent: originalsBeforeWrite.get(c.path) ?? '',
-          newContent: c.newContent,
-          transformId: c.transformId,
-        })),
+        changes: perPath,
       });
       await appendJournalEntry(
         sessionTarget,
         'apply',
-        `run --apply — ${appliedChanges.length} file(s)`,
-        appliedChanges.map((c) => ({
+        `run --apply — ${perPath.length} file(s)`,
+        perPath.map((c) => ({
           path: c.path,
           before: originalsBeforeWrite.get(c.path) ?? null,
           after: c.newContent,

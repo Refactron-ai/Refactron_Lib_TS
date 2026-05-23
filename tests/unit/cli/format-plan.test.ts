@@ -57,6 +57,44 @@ describe('formatPlanAsDryRun', () => {
     expect(text).toMatch(/\d+ more lines elided/);
   });
 
+  it('renders the cumulative diff when the engine emits one FileChange per touching transform', async () => {
+    // Pins the engine→formatter contract after the multi-transform fix:
+    // the engine emits one FileChange per transform, each carrying the
+    // cumulative `newContent`. The formatter must render ONE diff per
+    // file, taken from the LAST FileChange (the cumulative composition),
+    // not stack one diff per transform.
+    const plan: RefactorPlan = {
+      changes: [
+        {
+          path: '/p/sample.py',
+          oldHash: 'h',
+          newContent: 'line A\nline B\n', // after transform 1
+          transformId: 'super_no_args',
+        },
+        {
+          path: '/p/sample.py',
+          oldHash: 'h',
+          newContent: 'line A\nline B\nline C\n', // cumulative after transform 2
+          transformId: 'lru_cache_to_cache',
+        },
+      ],
+      preconditions: [],
+    };
+    const originals = new Map([['/p/sample.py', 'orig\n']]);
+    const lines = await formatPlanAsDryRun(plan, originals, { projectRoot: '/p' });
+    const text = lines.map((l) => l.text).join('\n');
+    // Both transforms cited in the CHANGES row.
+    expect(text).toContain('super_no_args');
+    expect(text).toContain('lru_cache_to_cache');
+    // Diff body reflects the cumulative content (all three new lines), NOT
+    // just the intermediate state.
+    expect(text).toContain('line A');
+    expect(text).toContain('line B');
+    expect(text).toContain('line C');
+    // Single file.
+    expect(lines.some((l) => l.text.includes('Files') && /\b1\b/.test(l.text))).toBe(true);
+  });
+
   it('groups multiple transforms on the same file under one header', async () => {
     const plan: RefactorPlan = {
       changes: [

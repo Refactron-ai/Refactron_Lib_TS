@@ -1,9 +1,7 @@
 import { fileURLToPath } from 'node:url';
-import * as fs from 'node:fs/promises';
-import * as os from 'node:os';
 import * as path from 'node:path';
 import type { TransformContext, TransformResult, TransformImpl } from '../../types.js';
-import { runPythonTransform } from '../../runner.js';
+import { runPythonTransformWithSource } from '../../runner.js';
 
 const SIDECAR = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -13,22 +11,15 @@ const SIDECAR = path.resolve(
 /**
  * Wrapper around the LibCST sidecar at `_py/lru_cache_to_cache.py`.
  *
- * Perf note: this always writes a tiny cross-file JSON (~100 bytes) to a
- * tmpdir even when the caller didn't supply one. The temp-file overhead
- * is sub-millisecond on tmpfs (modern macOS/Linux), and the total per-file
- * wall time is dominated by Python interpreter cold-start (~50–150 ms),
- * so we don't bother special-casing the no-cross-file path. No benchmark
- * has shown this to be a bottleneck.
+ * The sidecar version-gates on `cross_file["pythonVersion"]`, so we always
+ * forward a cross-file payload — using the engine's when present, or a stub
+ * with `pythonVersion: null` so the gate refuses cleanly. The runner handles
+ * the JSON serialization (and rewrites `projectRoot` so the sidecar's
+ * relpath() derivation still resolves to ctx.relPath after the in-memory
+ * source has been parked under a tmpdir).
  */
 export async function transform(ctx: TransformContext): Promise<TransformResult> {
-  // The version gate requires `cross_file["pythonVersion"]` — write a
-  // minimal cross-file JSON whenever the engine gave us one. When it didn't
-  // (e.g. unit tests that synthesize a TransformContext without cross-file),
-  // we still write a stub so the sidecar can read `pythonVersion: null` and
-  // refuse cleanly with `python_version_too_low`.
-  const cleanupDir = await fs.mkdtemp(path.join(os.tmpdir(), 'refactron-xf-lru-'));
-  const crossFilePath = path.join(cleanupDir, 'cross-file.json');
-  const payload = ctx.crossFile ?? {
+  const crossFile = ctx.crossFile ?? {
     projectRoot: '',
     files: {},
     importedBy: {},
@@ -36,22 +27,22 @@ export async function transform(ctx: TransformContext): Promise<TransformResult>
     testFiles: [],
     pythonVersion: null,
   };
-  await fs.writeFile(crossFilePath, JSON.stringify(payload));
-  try {
-    const r = await runPythonTransform(SIDECAR, ctx.absPath, { crossFilePath });
-    if (!r.ok) {
-      return {
-        newContent: null,
-        preconditions: [{ id: 'sidecar-error', satisfied: false, reason: r.error }],
-      };
-    }
+  // Pass `ctx.source` (not `ctx.absPath`) so prior in-memory transforms
+  // compose — see runner.runPythonTransformWithSource for the data-loss bug.
+  const r = await runPythonTransformWithSource(SIDECAR, ctx.source, {
+    relPath: ctx.relPath,
+    crossFile,
+  });
+  if (!r.ok) {
     return {
-      newContent: r.newContent === '' ? null : r.newContent,
-      preconditions: r.preconditions,
+      newContent: null,
+      preconditions: [{ id: 'sidecar-error', satisfied: false, reason: r.error }],
     };
-  } finally {
-    await fs.rm(cleanupDir, { recursive: true, force: true });
   }
+  return {
+    newContent: r.newContent === '' ? null : r.newContent,
+    preconditions: r.preconditions,
+  };
 }
 
 export const impl: TransformImpl = {
