@@ -19,6 +19,8 @@ export const MESSAGE_BY_TRANSFORM: Record<TransformId, string> = {
   promise_constructor_to_async: 'new Promise constructor can be expressed as an async function',
   super_no_args: 'super(Class, self) can use the implicit Python 3 zero-arg super()',
   lru_cache_to_cache: '@lru_cache(maxsize=None) can use the simpler @functools.cache',
+  pep585_generics: 'typing.List/Dict/... can use the lowercase builtin generic (PEP 585)',
+  pep604_optional_union: 'Optional[X] / Union[A, B] can use the X | None / A | B syntax (PEP 604)',
 };
 
 export const SUGGESTION_BY_TRANSFORM: Record<TransformId, string> = {
@@ -39,6 +41,10 @@ export const SUGGESTION_BY_TRANSFORM: Record<TransformId, string> = {
   super_no_args: 'Replace `super(ClassName, self).method(...)` with `super().method(...)`.',
   lru_cache_to_cache:
     'On Python ≥ 3.9, prefer `@functools.cache` over `@functools.lru_cache(maxsize=None)`.',
+  pep585_generics:
+    'On Python ≥ 3.9 (or with `from __future__ import annotations`), prefer the lowercase builtin generic — e.g. `list[str]` instead of `List[str]`.',
+  pep604_optional_union:
+    'On Python ≥ 3.10 (or with `from __future__ import annotations`), prefer `X | None` over `Optional[X]` and `A | B` over `Union[A, B]`.',
 };
 
 function confidenceToSeverity(c: Confidence): Severity {

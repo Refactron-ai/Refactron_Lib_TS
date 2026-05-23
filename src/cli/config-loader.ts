@@ -63,6 +63,8 @@ const VALID_TRANSFORMS = [
   // v0.3.0 additions
   'super_no_args',
   'lru_cache_to_cache',
+  'pep585_generics',
+  'pep604_optional_union',
 ] as const;
 
 // Default to the Refactron-managed backend so authenticated users get
