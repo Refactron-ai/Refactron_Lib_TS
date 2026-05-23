@@ -14,6 +14,10 @@ export const REMEDIATION_MINUTES_BY_TRANSFORM: Record<TransformId, number> = {
   implicit_any: 2,
   commonjs_to_esm: 2,
   promise_constructor_to_async: 5,
+  // v0.3.0 — both are mechanical one-line edits in the conservative form
+  // the transform emits; cost dominated by the code-review pass.
+  super_no_args: 1,
+  lru_cache_to_cache: 1,
 };
 
 export function totalRemediationMinutes(findings: Finding[]): number {

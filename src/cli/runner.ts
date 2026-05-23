@@ -11,7 +11,8 @@ import type { FileChange, TransformId } from '../contracts.js';
 import { findingsToIssues } from './v2-adapters.js';
 import { persistLastApply } from './last-apply.js';
 import { appendJournalEntry } from './journal.js';
-import { loadRefactronConfig } from './config-loader.js';
+import { loadRefactronConfig, resolvePythonVersion } from './config-loader.js';
+import { TRANSFORM_IDS } from './run-command.js';
 import { formatAnalysisReport } from './format-analysis.js';
 import { formatPlanAsDryRun } from './format-plan.js';
 import { writeRenderedReport, displayReportPath } from './report-file.js';
@@ -389,13 +390,18 @@ export async function executeCommand(
     const sessionTarget = active.analysis.target;
     const apply = flags['apply'] === true;
     const transformsFlag = flags['transforms'];
-    const transforms: TransformId[] =
+    // Explicit --transforms flag (or --transforms=all) takes precedence; the
+    // rc-based fallback is computed AFTER rc is loaded below. Mirrors the
+    // precedence in `src/cli/run-command.ts` (flag > rc > all).
+    const transformsFromFlag: TransformId[] | null =
       typeof transformsFlag === 'string' && transformsFlag !== 'all'
         ? (transformsFlag
             .split(',')
             .map((s) => s.trim())
             .filter(Boolean) as TransformId[])
-        : [];
+        : typeof transformsFlag === 'string' && transformsFlag === 'all'
+          ? [...TRANSFORM_IDS]
+          : null;
 
     // Optional positional target scopes the refactor to a single file or directory
     // beneath the session's project root. `target === '.'` means no scoping.
@@ -422,6 +428,18 @@ export async function executeCommand(
     // Honor .refactronrc.json exclude/confidence so the REPL behaves the same
     // as the one-shot CLI when an .refactronrc.json sits alongside the project.
     const rc = await loadRefactronConfig(sessionTarget).catch(() => null);
+    // Resolve the final transform list. Precedence: explicit flag → rc value
+    // (when not "all") → all. Matches `run-command.ts` ~lines 234-242 so the
+    // REPL and the one-shot CLI behave identically when an .refactronrc.json
+    // sets `transforms: ['super_no_args']`.
+    let transforms: TransformId[];
+    if (transformsFromFlag !== null) {
+      transforms = transformsFromFlag;
+    } else if (rc && !rc.transforms.includes('all') && rc.transforms.length > 0) {
+      transforms = rc.transforms as TransformId[];
+    } else {
+      transforms = [...TRANSFORM_IDS];
+    }
     const planAnalyzerOpts: {
       confidence: 'high' | 'medium' | 'low';
       excludeGlobs?: string[];
@@ -431,7 +449,13 @@ export async function executeCommand(
     const report = await analyzer.analyzeExtended(sessionTarget);
     if (signal.aborted) return {};
 
-    const refactorer = new RefactronRefactorer({ projectRoot: sessionTarget });
+    const pythonVersion = rc
+      ? await resolvePythonVersion(sessionTarget, rc)
+      : await resolvePythonVersion(sessionTarget, { pythonVersion: null });
+    const refactorer = new RefactronRefactorer({
+      projectRoot: sessionTarget,
+      pythonVersion,
+    });
     const plan = await refactorer.plan(report, transforms);
     if (signal.aborted) return {};
 

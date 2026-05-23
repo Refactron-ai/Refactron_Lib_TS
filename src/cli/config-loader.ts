@@ -2,8 +2,17 @@
 // Loads `.refactronrc` configuration via cosmiconfig and validates it against a
 // JSON Schema 7 schema with Ajv 8. Flags always override values from disk.
 import { cosmiconfig } from 'cosmiconfig';
+import * as fs from 'node:fs/promises';
+import * as path from 'node:path';
 import Ajv from 'ajv';
 import type { ValidateFunction } from 'ajv';
+
+/** The set of Python versions the v0.3.0 transforms understand. We deliberately
+ *  stop at `3.13` because anything newer than that has no version-gated
+ *  transform yet — the next time we add a `>= 3.14` transform we extend this
+ *  list and the schema enum in lock-step. */
+export const SUPPORTED_PYTHON_VERSIONS = ['3.8', '3.9', '3.10', '3.11', '3.12', '3.13'] as const;
+export type PythonVersionString = (typeof SUPPORTED_PYTHON_VERSIONS)[number];
 
 export interface DocumentationConfig {
   provider: 'ollama' | 'openai' | 'anthropic' | 'groq' | 'backend';
@@ -31,6 +40,12 @@ export interface RefactronRc {
   confidence: 'high' | 'medium' | 'low';
   dryRun: boolean;
   documentation: DocumentationConfig;
+  /** Minimum Python version the project targets (e.g. "3.9"). Optional.
+   *  When unset, the v2.1 `pythonVersion` resolver auto-detects from
+   *  `pyproject.toml`'s `requires-python` (or `[tool.poetry] python`). When
+   *  neither is set, version-gated transforms default-conservative: they
+   *  refuse to rewrite rather than guess. */
+  pythonVersion: PythonVersionString | null;
 }
 
 const VALID_TRANSFORMS = [
@@ -45,6 +60,9 @@ const VALID_TRANSFORMS = [
   'implicit_any',
   'commonjs_to_esm',
   'promise_constructor_to_async',
+  // v0.3.0 additions
+  'super_no_args',
+  'lru_cache_to_cache',
 ] as const;
 
 // Default to the Refactron-managed backend so authenticated users get
@@ -79,6 +97,7 @@ const DEFAULTS: RefactronRc = {
   confidence: 'high',
   dryRun: true,
   documentation: DOCS_DEFAULT,
+  pythonVersion: null,
 };
 
 const DOCS_SCHEMA = {
@@ -108,6 +127,10 @@ const SCHEMA = {
     confidence: { type: 'string', enum: ['high', 'medium', 'low'] },
     dryRun: { type: 'boolean' },
     documentation: DOCS_SCHEMA,
+    pythonVersion: {
+      type: ['string', 'null'],
+      enum: [...SUPPORTED_PYTHON_VERSIONS, null],
+    },
   },
 };
 
@@ -120,6 +143,127 @@ const AjvCtor = Ajv as unknown as new (opts?: { allErrors?: boolean }) => {
 };
 const ajv = new AjvCtor({ allErrors: true });
 const validate = ajv.compile(SCHEMA);
+
+/** Parse a PEP 440-ish requires-python spec into a minimum (major, minor)
+ *  tuple. Accepts the common Poetry / PEP 621 forms:
+ *
+ *  - `">=3.10"` / `">= 3.10.4"` → (3, 10)
+ *  - `"^3.11"` / `"~3.11"`     → (3, 11)
+ *  - `">=3.9,<4"`              → (3, 9)
+ *  - `"3.12"` (Poetry shorthand) → (3, 12)
+ *
+ *  We deliberately ignore upper bounds: the lowest supported version is the
+ *  one a version-gated transform must honour. Returns `null` when no minimum
+ *  can be recovered. */
+export function parseRequiresPythonMin(spec: string): [number, number] | null {
+  const trimmed = spec.trim();
+  if (!trimmed) return null;
+  // Plain version like "3.10" / "3.10.4" — Poetry shorthand.
+  const plain = trimmed.match(/^(\d+)\.(\d+)(?:\.\d+)?$/);
+  if (plain) return [Number(plain[1]), Number(plain[2])];
+
+  // Walk the comma-separated constraints; pick the highest >= / > / ~ / ^ floor.
+  let best: [number, number] | null = null;
+  for (const raw of trimmed.split(',')) {
+    const part = raw.trim();
+    const m = part.match(/^(>=|>|~=|~|\^)\s*(\d+)\.(\d+)(?:\.\d+)?$/);
+    if (!m) continue;
+    const op = m[1]!;
+    const major = Number(m[2]);
+    let minor = Number(m[3]);
+    // `>3.10` means "strictly greater" — the minimum supported version is
+    // the next minor. (Rare in practice, but we model it conservatively.)
+    if (op === '>') minor = minor + 1;
+    const cand: [number, number] = [major, minor];
+    if (best === null || cand[0] > best[0] || (cand[0] === best[0] && cand[1] > best[1])) {
+      best = cand;
+    }
+  }
+  return best;
+}
+
+/** Render `(3, 10)` as `"3.10"` and round-trip through the
+ *  `SUPPORTED_PYTHON_VERSIONS` enum.
+ *
+ *  Returns:
+ *   - `null` if the tuple is below the oldest supported version
+ *     (we don't claim to model EOL'd CPythons).
+ *   - the exact match when one exists.
+ *   - the HIGHEST supported version when the tuple is newer than anything
+ *     we know about. A project that requires e.g. `>=3.14` also supports
+ *     everything 3.13 supports, so resolving to `"3.13"` is always correct
+ *     for the version-gating use case (we only ever ask "is the project's
+ *     floor >= some N?"). Without this clamp the resolver would return
+ *     `null` on every new CPython release until our enum is bumped, and
+ *     sidecars would silently refuse 3.9-gated transforms on projects
+ *     that obviously support them. */
+function tupleToVersionString(v: [number, number]): PythonVersionString | null {
+  const s = `${v[0]}.${v[1]}`;
+  const versions = SUPPORTED_PYTHON_VERSIONS as readonly string[];
+  if (versions.includes(s)) return s as PythonVersionString;
+  // SUPPORTED_PYTHON_VERSIONS is ordered ascending; last entry is the max.
+  const highest = versions[versions.length - 1]!;
+  const [hiMaj, hiMin] = highest.split('.').map(Number) as [number, number];
+  if (v[0] > hiMaj || (v[0] === hiMaj && v[1] > hiMin)) {
+    return highest as PythonVersionString;
+  }
+  // Below the oldest supported version.
+  return null;
+}
+
+/** Auto-detect the project's minimum Python version from `pyproject.toml`. We
+ *  use a regex sweep rather than a full TOML parser — both PEP 621
+ *  (`[project] requires-python = "..."`) and Poetry
+ *  (`[tool.poetry.dependencies] python = "..."`) are simple enough to read
+ *  this way and it lets us avoid pulling a TOML dep into the runtime bundle.
+ *  Returns `null` when no usable spec is found. */
+export async function detectPythonVersionFromPyproject(
+  projectRoot: string,
+): Promise<PythonVersionString | null> {
+  let content: string;
+  try {
+    content = await fs.readFile(path.join(projectRoot, 'pyproject.toml'), 'utf8');
+  } catch {
+    return null;
+  }
+
+  // PEP 621: top-level `requires-python = "..."` under `[project]`.
+  const pep621 = content.match(/^\s*requires-python\s*=\s*"([^"]+)"/m);
+  if (pep621) {
+    const v = parseRequiresPythonMin(pep621[1]!);
+    if (v) {
+      const s = tupleToVersionString(v);
+      if (s) return s;
+    }
+  }
+
+  // Poetry: `[tool.poetry.dependencies]` → `python = "..."`. We anchor on the
+  // `python = "..."` line because the section header parsing is brittle in a
+  // regex world, but `python` is a reserved Poetry key.
+  const poetry = content.match(/^\s*python\s*=\s*"([^"]+)"/m);
+  if (poetry) {
+    const v = parseRequiresPythonMin(poetry[1]!);
+    if (v) {
+      const s = tupleToVersionString(v);
+      if (s) return s;
+    }
+  }
+
+  return null;
+}
+
+/** Resolve the effective Python version for this run. Order of precedence:
+ *  1. Explicit `pythonVersion` in `.refactronrc` (caller decides).
+ *  2. `pyproject.toml` auto-detection.
+ *  3. `null` — sidecars treat this as "unknown" and refuse version-gated
+ *     transforms (conservative over-skip; over-skip beats under-skip). */
+export async function resolvePythonVersion(
+  projectRoot: string,
+  config: Pick<RefactronRc, 'pythonVersion'>,
+): Promise<PythonVersionString | null> {
+  if (config.pythonVersion) return config.pythonVersion;
+  return detectPythonVersionFromPyproject(projectRoot);
+}
 
 export async function loadRefactronConfig(projectRoot: string): Promise<RefactronRc> {
   const explorer = cosmiconfig('refactron', {

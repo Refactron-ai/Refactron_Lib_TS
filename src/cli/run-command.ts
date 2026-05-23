@@ -7,7 +7,7 @@ import { runApplyWithVerification } from './apply-orchestrator.js';
 import type { Confidence } from '../analyze/detectors/types.js';
 import type { TransformId } from '../contracts.js';
 import { requireAuth } from './auth-gate.js';
-import { loadRefactronConfig } from './config-loader.js';
+import { loadRefactronConfig, resolvePythonVersion } from './config-loader.js';
 import { persistLastApply } from './last-apply.js';
 import { appendJournalEntry } from './journal.js';
 import { scopePlanChanges } from './runner.js';
@@ -48,7 +48,11 @@ async function findProjectRoot(start: string): Promise<string> {
   }
 }
 
-const TRANSFORM_IDS: TransformId[] = [
+// Exported so the REPL `run` command in `runner.ts` can apply the SAME
+// "rc.transforms === ['all'] → expand to every id" semantics as one-shot
+// `refactron run`. Keep this list ordered to mirror the v2 engine's
+// TRANSFORM_ORDER (additive at the end).
+export const TRANSFORM_IDS: TransformId[] = [
   'callback_to_async_await',
   'format_to_fstring',
   'manual_typecheck_to_hints',
@@ -59,6 +63,9 @@ const TRANSFORM_IDS: TransformId[] = [
   'implicit_any',
   'commonjs_to_esm',
   'promise_constructor_to_async',
+  // v0.3.0 additions
+  'super_no_args',
+  'lru_cache_to_cache',
 ];
 const CONFIDENCES: Confidence[] = ['high', 'medium', 'low'];
 
@@ -221,11 +228,13 @@ export async function runRunCommand(argv: string[]): Promise<number> {
   let transforms: TransformId[];
   let testCmd: string | null;
   let excludeGlobs: string[] = [];
+  let pythonVersion: string | null = null;
   try {
     const config = await loadRefactronConfig(projectRoot);
     confidence = flags.confidence ?? config.confidence;
     testCmd = flags.testCmd ?? config.testCmd;
     excludeGlobs = config.exclude;
+    pythonVersion = await resolvePythonVersion(projectRoot, config);
     if (flags.transforms !== null) {
       transforms = flags.transforms;
     } else if (config.transforms.includes('all')) {
@@ -245,7 +254,7 @@ export async function runRunCommand(argv: string[]): Promise<number> {
   const analyzer = new RefactronAnalyzer(analyzerOpts);
   const report = await analyzer.analyzeExtended(projectRoot);
 
-  const refactorer = new RefactronRefactorer({ projectRoot });
+  const refactorer = new RefactronRefactorer({ projectRoot, pythonVersion });
   const plan = await refactorer.plan(report, transforms);
 
   if (scopedPath !== null) {

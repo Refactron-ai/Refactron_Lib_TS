@@ -30,9 +30,17 @@ async function readCapped(absPath: string): Promise<string> {
   }
 }
 
+export interface BuildCrossFileOptions {
+  /** Optional, pre-resolved minimum Python version (e.g. "3.10") — surfaced
+   *  to version-gated Python sidecars. `null` means "unknown"; the sidecar
+   *  treats unknown as "refuse the rewrite". */
+  pythonVersion?: string | null;
+}
+
 export async function buildCrossFileContext(
   report: ExtendedAnalysisReport,
   projectRoot: string,
+  opts: BuildCrossFileOptions = {},
 ): Promise<CrossFileContext> {
   const files: Record<string, string> = {};
   const importedBy: Record<string, string[]> = {};
@@ -74,5 +82,7 @@ export async function buildCrossFileContext(
     if (v) v.sort();
   }
 
-  return { projectRoot, files, importedBy, imports, testFiles };
+  const ctx: CrossFileContext = { projectRoot, files, importedBy, imports, testFiles };
+  if (opts.pythonVersion !== undefined) ctx.pythonVersion = opts.pythonVersion;
+  return ctx;
 }
