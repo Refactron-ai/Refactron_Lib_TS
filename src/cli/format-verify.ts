@@ -4,7 +4,13 @@
 // picks how to realize the color hint.
 
 import * as path from 'node:path';
-import type { GateResult, VerificationResult, RefactorPlan, FileChange } from '../contracts.js';
+import type {
+  GateResult,
+  VerificationResult,
+  RefactorPlan,
+  FileChange,
+  TransformId,
+} from '../contracts.js';
 import { theme } from '../ui/theme.js';
 import { type RenderedLine, toPosix } from './format-types.js';
 
@@ -52,17 +58,31 @@ export function formatVerifySuccess(
   const out: RenderedLine[] = [];
   out.push({ text: '', color: theme.colors.text });
   out.push({ text: '  Atomic write:', color: theme.colors.accent });
+  // Group FileChanges by path — multiple transforms touching one file emit
+  // multiple FileChanges (engine contract since the multi-transform fix), but
+  // the user sees one line per file with every contributing transform cited.
+  const byPath = new Map<string, TransformId[]>();
+  const order: string[] = [];
   for (const c of result.writableChanges) {
-    const rel = toPosix(path.relative(projectRoot, c.path) || c.path);
+    const existing = byPath.get(c.path);
+    if (existing) {
+      if (!existing.includes(c.transformId)) existing.push(c.transformId);
+    } else {
+      byPath.set(c.path, [c.transformId]);
+      order.push(c.path);
+    }
+  }
+  for (const p of order) {
+    const rel = toPosix(path.relative(projectRoot, p) || p);
     const padded = rel.padEnd(48);
     out.push({
-      text: `    ${theme.symbols.pass} ${padded} [${c.transformId}]`,
+      text: `    ${theme.symbols.pass} ${padded} [${byPath.get(p)!.join(', ')}]`,
       color: theme.colors.text,
     });
   }
   out.push({ text: '', color: theme.colors.text });
   out.push({
-    text: `  ${theme.symbols.pass} ${result.writableChanges.length} file(s) refactored and verified.`,
+    text: `  ${theme.symbols.pass} ${order.length} file(s) refactored and verified.`,
     color: theme.colors.success,
   });
   out.push({
@@ -104,7 +124,14 @@ export function findFailedGate(result: VerificationResult): GateName | null {
 
 /** Outcome of verifying one file's change on its own (per-file fallback). */
 export interface PerFileOutcome {
+  /** Cumulative FileChange for the file (last per path — holds the on-disk
+   *  content that gets written). With multiple transforms touching one file
+   *  this is the result after the LAST transform's rewrite was composed on
+   *  top of all prior rewrites. */
   change: FileChange;
+  /** Every transformId that contributed to this file's cumulative change.
+   *  Single-element for files touched by one transform. */
+  transformIds: TransformId[];
   applied: boolean;
   /** The gate that blocked this file (only when `applied` is false). */
   failedGate?: GateName;
@@ -139,7 +166,7 @@ export function formatPartialApply(
     out.push({ text: `  Applied (${applied.length}):`, color: theme.colors.accent });
     for (const o of applied) {
       out.push({
-        text: `    ${theme.symbols.pass} ${rel(o.change).padEnd(48)} [${o.change.transformId}]`,
+        text: `    ${theme.symbols.pass} ${rel(o.change).padEnd(48)} [${o.transformIds.join(', ')}]`,
         color: theme.colors.success,
       });
     }
@@ -150,7 +177,7 @@ export function formatPartialApply(
     out.push({ text: `  Held back (${held.length}):`, color: theme.colors.error });
     for (const o of held) {
       out.push({
-        text: `    ${theme.symbols.fail} ${rel(o.change).padEnd(48)} [${o.change.transformId}]`,
+        text: `    ${theme.symbols.fail} ${rel(o.change).padEnd(48)} [${o.transformIds.join(', ')}]`,
         color: theme.colors.error,
       });
       out.push({

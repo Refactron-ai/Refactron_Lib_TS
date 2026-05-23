@@ -1,7 +1,7 @@
 import { fileURLToPath } from 'node:url';
 import * as path from 'node:path';
 import type { TransformContext, TransformResult, TransformImpl } from '../../types.js';
-import { runPythonTransform } from '../../runner.js';
+import { runPythonTransformWithSource } from '../../runner.js';
 
 const SIDECAR = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -9,7 +9,11 @@ const SIDECAR = path.resolve(
 );
 
 export async function transform(ctx: TransformContext): Promise<TransformResult> {
-  const r = await runPythonTransform(SIDECAR, ctx.absPath);
+  // Pass `ctx.source` (not `ctx.absPath`) so prior in-memory transforms
+  // compose — see runner.runPythonTransformWithSource for the data-loss bug.
+  const r = await runPythonTransformWithSource(SIDECAR, ctx.source, {
+    relPath: ctx.relPath,
+  });
   if (!r.ok) {
     return {
       newContent: null,

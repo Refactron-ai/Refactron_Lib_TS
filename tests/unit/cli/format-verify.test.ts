@@ -93,9 +93,10 @@ describe('formatVerifySuccess', () => {
 describe('formatPartialApply', () => {
   it('lists applied and held-back files with the failing tests', () => {
     const outcomes: PerFileOutcome[] = [
-      { change: fooChange, applied: true },
+      { change: fooChange, transformIds: ['format_to_fstring'], applied: true },
       {
         change: barChange,
+        transformIds: ['var_to_const_let'],
         applied: false,
         failedGate: 'tests',
         failingTests: ['✗ tests/unit/bar.test.ts > does the thing', '    AssertionError: nope'],
@@ -116,8 +117,20 @@ describe('formatPartialApply', () => {
 
   it('adds the interdependence caveat when 2+ files are held back', () => {
     const outcomes: PerFileOutcome[] = [
-      { change: fooChange, applied: false, failedGate: 'imports', rawReason: 'bad import' },
-      { change: barChange, applied: false, failedGate: 'imports', rawReason: 'bad import' },
+      {
+        change: fooChange,
+        transformIds: ['format_to_fstring'],
+        applied: false,
+        failedGate: 'imports',
+        rawReason: 'bad import',
+      },
+      {
+        change: barChange,
+        transformIds: ['var_to_const_let'],
+        applied: false,
+        failedGate: 'imports',
+        rawReason: 'bad import',
+      },
     ];
     const blob = formatPartialApply(outcomes, '/proj')
       .map((l) => l.text)

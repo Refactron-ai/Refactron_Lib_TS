@@ -1,14 +1,18 @@
 import { fileURLToPath } from 'node:url';
 import * as path from 'node:path';
 import type { TransformContext, TransformResult, TransformImpl } from '../../types.js';
-import { runPythonTransform } from '../../runner.js';
+import { runPythonTransformWithSource } from '../../runner.js';
 
 const SIDECAR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '_py/super_no_args.py');
 
 export async function transform(ctx: TransformContext): Promise<TransformResult> {
   // No cross-file context required: the rewrite is purely intra-file
   // (class-name lookup happens inside the same module's CST).
-  const r = await runPythonTransform(SIDECAR, ctx.absPath);
+  // Pass `ctx.source` (not `ctx.absPath`) so prior transforms' in-memory
+  // rewrites are visible — see runner.runPythonTransformWithSource for why.
+  const r = await runPythonTransformWithSource(SIDECAR, ctx.source, {
+    relPath: ctx.relPath,
+  });
   if (!r.ok) {
     return {
       newContent: null,

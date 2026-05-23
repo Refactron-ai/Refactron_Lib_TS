@@ -119,7 +119,7 @@ export class RefactronRefactorer implements Refactorer {
 
     const concurrency = Math.max(1, Math.min(8, work.length));
     const results = new Array<{
-      change: FileChange | null;
+      changes: FileChange[];
       preconditions: Precondition[];
     } | null>(work.length);
 
@@ -133,10 +133,13 @@ export class RefactronRefactorer implements Refactorer {
         results[idx] = null;
         return;
       }
+      // The hash of the true on-disk original — every FileChange we emit for
+      // this file shares this same `oldHash`, so the verifier / shadow-tree
+      // can detect drift consistently regardless of how many transforms
+      // touched the file.
       const originalHash = sha256(originalText);
       let currentText = originalText;
-      let touched = false;
-      let firstTransform: TransformId | null = null;
+      const localChanges: FileChange[] = [];
       const localPreconditions: Precondition[] = [];
 
       for (const tid of enabled) {
@@ -155,21 +158,22 @@ export class RefactronRefactorer implements Refactorer {
         }
         if (result.newContent !== null && result.newContent !== currentText) {
           currentText = result.newContent;
-          touched = true;
-          if (firstTransform === null) firstTransform = tid;
+          // Emit one FileChange per touching transform. `newContent` is the
+          // cumulative composition after this transform on top of all prior
+          // ones, which is the contract the downstream apply-orchestrator and
+          // format-plan grouping rely on (last FileChange per path holds the
+          // final on-disk content).
+          localChanges.push({
+            path: absPath,
+            oldHash: originalHash,
+            newContent: currentText,
+            transformId: tid,
+          });
         }
       }
 
       results[idx] = {
-        change:
-          touched && firstTransform !== null
-            ? {
-                path: absPath,
-                oldHash: originalHash,
-                newContent: currentText,
-                transformId: firstTransform,
-              }
-            : null,
+        changes: localChanges,
         preconditions: localPreconditions,
       };
     }
@@ -197,11 +201,12 @@ export class RefactronRefactorer implements Refactorer {
     await Promise.all(workers);
 
     // Collect results in original order so the plan is deterministic.
+    // Each file may contribute multiple FileChanges (one per touching transform).
     const changes: FileChange[] = [];
     const preconditions: Precondition[] = [];
     for (const r of results) {
       if (r === null) continue;
-      if (r.change !== null) changes.push(r.change);
+      changes.push(...r.changes);
       preconditions.push(...r.preconditions);
     }
 

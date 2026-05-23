@@ -90,5 +90,11 @@ Index: typecheck.py
  
  
  def area(shape):
+@@ -19,4 +21,4 @@
+     elif isinstance(shape, Square):
+         return shape.side * shape.side
+     else:
+-        raise TypeError("unknown shape: %r" % shape)
++        raise TypeError(f"unknown shape: {shape!r}")
 "
 `;
