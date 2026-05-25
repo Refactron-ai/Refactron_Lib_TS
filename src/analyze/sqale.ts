@@ -18,6 +18,10 @@ export const REMEDIATION_MINUTES_BY_TRANSFORM: Record<TransformId, number> = {
   // the transform emits; cost dominated by the code-review pass.
   super_no_args: 1,
   lru_cache_to_cache: 1,
+  // PEP 585 / 604 are mostly mechanical, but the runtime-eval / version-gate
+  // analysis and the import cleanup pass are non-trivial when done by hand.
+  pep585_generics: 2,
+  pep604_optional_union: 2,
 };
 
 export function totalRemediationMinutes(findings: Finding[]): number {

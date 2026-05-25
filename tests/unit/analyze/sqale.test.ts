@@ -6,8 +6,9 @@ import {
 
 describe('sqale', () => {
   it('declares one cost per TransformId', () => {
-    // Updated for v0.3.0: +2 IDs (super_no_args, lru_cache_to_cache).
-    expect(Object.keys(REMEDIATION_MINUTES_BY_TRANSFORM).length).toBe(12);
+    // Updated for v0.3.0 Phase 2: +2 IDs (pep585_generics, pep604_optional_union)
+    // on top of the Phase 1 additions (super_no_args, lru_cache_to_cache).
+    expect(Object.keys(REMEDIATION_MINUTES_BY_TRANSFORM).length).toBe(14);
   });
   it('sums findings', () => {
     expect(

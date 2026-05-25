@@ -15,7 +15,9 @@ export type TransformId =
   // locked-surface policy: new union members are non-breaking for consumers
   // that exhaustively switch).
   | 'super_no_args'
-  | 'lru_cache_to_cache';
+  | 'lru_cache_to_cache'
+  | 'pep585_generics'
+  | 'pep604_optional_union';
 
 export interface Finding {
   id: string;

@@ -30,6 +30,8 @@ import { impl as t10 } from './transforms/typescript/promise-constructor.js';
 // v0.3.0 additions
 import { impl as t11 } from './transforms/python/super-no-args.js';
 import { impl as t12 } from './transforms/python/lru-cache-to-cache.js';
+import { impl as t13 } from './transforms/python/pep585-generics.js';
+import { impl as t14 } from './transforms/python/pep604-optional-union.js';
 
 const TRANSFORM_ORDER: TransformId[] = [
   'callback_to_async_await',
@@ -45,6 +47,8 @@ const TRANSFORM_ORDER: TransformId[] = [
   // v0.3.0 additions — appended so existing transforms keep their slot order.
   'super_no_args',
   'lru_cache_to_cache',
+  'pep585_generics',
+  'pep604_optional_union',
 ];
 
 const REGISTRY: Record<TransformId, TransformImpl> = {
@@ -60,6 +64,8 @@ const REGISTRY: Record<TransformId, TransformImpl> = {
   promise_constructor_to_async: t10,
   super_no_args: t11,
   lru_cache_to_cache: t12,
+  pep585_generics: t13,
+  pep604_optional_union: t14,
 };
 
 function sha256(s: string): string {

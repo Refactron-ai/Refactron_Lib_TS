@@ -21,6 +21,8 @@ import './detectors/typescript/promise-constructor.js';
 // v0.3.0 additions
 import './detectors/python/super-with-args.js';
 import './detectors/python/lru-cache-maxsize-none.js';
+import './detectors/python/typing-generic.js';
+import './detectors/python/typing-optional-union.js';
 
 export interface AnalyzeOptions {
   confidence?: Confidence;
