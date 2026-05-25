@@ -17,7 +17,9 @@ export type TransformId =
   | 'super_no_args'
   | 'lru_cache_to_cache'
   | 'pep585_generics'
-  | 'pep604_optional_union';
+  | 'pep604_optional_union'
+  | 'datetime_utc_alias'
+  | 'yield_from_for_loop';
 
 export interface Finding {
   id: string;

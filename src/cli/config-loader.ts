@@ -65,6 +65,8 @@ const VALID_TRANSFORMS = [
   'lru_cache_to_cache',
   'pep585_generics',
   'pep604_optional_union',
+  'datetime_utc_alias',
+  'yield_from_for_loop',
 ] as const;
 
 // Default to the Refactron-managed backend so authenticated users get

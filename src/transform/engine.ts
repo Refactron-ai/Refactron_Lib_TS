@@ -32,6 +32,8 @@ import { impl as t11 } from './transforms/python/super-no-args.js';
 import { impl as t12 } from './transforms/python/lru-cache-to-cache.js';
 import { impl as t13 } from './transforms/python/pep585-generics.js';
 import { impl as t14 } from './transforms/python/pep604-optional-union.js';
+import { impl as t15 } from './transforms/python/datetime-utc.js';
+import { impl as t16 } from './transforms/python/yield-from.js';
 
 const TRANSFORM_ORDER: TransformId[] = [
   'callback_to_async_await',
@@ -49,6 +51,8 @@ const TRANSFORM_ORDER: TransformId[] = [
   'lru_cache_to_cache',
   'pep585_generics',
   'pep604_optional_union',
+  'datetime_utc_alias',
+  'yield_from_for_loop',
 ];
 
 const REGISTRY: Record<TransformId, TransformImpl> = {
@@ -66,6 +70,8 @@ const REGISTRY: Record<TransformId, TransformImpl> = {
   lru_cache_to_cache: t12,
   pep585_generics: t13,
   pep604_optional_union: t14,
+  datetime_utc_alias: t15,
+  yield_from_for_loop: t16,
 };
 
 function sha256(s: string): string {
