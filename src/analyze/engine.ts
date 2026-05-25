@@ -23,6 +23,8 @@ import './detectors/python/super-with-args.js';
 import './detectors/python/lru-cache-maxsize-none.js';
 import './detectors/python/typing-generic.js';
 import './detectors/python/typing-optional-union.js';
+import './detectors/python/datetime-timezone-utc.js';
+import './detectors/python/yield-in-trivial-loop.js';
 
 export interface AnalyzeOptions {
   confidence?: Confidence;

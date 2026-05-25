@@ -21,6 +21,8 @@ export const MESSAGE_BY_TRANSFORM: Record<TransformId, string> = {
   lru_cache_to_cache: '@lru_cache(maxsize=None) can use the simpler @functools.cache',
   pep585_generics: 'typing.List/Dict/... can use the lowercase builtin generic (PEP 585)',
   pep604_optional_union: 'Optional[X] / Union[A, B] can use the X | None / A | B syntax (PEP 604)',
+  datetime_utc_alias: '`datetime.timezone.utc` can use the shorter `datetime.UTC` alias',
+  yield_from_for_loop: '`for x in y: yield x` can be expressed as `yield from y`',
 };
 
 export const SUGGESTION_BY_TRANSFORM: Record<TransformId, string> = {
@@ -45,6 +47,10 @@ export const SUGGESTION_BY_TRANSFORM: Record<TransformId, string> = {
     'On Python ≥ 3.9 (or with `from __future__ import annotations`), prefer the lowercase builtin generic — e.g. `list[str]` instead of `List[str]`.',
   pep604_optional_union:
     'On Python ≥ 3.10 (or with `from __future__ import annotations`), prefer `X | None` over `Optional[X]` and `A | B` over `Union[A, B]`.',
+  datetime_utc_alias:
+    'On Python ≥ 3.11, prefer `datetime.UTC` (or `UTC` imported from datetime) over the longer `datetime.timezone.utc`.',
+  yield_from_for_loop:
+    'Replace the trivial `for x in iter: yield x` loop with `yield from iter`. Note: not equivalent when the loop has an `else:` branch.',
 };
 
 function confidenceToSeverity(c: Confidence): Severity {

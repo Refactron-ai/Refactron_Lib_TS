@@ -22,6 +22,9 @@ export const REMEDIATION_MINUTES_BY_TRANSFORM: Record<TransformId, number> = {
   // analysis and the import cleanup pass are non-trivial when done by hand.
   pep585_generics: 2,
   pep604_optional_union: 2,
+  // v0.3.0 Phase 3 — mechanical one-line edits; review pass dominates the cost.
+  datetime_utc_alias: 1,
+  yield_from_for_loop: 1,
 };
 
 export function totalRemediationMinutes(findings: Finding[]): number {
