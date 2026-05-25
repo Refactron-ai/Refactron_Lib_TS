@@ -6,9 +6,10 @@ import {
 
 describe('sqale', () => {
   it('declares one cost per TransformId', () => {
-    // Updated for v0.3.0 Phase 3: +2 IDs (datetime_utc_alias, yield_from_for_loop)
-    // on top of Phase 2's additions.
-    expect(Object.keys(REMEDIATION_MINUTES_BY_TRANSFORM).length).toBe(16);
+    // Updated for v0.3.0 Phase 4: +3 IDs (indexof_to_includes,
+    // object_assign_to_spread, string_concat_to_template_literal) on top of
+    // Phase 3's additions.
+    expect(Object.keys(REMEDIATION_MINUTES_BY_TRANSFORM).length).toBe(19);
   });
   it('sums findings', () => {
     expect(

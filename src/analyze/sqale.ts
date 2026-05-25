@@ -25,6 +25,12 @@ export const REMEDIATION_MINUTES_BY_TRANSFORM: Record<TransformId, number> = {
   // v0.3.0 Phase 3 — mechanical one-line edits; review pass dominates the cost.
   datetime_utc_alias: 1,
   yield_from_for_loop: 1,
+  // v0.3.0 Phase 4 — TS idiom rewrites. indexOf→includes and Object.assign→spread
+  // are mechanical one-liners; template-literal rewrites can span longer
+  // expressions and warrant a slightly longer review pass.
+  indexof_to_includes: 1,
+  object_assign_to_spread: 2,
+  string_concat_to_template_literal: 2,
 };
 
 export function totalRemediationMinutes(findings: Finding[]): number {

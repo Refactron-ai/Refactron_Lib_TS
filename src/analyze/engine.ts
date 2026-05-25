@@ -25,6 +25,10 @@ import './detectors/python/typing-generic.js';
 import './detectors/python/typing-optional-union.js';
 import './detectors/python/datetime-timezone-utc.js';
 import './detectors/python/yield-in-trivial-loop.js';
+// v0.3.0 Phase 4 — TypeScript ES2015+/ES2016+ idioms
+import './detectors/typescript/indexof-comparison.js';
+import './detectors/typescript/object-assign-empty.js';
+import './detectors/typescript/string-concat.js';
 
 export interface AnalyzeOptions {
   confidence?: Confidence;

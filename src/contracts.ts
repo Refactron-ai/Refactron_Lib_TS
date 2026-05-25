@@ -19,7 +19,10 @@ export type TransformId =
   | 'pep585_generics'
   | 'pep604_optional_union'
   | 'datetime_utc_alias'
-  | 'yield_from_for_loop';
+  | 'yield_from_for_loop'
+  | 'indexof_to_includes'
+  | 'object_assign_to_spread'
+  | 'string_concat_to_template_literal';
 
 export interface Finding {
   id: string;
