@@ -23,6 +23,11 @@ export const MESSAGE_BY_TRANSFORM: Record<TransformId, string> = {
   pep604_optional_union: 'Optional[X] / Union[A, B] can use the X | None / A | B syntax (PEP 604)',
   datetime_utc_alias: '`datetime.timezone.utc` can use the shorter `datetime.UTC` alias',
   yield_from_for_loop: '`for x in y: yield x` can be expressed as `yield from y`',
+  indexof_to_includes: 'indexOf(...) !== -1 can use the .includes(...) method (ES2016+)',
+  object_assign_to_spread:
+    'Object.assign({}, ...) can use the object spread syntax `{ ...a, ...b }` (ES2018+)',
+  string_concat_to_template_literal:
+    'string concatenation with `+` can use a template literal (ES2015+)',
 };
 
 export const SUGGESTION_BY_TRANSFORM: Record<TransformId, string> = {
@@ -51,6 +56,12 @@ export const SUGGESTION_BY_TRANSFORM: Record<TransformId, string> = {
     'On Python ≥ 3.11, prefer `datetime.UTC` (or `UTC` imported from datetime) over the longer `datetime.timezone.utc`.',
   yield_from_for_loop:
     'Replace the trivial `for x in iter: yield x` loop with `yield from iter`. Note: not equivalent when the loop has an `else:` branch.',
+  indexof_to_includes:
+    'Replace `arr.indexOf(x) !== -1` with `arr.includes(x)` (and the negative form with `!arr.includes(x)`). Requires an ES2016+ target.',
+  object_assign_to_spread:
+    'Replace `Object.assign({}, a, b)` with the spread object literal `{ ...a, ...b }`. Requires an ES2018+ target.',
+  string_concat_to_template_literal:
+    'Replace `"…" + x + "…"` with a template literal `` `…${x}…` ``. Requires an ES2015+ target.',
 };
 
 function confidenceToSeverity(c: Confidence): Severity {
