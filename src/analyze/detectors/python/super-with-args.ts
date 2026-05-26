@@ -2,7 +2,7 @@
 // Detect `super(ClassName, self).method(...)` — the Python-2-style explicit
 // super call that, since Python 3.0, can be the zero-arg `super().method(...)`.
 //
-// Conservative scope (v0.3.0):
+// Conservative scope (v0.2.3):
 //   - Only match `super(X, self).attr(...)` — the first positional must be a
 //     Name (we don't try to resolve dotted class refs), the second must be
 //     literally `self`. `cls` (classmethods) and other instance names are

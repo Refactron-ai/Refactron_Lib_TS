@@ -6,7 +6,7 @@ import {
 
 describe('sqale', () => {
   it('declares one cost per TransformId', () => {
-    // Updated for v0.3.0 Phase 5: +1 ID (vue_set_delete_to_assignment) on top
+    // Updated for v0.2.3 Phase 5: +1 ID (vue_set_delete_to_assignment) on top
     // of Phase 4's additions (which themselves added +3 over Phase 3).
     expect(Object.keys(REMEDIATION_MINUTES_BY_TRANSFORM).length).toBe(20);
   });

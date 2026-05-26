@@ -13,7 +13,7 @@
 //     v0.4. Marked at the top so the deferral is explicit on review.
 //
 // Refusals:
-//   - vue_sfc_not_supported       : .vue file (out of scope for v0.3.0).
+//   - vue_sfc_not_supported       : .vue file (out of scope for v0.2.3).
 //   - wrong_arity                 : set wants 3 args, delete wants 2.
 //   - delete_in_expression_context: `Vue.delete` returns `undefined`; a bare
 //                                    `delete obj.k` expression returns a
@@ -29,7 +29,7 @@
 //   (Proxy-based) makes direct assignment reactive, so the rewrite is
 //   semantically equivalent. We can't reliably detect the Vue major version at
 //   static-analysis time without resolving the project's installed dep, so
-//   v0.3.0 assumes Vue 3 and asks the user to `--exclude
+//   v0.2.3 assumes Vue 3 and asks the user to `--exclude
 //   vue_set_delete_to_assignment` on Vue 2 projects. This caveat ships to the
 //   user via the suggestion text in
 //   `src/cli/v2-adapters.ts` (`SUGGESTION_BY_TRANSFORM`), NOT via a
@@ -161,7 +161,7 @@ function isStatementContext(call: CallExpression): boolean {
 }
 
 export async function transform(ctx: TransformContext): Promise<TransformResult> {
-  // .vue SFCs are out of scope for v0.3.0 — they need a Single-File-Component
+  // .vue SFCs are out of scope for v0.2.3 — they need a Single-File-Component
   // parser. Refuse loudly so a reviewer running the transform against a Vue
   // project sees an explicit reason rather than a silent no-op.
   if (ctx.absPath.endsWith('.vue')) {
@@ -172,7 +172,7 @@ export async function transform(ctx: TransformContext): Promise<TransformResult>
           id: 'vue_sfc_not_supported',
           satisfied: false,
           reason:
-            '.vue SFCs require a Single-File-Component parser; out of scope for v0.3.0 (deferred to v0.4)',
+            '.vue SFCs require a Single-File-Component parser; out of scope for v0.2.3 (deferred to v0.4)',
         },
       ],
     };

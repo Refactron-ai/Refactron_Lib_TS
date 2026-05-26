@@ -27,18 +27,18 @@ import { impl as t7 } from './transforms/typescript/promise-chains.js';
 import { impl as t8 } from './transforms/typescript/implicit-any.js';
 import { impl as t9 } from './transforms/typescript/commonjs.js';
 import { impl as t10 } from './transforms/typescript/promise-constructor.js';
-// v0.3.0 additions
+// v0.2.3 additions
 import { impl as t11 } from './transforms/python/super-no-args.js';
 import { impl as t12 } from './transforms/python/lru-cache-to-cache.js';
 import { impl as t13 } from './transforms/python/pep585-generics.js';
 import { impl as t14 } from './transforms/python/pep604-optional-union.js';
 import { impl as t15 } from './transforms/python/datetime-utc.js';
 import { impl as t16 } from './transforms/python/yield-from.js';
-// v0.3.0 Phase 4 — TypeScript ES2015+/ES2016+ idioms
+// v0.2.3 Phase 4 — TypeScript ES2015+/ES2016+ idioms
 import { impl as t17 } from './transforms/typescript/indexof-to-includes.js';
 import { impl as t18 } from './transforms/typescript/object-assign-to-spread.js';
 import { impl as t19 } from './transforms/typescript/string-concat-to-template-literal.js';
-// v0.3.0 Phase 5 — Vue 2 reactivity-helper rewrite (.js/.ts only; .vue deferred to v0.4)
+// v0.2.3 Phase 5 — Vue 2 reactivity-helper rewrite (.js/.ts only; .vue deferred to v0.4)
 import { impl as t20 } from './transforms/typescript/vue-set-delete.js';
 
 const TRANSFORM_ORDER: TransformId[] = [
@@ -52,18 +52,18 @@ const TRANSFORM_ORDER: TransformId[] = [
   'implicit_any',
   'commonjs_to_esm',
   'promise_constructor_to_async',
-  // v0.3.0 additions — appended so existing transforms keep their slot order.
+  // v0.2.3 additions — appended so existing transforms keep their slot order.
   'super_no_args',
   'lru_cache_to_cache',
   'pep585_generics',
   'pep604_optional_union',
   'datetime_utc_alias',
   'yield_from_for_loop',
-  // v0.3.0 Phase 4 — TypeScript ES2015+/ES2016+ idioms
+  // v0.2.3 Phase 4 — TypeScript ES2015+/ES2016+ idioms
   'indexof_to_includes',
   'object_assign_to_spread',
   'string_concat_to_template_literal',
-  // v0.3.0 Phase 5 — Vue 2 reactivity helpers (.js/.ts only)
+  // v0.2.3 Phase 5 — Vue 2 reactivity helpers (.js/.ts only)
   'vue_set_delete_to_assignment',
 ];
 

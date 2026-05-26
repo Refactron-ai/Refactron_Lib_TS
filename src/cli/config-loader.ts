@@ -7,7 +7,7 @@ import * as path from 'node:path';
 import Ajv from 'ajv';
 import type { ValidateFunction } from 'ajv';
 
-/** The set of Python versions the v0.3.0 transforms understand. We deliberately
+/** The set of Python versions the v0.2.3 transforms understand. We deliberately
  *  stop at `3.13` because anything newer than that has no version-gated
  *  transform yet — the next time we add a `>= 3.14` transform we extend this
  *  list and the schema enum in lock-step. */
@@ -60,18 +60,18 @@ const VALID_TRANSFORMS = [
   'implicit_any',
   'commonjs_to_esm',
   'promise_constructor_to_async',
-  // v0.3.0 additions
+  // v0.2.3 additions
   'super_no_args',
   'lru_cache_to_cache',
   'pep585_generics',
   'pep604_optional_union',
   'datetime_utc_alias',
   'yield_from_for_loop',
-  // v0.3.0 Phase 4 — TypeScript ES2015+/ES2016+ idiom rewrites
+  // v0.2.3 Phase 4 — TypeScript ES2015+/ES2016+ idiom rewrites
   'indexof_to_includes',
   'object_assign_to_spread',
   'string_concat_to_template_literal',
-  // v0.3.0 Phase 5 — Vue 2 reactivity-helper rewrites (.js/.ts only)
+  // v0.2.3 Phase 5 — Vue 2 reactivity-helper rewrites (.js/.ts only)
   'vue_set_delete_to_assignment',
 ] as const;
 

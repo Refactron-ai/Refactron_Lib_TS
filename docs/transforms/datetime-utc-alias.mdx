@@ -66,7 +66,7 @@ When `timezone` has other uses (e.g. `timezone(timedelta(hours=2))`) it stays al
 
 - `from datetime import timezone as tz` — `aliased_import_unsupported`; rewriting `tz.utc` while also adding a `UTC` import would mix idioms in one file.
 - `from datetime import *` — the star import is registered but skipped; we can't reason about import-cleanup math reliably.
-- Function-local `import datetime` — only top-level imports are walked in v0.3.0 (tracked as v0.4 follow-up in the sidecar).
+- Function-local `import datetime` — only top-level imports are walked in v0.2.3 (tracked as v0.4 follow-up in the sidecar).
 - `import collections as c` already present alongside the `collections`-targeting bits of `pep585_generics` — not applicable here, listed for parity.
 
 <Note>

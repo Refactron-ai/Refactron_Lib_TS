@@ -63,7 +63,7 @@ export const TRANSFORM_IDS: TransformId[] = [
   'implicit_any',
   'commonjs_to_esm',
   'promise_constructor_to_async',
-  // v0.3.0 additions
+  // v0.2.3 additions
   'super_no_args',
   'lru_cache_to_cache',
 ];

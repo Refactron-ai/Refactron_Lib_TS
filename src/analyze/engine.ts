@@ -18,18 +18,18 @@ import './detectors/typescript/promise-chains.js';
 import './detectors/typescript/implicit-any.js';
 import './detectors/typescript/commonjs.js';
 import './detectors/typescript/promise-constructor.js';
-// v0.3.0 additions
+// v0.2.3 additions
 import './detectors/python/super-with-args.js';
 import './detectors/python/lru-cache-maxsize-none.js';
 import './detectors/python/typing-generic.js';
 import './detectors/python/typing-optional-union.js';
 import './detectors/python/datetime-timezone-utc.js';
 import './detectors/python/yield-in-trivial-loop.js';
-// v0.3.0 Phase 4 — TypeScript ES2015+/ES2016+ idioms
+// v0.2.3 Phase 4 — TypeScript ES2015+/ES2016+ idioms
 import './detectors/typescript/indexof-comparison.js';
 import './detectors/typescript/object-assign-empty.js';
 import './detectors/typescript/string-concat.js';
-// v0.3.0 Phase 5 — Vue 2 reactivity helpers (.js/.ts; .vue files are not visited by walker)
+// v0.2.3 Phase 5 — Vue 2 reactivity helpers (.js/.ts; .vue files are not visited by walker)
 import './detectors/typescript/vue-set-delete.js';
 
 export interface AnalyzeOptions {

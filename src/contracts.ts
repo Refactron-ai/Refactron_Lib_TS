@@ -11,7 +11,7 @@ export type TransformId =
   | 'implicit_any'
   | 'commonjs_to_esm'
   | 'promise_constructor_to_async'
-  // v0.3.0 — added transform IDs only (additive, semver-minor under the v2.0
+  // v0.2.3 — added transform IDs only (additive, semver-minor under the v2.0
   // locked-surface policy: new union members are non-breaking for consumers
   // that exhaustively switch).
   | 'super_no_args'
