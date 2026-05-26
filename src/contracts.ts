@@ -22,7 +22,8 @@ export type TransformId =
   | 'yield_from_for_loop'
   | 'indexof_to_includes'
   | 'object_assign_to_spread'
-  | 'string_concat_to_template_literal';
+  | 'string_concat_to_template_literal'
+  | 'vue_set_delete_to_assignment';
 
 export interface Finding {
   id: string;

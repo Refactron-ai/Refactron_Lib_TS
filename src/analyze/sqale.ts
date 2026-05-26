@@ -31,6 +31,9 @@ export const REMEDIATION_MINUTES_BY_TRANSFORM: Record<TransformId, number> = {
   indexof_to_includes: 1,
   object_assign_to_spread: 2,
   string_concat_to_template_literal: 2,
+  // v0.3.0 Phase 5 — Vue 2 reactivity helper rewrites are mechanical one-line
+  // edits per call site, but reviewers must check the Vue version assumption.
+  vue_set_delete_to_assignment: 2,
 };
 
 export function totalRemediationMinutes(findings: Finding[]): number {

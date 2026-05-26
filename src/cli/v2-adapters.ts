@@ -28,6 +28,8 @@ export const MESSAGE_BY_TRANSFORM: Record<TransformId, string> = {
     'Object.assign({}, ...) can use the object spread syntax `{ ...a, ...b }` (ES2018+)',
   string_concat_to_template_literal:
     'string concatenation with `+` can use a template literal (ES2015+)',
+  vue_set_delete_to_assignment:
+    'Vue.set/Vue.delete (or this.$set/this.$delete) can use plain assignment / delete (Vue 3)',
 };
 
 export const SUGGESTION_BY_TRANSFORM: Record<TransformId, string> = {
@@ -62,6 +64,8 @@ export const SUGGESTION_BY_TRANSFORM: Record<TransformId, string> = {
     'Replace `Object.assign({}, a, b)` with the spread object literal `{ ...a, ...b }`. Requires an ES2018+ target.',
   string_concat_to_template_literal:
     'Replace `"…" + x + "…"` with a template literal `` `…${x}…` ``. Requires an ES2015+ target.',
+  vue_set_delete_to_assignment:
+    'Replace `Vue.set(obj, k, v)` / `this.$set(...)` with `obj[k] = v` and `Vue.delete(obj, k)` / `this.$delete(...)` with `delete obj[k]`. SAFE on Vue 3 (Proxy reactivity); on Vue 2 this changes semantics — Vue.set is required to add NEW reactive keys. Exclude this transform on Vue 2 codebases. .vue SFCs are out of scope for v0.3.0.',
 };
 
 function confidenceToSeverity(c: Confidence): Severity {

@@ -71,6 +71,8 @@ const VALID_TRANSFORMS = [
   'indexof_to_includes',
   'object_assign_to_spread',
   'string_concat_to_template_literal',
+  // v0.3.0 Phase 5 — Vue 2 reactivity-helper rewrites (.js/.ts only)
+  'vue_set_delete_to_assignment',
 ] as const;
 
 // Default to the Refactron-managed backend so authenticated users get
