@@ -38,6 +38,8 @@ import { impl as t16 } from './transforms/python/yield-from.js';
 import { impl as t17 } from './transforms/typescript/indexof-to-includes.js';
 import { impl as t18 } from './transforms/typescript/object-assign-to-spread.js';
 import { impl as t19 } from './transforms/typescript/string-concat-to-template-literal.js';
+// v0.3.0 Phase 5 — Vue 2 reactivity-helper rewrite (.js/.ts only; .vue deferred to v0.4)
+import { impl as t20 } from './transforms/typescript/vue-set-delete.js';
 
 const TRANSFORM_ORDER: TransformId[] = [
   'callback_to_async_await',
@@ -61,6 +63,8 @@ const TRANSFORM_ORDER: TransformId[] = [
   'indexof_to_includes',
   'object_assign_to_spread',
   'string_concat_to_template_literal',
+  // v0.3.0 Phase 5 — Vue 2 reactivity helpers (.js/.ts only)
+  'vue_set_delete_to_assignment',
 ];
 
 const REGISTRY: Record<TransformId, TransformImpl> = {
@@ -83,6 +87,7 @@ const REGISTRY: Record<TransformId, TransformImpl> = {
   indexof_to_includes: t17,
   object_assign_to_spread: t18,
   string_concat_to_template_literal: t19,
+  vue_set_delete_to_assignment: t20,
 };
 
 function sha256(s: string): string {
