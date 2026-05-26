@@ -57,6 +57,9 @@ jobs:
     needs: test-before-release
     runs-on: ubuntu-latest
     environment: npm-production
+    permissions:
+      id-token: write
+      contents: read
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -65,13 +68,14 @@ jobs:
           cache: 'npm'
           registry-url: 'https://registry.npmjs.org'
       - run: npm ci
+      # npm OIDC trusted-publisher auth requires npm >= 11.5.1; Node 20 ships
+      # with an older bundled npm, so upgrade before publish.
+      - run: npm install -g npm@latest
       - run: npm run build
       # --ignore-scripts skips prepublishOnly (full test gate). We already
       # ran the equivalent in test-before-release; re-running here would
       # require Python+libcst on this minimal runner for no extra signal.
       - run: npm publish --provenance --access public --ignore-scripts
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
   publish-pypi:
     name: Publish to PyPI
