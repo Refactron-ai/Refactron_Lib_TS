@@ -7,7 +7,7 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
-## [0.3.0] — 2026-05-26
+## [0.2.3] — 2026-05-27
 
 Ten new deterministic transforms — six for Python, four for TypeScript — roughly doubling Refactron's transform coverage. Adds the `pythonVersion` config key for safe version-gated rewrites.
 

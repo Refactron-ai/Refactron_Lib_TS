@@ -214,7 +214,7 @@ function resolveTargetFromSingleChain(
  * iterate each entry in order and re-enter the chain walk for each. We return
  * the FIRST non-null target found across all entries. NOTE: TypeScript's
  * actual merge semantics for array-extends are LAST-WINS (later entries
- * override earlier), but for v0.3.0 we deliberately use "first non-null" —
+ * override earlier), but for v0.2.3 we deliberately use "first non-null" —
  * matching the historic comment — which is the conservative-toward-refusal
  * direction (any lower-target base in the array still gates the transform).
  */

@@ -65,7 +65,7 @@ export const SUGGESTION_BY_TRANSFORM: Record<TransformId, string> = {
   string_concat_to_template_literal:
     'Replace `"…" + x + "…"` with a template literal `` `…${x}…` ``. Requires an ES2015+ target.',
   vue_set_delete_to_assignment:
-    'Replace `Vue.set(obj, k, v)` / `this.$set(...)` with `obj[k] = v` and `Vue.delete(obj, k)` / `this.$delete(...)` with `delete obj[k]`. SAFE on Vue 3 (Proxy reactivity); on Vue 2 this changes semantics — Vue.set is required to add NEW reactive keys. Exclude this transform on Vue 2 codebases. .vue SFCs are out of scope for v0.3.0.',
+    'Replace `Vue.set(obj, k, v)` / `this.$set(...)` with `obj[k] = v` and `Vue.delete(obj, k)` / `this.$delete(...)` with `delete obj[k]`. SAFE on Vue 3 (Proxy reactivity); on Vue 2 this changes semantics — Vue.set is required to add NEW reactive keys. Exclude this transform on Vue 2 codebases. .vue SFCs are out of scope for v0.2.3.',
 };
 
 function confidenceToSeverity(c: Confidence): Severity {

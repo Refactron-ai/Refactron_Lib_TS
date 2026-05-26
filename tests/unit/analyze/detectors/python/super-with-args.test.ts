@@ -28,7 +28,7 @@ describe('python: super-with-args detector', () => {
     expect(detect(ctx(src))).toHaveLength(0);
   });
 
-  it('skips classmethod super(Class, cls) — out of scope for v0.3.0', () => {
+  it('skips classmethod super(Class, cls) — out of scope for v0.2.3', () => {
     const src = 'class B(A):\n    @classmethod\n    def g(cls):\n        super(B, cls).g()\n';
     expect(detect(ctx(src))).toHaveLength(0);
   });

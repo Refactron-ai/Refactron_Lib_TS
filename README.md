@@ -8,14 +8,14 @@ Refactron finds legacy patterns in your Python and TypeScript code, refactors th
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](./LICENSE)
 [![CI](https://github.com/Refactron-ai/Refactron_Lib_TS/actions/workflows/ci.yml/badge.svg)](https://github.com/Refactron-ai/Refactron_Lib_TS/actions/workflows/ci.yml)
 
-![Refactron in action](docs/assets/demo.gif)
+![Refactron in action — analyze, dry-run, apply, with the three verification gates](https://raw.githubusercontent.com/Refactron-ai/Refactron_Lib_TS/main/docs/assets/demo.gif)
 
 ---
 
 ## Install + first refactor
 
 ```bash
-npm install -g refactron@0.2.0
+npm install -g refactron@0.2.3
 cd your-project && refactron login
 refactron analyze .
 refactron run --apply
@@ -44,6 +44,8 @@ Every refactor passes three gates before any byte is written: (1) the new conten
 
 ## Transform catalog
 
+Twenty deterministic transforms — eleven for Python, nine for TypeScript.
+
 | Transform | Language | Description |
 |---|---|---|
 | [`callback_to_async_await`](docs/transforms/callback-to-async-await.mdx) | Python | Convert trailing-callback functions into async functions that return the result |
@@ -51,11 +53,21 @@ Every refactor passes three gates before any byte is written: (1) the new conten
 | [`class_to_dataclass`](docs/transforms/class-to-dataclass.mdx) | Python | Promote pure data-holder classes (trivial `__init__`) to `@dataclass` |
 | [`manual_typecheck_to_hints`](docs/transforms/manual-typecheck-to-hints.mdx) | Python | Promote `isinstance`-chain dispatch into a `Union[...]` annotation on the parameter |
 | [`deprecated_api_requests_to_httpx`](docs/transforms/deprecated-api-requests-to-httpx.mdx) | Python | Migrate the `requests` library to the modern `httpx` equivalent |
+| [`super_no_args`](docs/transforms/super-no-args.mdx) | Python | Drop the redundant class/self arguments from explicit `super()` calls |
+| [`lru_cache_to_cache`](docs/transforms/lru-cache-to-cache.mdx) | Python | `@functools.lru_cache(maxsize=None)` → `@functools.cache` (≥ 3.9) |
+| [`pep585_generics`](docs/transforms/pep585-generics.mdx) | Python | `typing.List` / `Dict` / `Tuple` → built-in `list` / `dict` / `tuple` (PEP 585) |
+| [`pep604_optional_union`](docs/transforms/pep604-optional-union.mdx) | Python | `Optional[X]` → `X \| None`, `Union[A, B]` → `A \| B` (PEP 604) |
+| [`datetime_utc_alias`](docs/transforms/datetime-utc-alias.mdx) | Python | `datetime.timezone.utc` → `datetime.UTC` (≥ 3.11) |
+| [`yield_from_for_loop`](docs/transforms/yield-from-for-loop.mdx) | Python | `for x in y: yield x` → `yield from y` when the loop has no other body |
 | [`promise_chains_to_async`](docs/transforms/promise-chains-to-async.mdx) | TypeScript | Convert `.then()` chains into async/await with named bindings per stage |
 | [`promise_constructor_to_async`](docs/transforms/promise-constructor-to-async.mdx) | TypeScript | Replace `new Promise((resolve) => resolve(value))` with an async function returning the value |
 | [`var_to_const_let`](docs/transforms/var-to-const-let.mdx) | TypeScript | Replace `var` declarations with `const` (or `let` if reassigned) per binding |
 | [`commonjs_to_esm`](docs/transforms/commonjs-to-esm.mdx) | TypeScript | Migrate CommonJS `require` / `module.exports` to ES module `import` / `export` |
 | [`implicit_any`](docs/transforms/implicit-any.mdx) | TypeScript | Annotate untyped parameters when call-site inference yields a single primitive |
+| [`indexof_to_includes`](docs/transforms/indexof-to-includes.mdx) | TypeScript | `arr.indexOf(x) !== -1` / `>= 0` → `arr.includes(x)` (type-aware via ts-morph; ES2016+) |
+| [`object_assign_to_spread`](docs/transforms/object-assign-to-spread.mdx) | TypeScript | `Object.assign({}, a, b)` → `{ ...a, ...b }` (ES2018+) |
+| [`string_concat_to_template_literal`](docs/transforms/string-concat-to-template-literal.mdx) | TypeScript | `"Hello " + name + "!"` → `` `Hello ${name}!` `` (ES2015+) |
+| [`vue_set_delete_to_assignment`](docs/transforms/vue-set-delete-to-assignment.mdx) | TypeScript | `Vue.set` / `this.$set` → direct assignment; Vue 3 codebases (`.js`/`.ts` only) |
 
 ---
 

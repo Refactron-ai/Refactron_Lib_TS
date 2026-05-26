@@ -76,5 +76,5 @@ Vue.set(obj, 'class', 'x');
 - Wrong arity (`Vue.set(a, b)`, `Vue.delete(a)`) — `wrong_arity`.
 
 <Note>
-**Vue 2 reactivity caveat (ships in the suggestion text, not as a precondition):** Vue 2's `Object.defineProperty`-based reactivity requires `Vue.set` to add NEW reactive keys; direct assignment is not reactive for new keys on a Vue 2 instance. Vue 3 (Proxy-based) makes direct assignment reactive, so the rewrite is semantically equivalent. v0.3.0 assumes Vue 3 — on Vue 2 codebases, exclude this transform via `--exclude vue_set_delete_to_assignment` or your `.refactronrc.json`. A `vueMajorVersion` config key is a v0.4 follow-up.
+**Vue 2 reactivity caveat (ships in the suggestion text, not as a precondition):** Vue 2's `Object.defineProperty`-based reactivity requires `Vue.set` to add NEW reactive keys; direct assignment is not reactive for new keys on a Vue 2 instance. Vue 3 (Proxy-based) makes direct assignment reactive, so the rewrite is semantically equivalent. v0.2.3 assumes Vue 3 — on Vue 2 codebases, exclude this transform via `--exclude vue_set_delete_to_assignment` or your `.refactronrc.json`. A `vueMajorVersion` config key is a v0.4 follow-up.
 </Note>
