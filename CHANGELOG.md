@@ -7,6 +7,33 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [0.3.0] — 2026-05-26
+
+Ten new deterministic transforms — six for Python, four for TypeScript — roughly doubling Refactron's transform coverage. Adds the `pythonVersion` config key for safe version-gated rewrites.
+
+### Added
+
+- **Python — `super_no_args`** — drop redundant explicit class/self args from `super()` calls.
+- **Python — `lru_cache_to_cache`** — `@functools.lru_cache(maxsize=None)` → `@functools.cache` (≥ 3.9).
+- **Python — `pep585_generics`** — `typing.List` / `Dict` / `Tuple` → built-in `list` / `dict` / `tuple` (≥ 3.9, or `from __future__ import annotations`); drops now-unused `typing` imports; refuses when runtime type evaluation is in use.
+- **Python — `pep604_optional_union`** — `Optional[X]` → `X | None`, `Union[A, B]` → `A | B` (≥ 3.10, or `from __future__ import annotations`); same runtime-type-eval safety as `pep585_generics`.
+- **Python — `datetime_utc_alias`** — `datetime.timezone.utc` → `datetime.UTC` (≥ 3.11; no `__future__` override since this is a runtime attribute).
+- **Python — `yield_from_for_loop`** — `for x in y: yield x` → `yield from y` when the loop has no other body. Refuses inside `async def` (a CPython compile-stage SyntaxError that LibCST's parser does not catch).
+- **TypeScript — `indexof_to_includes`** — `arr.indexOf(x) !== -1` / `>= 0` / `> -1` → `arr.includes(x)`; `=== -1` / `< 0` → `!arr.includes(x)`. Type-aware via ts-morph (String / Array / ReadonlyArray receivers only). Gated on tsconfig target ≥ ES2016.
+- **TypeScript — `object_assign_to_spread`** — `Object.assign({}, a, b)` → `{ ...a, ...b }`. Preserves first-arg literal properties; inlines object-literal sources; refuses on spread-element arguments. Gated on tsconfig target ≥ ES2018.
+- **TypeScript — `string_concat_to_template_literal`** — `"Hello " + name + "!"` → `` `Hello ${name}!` ``. ts-morph type-checks every operand; refuses on `any` / `unknown` / non-`string|number|boolean`. Gated on tsconfig target ≥ ES2015.
+- **TypeScript — `vue_set_delete_to_assignment`** — `Vue.set` / `this.$set` → direct assignment; `Vue.delete` / `this.$delete` → `delete obj.k`. `.js` / `.ts` only (Vue SFC parser deferred to v0.4). Refuses `delete` in expression context (return-value semantics differ). Caveat shipped in suggestion text: in Vue 2 codebases this is a semantic change because direct assignment isn't reactive for new keys.
+- **Configuration — `pythonVersion`** — pin the Python target for version-gated transforms; auto-detected from `pyproject.toml`'s `requires-python` when not set.
+
+### Changed
+
+- **Engine composition (PR #38)** — multi-transform composition is now order-stable: when several transforms touch the same file, each emits its own `FileChange` carrying the cumulative content (last per path is the one written to disk). Fixes a silent-data-loss bug where only the LAST transform's rewrite survived under `run --apply`.
+
+### Internal
+
+- Shared sidecar helpers: `src/transform/transforms/python/_py/_python_version.py` (version gating), `_typing_cleanup.py` (PEP 585/604 shared logic).
+- Shared TS helper: `src/transform/transforms/typescript/_tsconfig.ts` (tsconfig target resolution with `extends` chain support, including TS 5.0+ array-extends and JSONC stripping).
+
 ## [0.2.2] — 2026-05-18
 
 Quality-of-life release for the analyze → run → document pipeline: boxed

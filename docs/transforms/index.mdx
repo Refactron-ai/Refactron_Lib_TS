@@ -1,10 +1,10 @@
 ---
 title: Transforms
 icon: wand-magic-sparkles
-description: The ten verified transforms shipped in Refactron 0.2 — five for Python, five for TypeScript.
+description: The twenty verified transforms shipped in Refactron 0.3 — eleven for Python, nine for TypeScript.
 ---
 
-Refactron ships a hand-curated catalog of ten transforms. Every transform has been hardened against precondition edge cases, runs through the [three verification gates](/concepts/safety-model), and either commits atomically or skips itself.
+Refactron ships a hand-curated catalog of twenty transforms — eleven for Python, nine for TypeScript. Every transform has been hardened against precondition edge cases, runs through the [three verification gates](/concepts/safety-model), and either commits atomically or skips itself.
 
 You select transforms via the `--transforms` flag (`run --transforms=var_to_const_let,implicit_any`) or the `transforms` array in [`.refactronrc.json`](/configuration/refactronrc). The default is `['all']`.
 
@@ -17,11 +17,21 @@ You select transforms via the `--transforms` flag (`run --transforms=var_to_cons
 | `manual_typecheck_to_hints` | Python | `isinstance` chain dispatching one parameter → `Union[...]` annotation |
 | `deprecated_api_requests_to_httpx` | Python | `requests` imports / calls → `httpx` |
 | `class_to_dataclass` | Python | Pure `__init__`-assignment classes → `@dataclass` |
+| `super_no_args` | Python | `super(Class, self).method()` → `super().method()` |
+| `lru_cache_to_cache` | Python | `@lru_cache(maxsize=None)` → `@functools.cache` (≥ 3.9) |
+| `pep585_generics` | Python | `typing.List/Dict/Tuple/...` → built-in `list`/`dict`/`tuple` (≥ 3.9) |
+| `pep604_optional_union` | Python | `Optional[X]` → `X \| None`; `Union[A, B]` → `A \| B` (≥ 3.10) |
+| `datetime_utc_alias` | Python | `datetime.timezone.utc` → `datetime.UTC` (≥ 3.11) |
+| `yield_from_for_loop` | Python | `for x in y: yield x` → `yield from y` |
 | `var_to_const_let` | TypeScript | `var` → `const` (or `let` if reassigned) per binding |
 | `promise_chains_to_async` | TypeScript | `.then(...).then(...)` chains → `async`/`await` |
 | `implicit_any` | TypeScript | Add explicit parameter types when all call sites pass the same primitive |
 | `commonjs_to_esm` | TypeScript | `require` / `module.exports` → ES module `import` / `export` |
 | `promise_constructor_to_async` | TypeScript | `new Promise((resolve) => resolve(x))` → `async` returning `x` |
+| `indexof_to_includes` | TypeScript | `arr.indexOf(x) !== -1` → `arr.includes(x)` (ES2016+) |
+| `object_assign_to_spread` | TypeScript | `Object.assign({}, a, b)` → `{ ...a, ...b }` (ES2018+) |
+| `string_concat_to_template_literal` | TypeScript | `"a " + name + "!"` → `` `a ${name}!` `` (ES2015+) |
+| `vue_set_delete_to_assignment` | TypeScript | `Vue.set` / `this.$set` → direct assignment; `Vue.delete` → `delete` |
 
 ## Browse the catalog
 
@@ -41,6 +51,24 @@ You select transforms via the `--transforms` flag (`run --transforms=var_to_cons
   <Card title="class_to_dataclass" icon="python" href="/transforms/class-to-dataclass">
     Python · plain class → `@dataclass`
   </Card>
+  <Card title="super_no_args" icon="python" href="/transforms/super-no-args">
+    Python · `super(C, self)` → `super()`
+  </Card>
+  <Card title="lru_cache_to_cache" icon="python" href="/transforms/lru-cache-to-cache">
+    Python · `@lru_cache(maxsize=None)` → `@cache` (≥ 3.9)
+  </Card>
+  <Card title="pep585_generics" icon="python" href="/transforms/pep585-generics">
+    Python · `typing.List/Dict` → `list`/`dict` (PEP 585)
+  </Card>
+  <Card title="pep604_optional_union" icon="python" href="/transforms/pep604-optional-union">
+    Python · `Optional[X]` → `X | None` (PEP 604)
+  </Card>
+  <Card title="datetime_utc_alias" icon="python" href="/transforms/datetime-utc-alias">
+    Python · `datetime.timezone.utc` → `datetime.UTC` (≥ 3.11)
+  </Card>
+  <Card title="yield_from_for_loop" icon="python" href="/transforms/yield-from-for-loop">
+    Python · `for x in y: yield x` → `yield from y`
+  </Card>
   <Card title="var_to_const_let" icon="js" href="/transforms/var-to-const-let">
     TypeScript · `var` → `const` / `let`
   </Card>
@@ -55,6 +83,18 @@ You select transforms via the `--transforms` flag (`run --transforms=var_to_cons
   </Card>
   <Card title="promise_constructor_to_async" icon="js" href="/transforms/promise-constructor-to-async">
     TypeScript · `new Promise(...)` → `async`
+  </Card>
+  <Card title="indexof_to_includes" icon="js" href="/transforms/indexof-to-includes">
+    TypeScript · `indexOf(x) !== -1` → `includes(x)` (ES2016+)
+  </Card>
+  <Card title="object_assign_to_spread" icon="js" href="/transforms/object-assign-to-spread">
+    TypeScript · `Object.assign({}, …)` → spread literal (ES2018+)
+  </Card>
+  <Card title="string_concat_to_template_literal" icon="js" href="/transforms/string-concat-to-template-literal">
+    TypeScript · `"…" + x` → template literal (ES2015+)
+  </Card>
+  <Card title="vue_set_delete_to_assignment" icon="js" href="/transforms/vue-set-delete-to-assignment">
+    TypeScript · `Vue.set` / `this.$set` → direct assignment
   </Card>
 </CardGroup>
 

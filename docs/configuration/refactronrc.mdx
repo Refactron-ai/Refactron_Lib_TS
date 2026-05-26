@@ -16,6 +16,7 @@ Run `refactron init` to scaffold a starter file.
 | `exclude` | `string[]` | `[]` | Gitignore-style globs to skip during analysis (e.g. `["dist", "node_modules"]`). |
 | `testCmd` | `string \| null` | `null` (auto-detect) | Override the test runner Gate 3 invokes. Auto-detection looks for `vitest.config.*`, `jest.config.*`, `pytest.ini`, or a `[tool.pytest.*]` block in `pyproject.toml`. |
 | `confidence` | `"high" \| "medium" \| "low"` | `"high"` | Minimum analyzer confidence to surface findings. Lower = noisier. |
+| `pythonVersion` | `string \| null` | `null` (auto-detect) | Pin the Python target version for version-gated transforms (`lru_cache_to_cache`, `pep585_generics`, `pep604_optional_union`, `datetime_utc_alias`). Auto-detected from `pyproject.toml`'s `requires-python` (PEP 621) or `[tool.poetry.dependencies] python` when not set. Format: `"3.9"`, `"3.11"`, etc. When `null` and not detectable, version-gated transforms refuse with `python_version_too_low` rather than guess. |
 | `dryRun` | `boolean` | `true` | Default mode for `run` when neither `--apply` nor `--dry-run` is passed. |
 | `documentation.provider` | `"backend" \| "ollama" \| "openai" \| "anthropic" \| "groq"` | `"backend"` | LLM provider for the `document` command. `"backend"` uses your stored Refactron credentials (Pro plan); the others are opt-in. |
 | `documentation.model` | `string` | `"llama-3.3-70b-versatile"` | Model name passed to the provider. |
@@ -38,6 +39,7 @@ Run `refactron init` to scaffold a starter file.
   "exclude": ["node_modules", "dist", ".venv", "__pycache__"],
   "testCmd": null,
   "confidence": "high",
+  "pythonVersion": "3.11",
   "dryRun": true,
   "documentation": {
     "provider": "backend",

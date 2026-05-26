@@ -1,0 +1,74 @@
+---
+title: datetime_utc_alias
+icon: python
+description: Rewrite datetime.timezone.utc to the shorter datetime.UTC alias (Python 3.11+).
+---
+
+**Transform ID:** `datetime_utc_alias`
+**Language:** Python
+
+## What it does
+
+Rewrites the verbose `datetime.timezone.utc` constant to the `datetime.UTC` alias introduced in Python 3.11. Three call shapes are handled:
+
+- `datetime.timezone.utc` → `datetime.UTC`
+- `<dt-alias>.timezone.utc` → `<dt-alias>.UTC` (after `import datetime as <dt-alias>`)
+- `timezone.utc` → `UTC` (after `from datetime import timezone`)
+
+For the third form, the import line is rewritten in place: `UTC` is added to the existing `from datetime import …`, and `timezone` is dropped if it has no surviving non-import references (otherwise both names stay). Sidecar at `src/transform/transforms/python/_py/datetime_utc_alias.py`.
+
+## Detector pattern
+
+The detector at `src/analyze/detectors/python/datetime-timezone-utc.ts` matches `Attribute` access whose tail is `.utc` and whose root either is `datetime` (or a module alias from `import datetime as <X>`) or is the bare identifier `timezone` (when `from datetime import timezone` is in scope).
+
+## Preconditions
+
+1. **`python_version_too_low`** — refuses when the resolved Python version is `< 3.11` (or unknown). `datetime.UTC` is a 3.11 addition. Unlike `pep585_generics` / `pep604_optional_union`, the `from __future__ import annotations` override does **NOT** apply — `UTC` is a runtime attribute lookup, not an annotation form, and `__future__.annotations` only defers annotation evaluation.
+2. **`aliased_import_unsupported`** — refuses files that use `from datetime import timezone as <X>` (X != `timezone`). Rewriting `<X>.utc` correctly would require emitting a sibling import for `UTC` under a different alias; deferred to v0.4. If the file also has a bare `from datetime import timezone`, that line is skipped too to keep the file consistent.
+
+## Before / after
+
+<CodeGroup>
+```python before.py
+import datetime
+
+now = datetime.datetime.now(datetime.timezone.utc)
+```
+
+```python after.py
+import datetime
+
+now = datetime.datetime.now(datetime.UTC)
+```
+</CodeGroup>
+
+The `from datetime import timezone` form gets its import rewritten too:
+
+<CodeGroup>
+```python before.py
+from datetime import timezone, timedelta
+
+day = timedelta(days=1)
+start = timezone.utc
+```
+
+```python after.py
+from datetime import UTC, timedelta
+
+day = timedelta(days=1)
+start = UTC
+```
+</CodeGroup>
+
+When `timezone` has other uses (e.g. `timezone(timedelta(hours=2))`) it stays alongside the new `UTC` import.
+
+## Edge cases NOT handled (skip via precondition)
+
+- `from datetime import timezone as tz` — `aliased_import_unsupported`; rewriting `tz.utc` while also adding a `UTC` import would mix idioms in one file.
+- `from datetime import *` — the star import is registered but skipped; we can't reason about import-cleanup math reliably.
+- Function-local `import datetime` — only top-level imports are walked in v0.3.0 (tracked as v0.4 follow-up in the sidecar).
+- `import collections as c` already present alongside the `collections`-targeting bits of `pep585_generics` — not applicable here, listed for parity.
+
+<Note>
+The `__future__.annotations` override that lifts the version gate for `pep585_generics` and `pep604_optional_union` does **NOT** apply here. `datetime.UTC` is a runtime attribute that must exist on the `datetime` module — that is a 3.11 fact, not a parser fact.
+</Note>

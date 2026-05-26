@@ -1,0 +1,63 @@
+---
+title: object_assign_to_spread
+icon: js
+description: Rewrite Object.assign({}, a, b) to the spread object literal { ...a, ...b } (ES2018+).
+---
+
+**Transform ID:** `object_assign_to_spread`
+**Language:** TypeScript
+
+## What it does
+
+Rewrites `Object.assign({}, a, b, { x: 1 })` to the equivalent spread object literal `{ ...a, ...b, x: 1 }`. Only safe when the first argument is an **object literal** — `Object.assign(target, ...)` against a mutable target has return-value and mutation semantics that a spread expression does not preserve.
+
+Source-merging rules:
+- Properties of the first-arg literal contribute first (preserving their original order).
+- Each subsequent argument that is itself an object literal inlines its properties directly (avoiding redundant `{ ...{x:1} }`).
+- Any other expression becomes a `...expr` spread.
+
+In an arrow-body context (`() => Object.assign({}, a)`), the output is paren-wrapped (`() => ({ ...a })`) to disambiguate from a block statement. Transform at `src/transform/transforms/typescript/object-assign-to-spread.ts`.
+
+## Detector pattern
+
+The detector at `src/analyze/detectors/typescript/object-assign-empty.ts` matches ts-morph `CallExpression` nodes whose callee is exactly `Object.assign` (not `MyObject.assign`, not a bare `assign(…)`) and whose first argument is an `ObjectLiteralExpression`.
+
+## Preconditions
+
+1. **`non_es2018`** — refuses when the resolved tsconfig `target` predates ES2018. Object spread is an ES2018 syntax addition.
+2. **`non_literal_target`** — refuses when the first arg is not an `ObjectLiteralExpression`. `Object.assign(existing, a)` mutates `existing` and returns it; the spread form would silently lose that behaviour.
+3. **`spread_argument_present`** — refuses when any source uses spread-element syntax (`Object.assign({}, ...sources)`). The spread-object form `{...sources}` doesn't iterate `sources`, so there is no 1:1 rewrite.
+
+## Before / after
+
+<CodeGroup>
+```ts before.ts
+const a = { x: 1 };
+const b = { y: 2 };
+
+const merged = Object.assign({}, a, b);
+const withLiteral = Object.assign({}, a, { y: 2 });
+const withBase = Object.assign({ base: 1 }, a);
+const fromArrow = () => Object.assign({}, a);
+```
+
+```ts after.ts
+const a = { x: 1 };
+const b = { y: 2 };
+
+const merged = { ...a, ...b };
+const withLiteral = { ...a, y: 2 };
+const withBase = { base: 1, ...a };
+const fromArrow = () => ({ ...a });
+```
+</CodeGroup>
+
+## Edge cases NOT handled (skip via precondition)
+
+- Mutating-target form (`Object.assign(existing, a)`) — `non_literal_target`; would change mutation and return-value semantics.
+- Spread-argument source (`Object.assign({}, ...sources)`) — `spread_argument_present`; no equivalent spread-object form.
+- tsconfig `target` < ES2018 — `non_es2018`; object spread is not in the runtime grammar.
+
+<Note>
+The first-arg literal acts as the safety witness: it's the only shape where the call has no observable mutation effect — the empty (or property-bearing) object is throwaway, and the merged result is what the call returns. Anything else and the rewrite would silently change semantics.
+</Note>
