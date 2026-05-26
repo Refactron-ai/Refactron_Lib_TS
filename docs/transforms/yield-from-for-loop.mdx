@@ -1,0 +1,63 @@
+---
+title: yield_from_for_loop
+icon: python
+description: Replace the trivial `for x in y: yield x` loop with `yield from y`.
+---
+
+**Transform ID:** `yield_from_for_loop`
+**Language:** Python
+
+## What it does
+
+Rewrites a generator loop that does nothing but forward each value (`for x in y: yield x`) to the equivalent `yield from y`. Both the indented-block and one-line for-suite shapes are recognised, and the rewrite preserves leading comments above the `for` and any trailing comment on the yield line. After the rewrite, the sidecar does a defensive `cst.parse_module` on the output and refuses (`rewrite_unparseable`) rather than emit broken source. No version gate is needed — `yield from` has been available since Python 3.3. Sidecar at `src/transform/transforms/python/_py/yield_from_for_loop.py`.
+
+## Detector pattern
+
+The detector at `src/analyze/detectors/python/yield-in-trivial-loop.ts` walks `for` statements whose target is a single identifier and whose body is exactly one statement, a `yield` of that same identifier — with no `else:` branch.
+
+## Preconditions
+
+1. The loop target is a single `Name` (no tuple targets like `for x, y in z:`).
+2. The loop body is exactly one `Expr(Yield(<loop-var>))` — no additional statements, no print/log calls alongside the yield.
+3. No `else:` branch. Python's `for/else` clause runs on loop completion-without-break; `yield from` does not preserve that semantic.
+4. The expression is not already `yield from <iter>` (idempotent — no-op rewrite is skipped cleanly).
+5. **The enclosing function must not be `async def`.** Inside an `async def`, `for x in y: yield x` makes the function an async generator (PEP 525). `yield from` is a SyntaxError inside async generators — and crucially, CPython enforces this at the compile stage, not in the grammar, so LibCST's parser will happily accept the broken output. The sidecar tracks `async def` depth and refuses any rewrite under one.
+6. **`rewrite_unparseable`** — defensive: if the rewritten module fails `cst.parse_module`, the transform reports rather than write corrupted source.
+
+## Before / after
+
+<CodeGroup>
+```python before.py
+def forward(seq):
+    for x in seq:
+        yield x
+
+
+def forward_with_expr(xs, ys):
+    # forward every paired sum
+    for x in (a + b for a, b in zip(xs, ys)):
+        yield x
+```
+
+```python after.py
+def forward(seq):
+    yield from seq
+
+
+def forward_with_expr(xs, ys):
+    # forward every paired sum
+    yield from (a + b for a, b in zip(xs, ys))
+```
+</CodeGroup>
+
+## Edge cases NOT handled (skip via precondition)
+
+- Multi-statement loop body (`for x in seq: yield x; print(x)`) — not a pure forward.
+- `for x in seq: yield x else: …` — `for/else` semantics are not preserved by `yield from`.
+- Tuple targets (`for k, v in items: yield k`) — yielded value isn't the loop target verbatim.
+- The loop inside an `async def` — would produce a SyntaxError CPython catches at compile time but LibCST's parser does not.
+- A yielded expression that isn't the bare loop variable (`for x in seq: yield f(x)`) — the rewrite would change behaviour.
+
+<Note>
+The `async def` gate is the load-bearing safety check here. LibCST's parser accepts `yield from` inside `async def`; the SyntaxError only fires when CPython compiles the module. Without an explicit gate the rewrite would silently produce code that crashes at import time.
+</Note>

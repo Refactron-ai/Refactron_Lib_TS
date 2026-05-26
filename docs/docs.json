@@ -59,7 +59,17 @@
           "transforms/promise-chains-to-async",
           "transforms/implicit-any",
           "transforms/commonjs-to-esm",
-          "transforms/promise-constructor-to-async"
+          "transforms/promise-constructor-to-async",
+          "transforms/super-no-args",
+          "transforms/lru-cache-to-cache",
+          "transforms/pep585-generics",
+          "transforms/pep604-optional-union",
+          "transforms/datetime-utc-alias",
+          "transforms/yield-from-for-loop",
+          "transforms/indexof-to-includes",
+          "transforms/object-assign-to-spread",
+          "transforms/string-concat-to-template-literal",
+          "transforms/vue-set-delete-to-assignment"
         ]
       },
       {

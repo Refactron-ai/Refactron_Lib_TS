@@ -1,0 +1,83 @@
+---
+title: lru_cache_to_cache
+icon: python
+description: Replace @functools.lru_cache(maxsize=None) with the simpler @functools.cache on Python 3.9+.
+---
+
+**Transform ID:** `lru_cache_to_cache`
+**Language:** Python
+
+## What it does
+
+Rewrites the unbounded-cache idiom `@functools.lru_cache(maxsize=None)` to the equivalent `@functools.cache` decorator added in Python 3.9. Handles both the attribute form (`@functools.lru_cache(...)`) and the bare-name form (`@lru_cache(...)` after `from functools import lru_cache`), and updates the `from functools import …` line so it imports `cache` (renamed if `lru_cache` is no longer used, augmented alongside it if a finite-cap site survives). The sidecar (`src/transform/transforms/python/_py/lru_cache_to_cache.py`) drives the LibCST rewrite.
+
+## Detector pattern
+
+The detector at `src/analyze/detectors/python/lru-cache-maxsize-none.ts` matches decorator call expressions whose function is `lru_cache` or `functools.lru_cache` AND whose argument list is **exactly** one keyword argument `maxsize=None`. Bare `@lru_cache()`, `@lru_cache(128)`, and `@lru_cache(maxsize=None, typed=True)` are intentionally not flagged.
+
+## Preconditions
+
+1. **`python_version_too_low`** — refuses when the project's resolved Python version is `< 3.9` (or unknown). `functools.cache` is a 3.9 addition; pin via the [`pythonVersion`](/configuration/refactronrc#schema) config key.
+2. The decorator call must be exactly `lru_cache(maxsize=None)` — no `typed=True`, no finite `maxsize`, no zero-arg form (`@lru_cache()` defaults to `maxsize=128`, **not** unbounded, so it is not a safe `@cache` substitute).
+3. Bare-name decorators only resolve when `from functools import lru_cache` (or the no-op `as lru_cache`) is in scope. A genuine rebinding (`from functools import lru_cache as cache_dec`) is left untouched — rewriting under an alias would invalidate the existing call sites.
+
+## Before / after
+
+<CodeGroup>
+```python before.py
+import functools
+
+
+@functools.lru_cache(maxsize=None)
+def fib(n: int) -> int:
+    if n < 2:
+        return n
+    return fib(n - 1) + fib(n - 2)
+```
+
+```python after.py
+import functools
+
+
+@functools.cache
+def fib(n: int) -> int:
+    if n < 2:
+        return n
+    return fib(n - 1) + fib(n - 2)
+```
+</CodeGroup>
+
+For the bare-name form, the `from functools import …` line is also updated:
+
+<CodeGroup>
+```python before.py
+from functools import lru_cache
+
+
+@lru_cache(maxsize=None)
+def expensive(x: int) -> int:
+    return x * x
+```
+
+```python after.py
+from functools import cache
+
+
+@cache
+def expensive(x: int) -> int:
+    return x * x
+```
+</CodeGroup>
+
+When a finite-cap `@lru_cache(128)` site survives in the same file, the import is augmented instead of renamed: `from functools import lru_cache, cache`.
+
+## Edge cases NOT handled (skip via precondition)
+
+- `@lru_cache()` (zero args) — semantically equivalent to `@lru_cache(maxsize=128)` per CPython docs; not unbounded, so swapping in `@cache` would change behaviour.
+- `@lru_cache(128)` / `@lru_cache(maxsize=1024)` — finite caps; `@cache` would grow without bound.
+- `@lru_cache(maxsize=None, typed=True)` — type-discriminated caching has no `@cache` equivalent.
+- Decorators using a renamed import (`from functools import lru_cache as cache_dec`) — left alone because we can't rewrite the alias's call sites.
+
+<Note>
+Version gating is hard — if `pythonVersion` is null and not detectable from `pyproject.toml`'s `requires-python`, the transform refuses rather than guess. Set `"pythonVersion": "3.9"` (or higher) in `.refactronrc.json` to unlock the rewrite.
+</Note>

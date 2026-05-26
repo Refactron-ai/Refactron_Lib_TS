@@ -1,0 +1,78 @@
+---
+title: indexof_to_includes
+icon: js
+description: Replace the indexOf(...) !== -1 contains-check idiom with .includes(...).
+---
+
+**Transform ID:** `indexof_to_includes`
+**Language:** TypeScript
+
+## What it does
+
+Rewrites the `indexOf` "contains" idiom built on `Array.prototype.indexOf` / `String.prototype.indexOf` to the boolean `.includes(...)` form added in ES2016. Five comparison shapes qualify:
+
+| Before | After |
+|---|---|
+| `arr.indexOf(x) !== -1` | `arr.includes(x)` |
+| `arr.indexOf(x) >= 0` | `arr.includes(x)` |
+| `arr.indexOf(x) > -1` | `arr.includes(x)` |
+| `arr.indexOf(x) === -1` | `!arr.includes(x)` |
+| `arr.indexOf(x) < 0` | `!arr.includes(x)` |
+
+The mirrored LHS forms (`-1 !== arr.indexOf(x)`, `0 <= arr.indexOf(x)`, etc.) are also handled. **Position comparisons** like `arr.indexOf(x) > 5` or `=== 3` are NOT rewritten — `.includes` returns a boolean and the position information would be lost. Receiver-type checking goes through ts-morph's type system. Transform at `src/transform/transforms/typescript/indexof-to-includes.ts`.
+
+## Detector pattern
+
+The detector at `src/analyze/detectors/typescript/indexof-comparison.ts` walks ts-morph `BinaryExpression` nodes whose operator is one of the five recognised shapes and where exactly one side is an `indexOf` call expression with exactly one argument.
+
+## Preconditions
+
+1. **`non_es2016`** — refuses when the resolved tsconfig `target` predates ES2016. `Array.prototype.includes` and `String.prototype.includes` are ES2016 additions; rewriting on an older target would introduce a runtime `TypeError` on legacy platforms.
+2. **`non_callable_indexof`** — refuses when the `indexOf` receiver's ts-morph type is neither string nor array (nor ReadonlyArray). DOM `NodeList`, jQuery objects, `Buffer`, and custom classes have `indexOf` methods but no guaranteed `.includes` — and where they do, signatures may differ.
+3. The comparison shape is exactly one of the five recognised contains / not-contains idioms above. Position comparisons (`> 5`, `=== 3`) are silently ignored.
+4. Exactly one side of the binary expression is an `indexOf` call — `a.indexOf(x) !== b.indexOf(y)` does not qualify.
+
+## Before / after
+
+<CodeGroup>
+```ts before.ts
+const items: string[] = ['a', 'b', 'c'];
+const name: string = 'hello';
+
+if (items.indexOf('b') !== -1) {
+  /* found */
+}
+if (items.indexOf('z') === -1) {
+  /* missing */
+}
+if (name.indexOf('ell') >= 0) {
+  /* substring */
+}
+```
+
+```ts after.ts
+const items: string[] = ['a', 'b', 'c'];
+const name: string = 'hello';
+
+if (items.includes('b')) {
+  /* found */
+}
+if (!items.includes('z')) {
+  /* missing */
+}
+if (name.includes('ell')) {
+  /* substring */
+}
+```
+</CodeGroup>
+
+## Edge cases NOT handled (skip via precondition)
+
+- Position comparisons (`arr.indexOf(x) > 5`, `=== 3`, etc.) — `.includes` returns a boolean and discards position.
+- Non-string / non-array receivers (`Buffer`, `NodeList`, jQuery, custom classes) — `non_callable_indexof`. `.includes` is not guaranteed.
+- tsconfig `target` < ES2016 — `non_es2016`; `.includes` doesn't exist on those engines.
+- Symmetric two-sided forms (`a.indexOf(x) !== b.indexOf(y)`) — not a contains idiom.
+
+<Note>
+Type safety here comes from ts-morph's `getType()` checks on the `indexOf` receiver. A union type like `string | string[]` is accepted only when every constituent is safe; anything else (`object | string`) refuses cleanly.
+</Note>

@@ -1,0 +1,68 @@
+---
+title: super_no_args
+icon: python
+description: Drop the redundant class and self arguments from explicit super() calls.
+---
+
+**Transform ID:** `super_no_args`
+**Language:** Python
+
+## What it does
+
+Rewrites the Python-2-style explicit `super(ClassName, self).method(...)` invocation to the implicit zero-arg `super().method(...)` form that has been available since Python 3.0. The rewrite is intra-file only; the sidecar (`src/transform/transforms/python/_py/super_no_args.py`) walks a LibCST tree, tracks the enclosing-class stack, and only drops the two arguments when the first arg matches the **innermost** lexical class and the second arg is literally `self`.
+
+## Detector pattern
+
+The detector at `src/analyze/detectors/python/super-with-args.ts` walks tree-sitter `call` nodes whose function is the identifier `super` and whose `arguments` field contains exactly two named children — an `identifier` first arg and the identifier `self` second. It anchors each finding on the `super` token's row so multi-line method chains report the right line.
+
+## Preconditions
+
+1. The call has exactly two positional arguments: a bare `Name` followed by `self`.
+2. The first-arg `Name` matches the **innermost** enclosing class name (the class `super()` would default to via its `__class__` cell). A parent / sibling class name (`super(A, self)` inside `class B(A)`) is left alone — rewriting it would change MRO behaviour.
+3. The call sits lexically inside a `class` definition. Module-level / free-function `super(X, self)` is already broken at runtime and is skipped.
+4. The second arg is literally `self`. `classmethod` usage (`super(B, cls)`) is out of scope for v0.3.0.
+5. The first arg is a bare `Name`. `super(__class__, self)`, `super(type(self), self)`, and dotted refs (`super(mod.X, self)`) are deferred to v0.4.
+
+## Before / after
+
+<CodeGroup>
+```python before.py
+class A:
+    def f(self):
+        return 1
+
+
+class B(A):
+    def f(self):
+        return super(B, self).f() + 1
+
+    def g(self, x, y):
+        return super(B, self).g(x, y)
+```
+
+```python after.py
+class A:
+    def f(self):
+        return 1
+
+
+class B(A):
+    def f(self):
+        return super().f() + 1
+
+    def g(self, x, y):
+        return super().g(x, y)
+```
+</CodeGroup>
+
+## Edge cases NOT handled (skip via precondition)
+
+- `super(A, self)` where `A` is a parent / sibling, not the innermost enclosing class — the name-mismatch guard refuses cleanly.
+- `super(Outer, self)` inside a nested `class Inner` shadow — zero-arg `super()` would resolve against `Inner`'s MRO, not `Outer`'s.
+- `super(B, cls)` in a `classmethod` — second arg must be `self`.
+- `super(__class__, self)` and `super(type(self), self)` — magic-cell / Call-typed first arg, deferred to v0.4.
+- Module-level / free-function `super(X, self)` — no enclosing class to anchor on.
+
+<Note>
+The "innermost enclosing class" rule is the safety floor. Over-skip beats under-skip — a missed rewrite is harmless; a wrong rewrite changes the MRO that `super()` walks at call time.
+</Note>

@@ -7,6 +7,32 @@ description: Release history for Refactron — newest first.
 Refactron follows [Semantic Versioning](https://semver.org/). The full,
 unabridged log lives in [`CHANGELOG.md`](https://github.com/Refactron-ai/Refactron_Lib_TS/blob/main/CHANGELOG.md).
 
+<Update label="0.3.0" description="May 26, 2026">
+  Ten new deterministic transforms — six for Python, four for TypeScript — roughly
+  doubling Refactron's transform coverage. Adds the `pythonVersion` config key
+  so version-gated rewrites can be opted in safely.
+
+  **Added — Python**
+  - **`super_no_args`** — `super(ClassName, self).method(...)` → `super().method(...)`. Refuses sibling/parent class names and nested-class shadows to preserve MRO.
+  - **`lru_cache_to_cache`** — `@functools.lru_cache(maxsize=None)` → `@functools.cache` (≥ 3.9); also rewrites the `from functools import …` line.
+  - **`pep585_generics`** — `typing.List` / `Dict` / `Tuple` / `Iterable` / … → `list` / `dict` / `tuple` / `collections.abc.Iterable` / … (≥ 3.9, or `from __future__ import annotations`). Refuses files with Pydantic v1 or `get_type_hints` to avoid runtime-eval crashes.
+  - **`pep604_optional_union`** — `Optional[X]` → `X | None`; `Union[A, B]` → `A | B` (≥ 3.10, or `from __future__ import annotations`).
+  - **`datetime_utc_alias`** — `datetime.timezone.utc` → `datetime.UTC` (≥ 3.11). No `__future__` override — `UTC` is a runtime attribute.
+  - **`yield_from_for_loop`** — `for x in y: yield x` → `yield from y`. Refuses inside `async def` (a CPython compile-stage SyntaxError LibCST's parser does not catch).
+
+  **Added — TypeScript**
+  - **`indexof_to_includes`** — `arr.indexOf(x) !== -1` and friends → `arr.includes(x)`. Type-aware via ts-morph (String / Array / ReadonlyArray receivers). Gated on tsconfig target ≥ ES2016.
+  - **`object_assign_to_spread`** — `Object.assign({}, a, b)` → `{ ...a, ...b }`. First arg must be an object literal; refuses spread-element sources. Gated on tsconfig target ≥ ES2018.
+  - **`string_concat_to_template_literal`** — `"…" + x + "…"` → `` `…${x}…` ``. Refuses `any` / `unknown` / non-primitive operands. Gated on tsconfig target ≥ ES2015.
+  - **`vue_set_delete_to_assignment`** — `Vue.set` / `this.$set` → direct assignment; `Vue.delete` / `this.$delete` → `delete obj.k`. `.js` / `.ts` only — `.vue` SFC parsing is deferred to v0.4. Refuses `delete` in expression context (return-value semantics differ). On Vue 2 codebases this is a semantic change (`Vue.set` is required for new reactive keys) — caveat ships in the suggestion text.
+
+  **Added — Configuration**
+  - **`pythonVersion`** — pin the Python target version (`"3.9"`, `"3.11"`, …) for the four version-gated Python transforms. Auto-detected from `pyproject.toml`'s `requires-python` when unset; falls back to refusing version-gated transforms rather than guessing.
+
+  **Changed**
+  - **Engine composition** — multi-transform composition is now order-stable: when several transforms touch the same file, each emits its own `FileChange` carrying the cumulative content, and the last one per path is what's written to disk. Fixes a silent-data-loss bug where only the LAST transform's rewrite survived under `run --apply` (PR #38).
+</Update>
+
 <Update label="0.2.2" description="May 18, 2026">
   Quality-of-life release for the analyze → run → document pipeline: boxed CLI
   output, a real `rollback` command, and a much more efficient `document`.
