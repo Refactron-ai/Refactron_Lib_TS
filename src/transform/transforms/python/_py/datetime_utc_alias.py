@@ -409,14 +409,41 @@ def main():
         return
 
     if not dt_module_aliases and not bare_timezone:
-        # No reachable form to rewrite.
-        emit(ok=True, new_content="", preconditions=[])
+        emit(
+            ok=True,
+            new_content="",
+            preconditions=[
+                {
+                    "id": "no_datetime_import_in_scope",
+                    "satisfied": False,
+                    "reason": (
+                        "file has no `import datetime` / `from datetime "
+                        "import timezone` binding for the rewriter to "
+                        "anchor on"
+                    ),
+                }
+            ],
+        )
         return
 
     rewriter = _UtcRewriter(dt_module_aliases, bare_timezone)
     new_module = module.visit(rewriter)
     if not rewriter.changed:
-        emit(ok=True, new_content="", preconditions=[])
+        emit(
+            ok=True,
+            new_content="",
+            preconditions=[
+                {
+                    "id": "no_utc_references",
+                    "satisfied": False,
+                    "reason": (
+                        "datetime import is in scope but no "
+                        "`timezone.utc` / `datetime.timezone.utc` "
+                        "reference was reachable"
+                    ),
+                }
+            ],
+        )
         return
 
     # If we rewrote any bare `timezone.utc`, the import line for
@@ -436,7 +463,21 @@ def main():
         new_module = new_module.visit(import_pass)
 
     if new_module.code == src:
-        emit(ok=True, new_content="", preconditions=[])
+        emit(
+            ok=True,
+            new_content="",
+            preconditions=[
+                {
+                    "id": "rewrite_produced_no_diff",
+                    "satisfied": False,
+                    "reason": (
+                        "rewriter matched candidates but the "
+                        "post-import-cleanup output is byte-identical "
+                        "to the source"
+                    ),
+                }
+            ],
+        )
         return
 
     emit(

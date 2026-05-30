@@ -228,8 +228,23 @@ def main():
     new_module = module.visit(visitor)
     preconditions = early_pre + visitor.preconditions
     if not visitor.changed and not early_pre and not visitor.preconditions:
-        # No callback patterns matched at all.
-        emit(ok=True, new_content="", preconditions=preconditions)
+        # No callback patterns matched at all -- surface this explicitly so
+        # the analyze->run gap is visible to the user.
+        emit(
+            ok=True,
+            new_content="",
+            preconditions=[
+                {
+                    "id": "no_callback_pattern_matched",
+                    "satisfied": False,
+                    "reason": (
+                        "no top-level function with a trailing callback "
+                        "parameter (named `callback`, `cb`, `done`, etc.) "
+                        "was reachable in this file"
+                    ),
+                }
+            ],
+        )
         return
     if not visitor.changed:
         # Patterns matched but preconditions failed — return empty newContent.

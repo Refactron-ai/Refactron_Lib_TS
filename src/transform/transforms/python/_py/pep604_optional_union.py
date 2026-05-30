@@ -289,13 +289,40 @@ def main():
 
     module_aliases, bare_names = _collect_typing_aliases(module)
     if not module_aliases and not bare_names:
-        emit(ok=True, new_content="", preconditions=[])
+        emit(
+            ok=True,
+            new_content="",
+            preconditions=[
+                {
+                    "id": "no_typing_import_in_scope",
+                    "satisfied": False,
+                    "reason": (
+                        "file has no resolvable `import typing` / "
+                        "`from typing import Optional|Union` binding "
+                        "(renamed-only aliases are out of scope)"
+                    ),
+                }
+            ],
+        )
         return
 
     rewriter = _Rewriter(module_aliases, bare_names)
     new_module = module.visit(rewriter)
     if not rewriter.changed:
-        emit(ok=True, new_content="", preconditions=[])
+        emit(
+            ok=True,
+            new_content="",
+            preconditions=[
+                {
+                    "id": "no_subscripts_to_rewrite",
+                    "satisfied": False,
+                    "reason": (
+                        "Optional / Union import is in scope but no "
+                        "subscript site bound to a canonical name was reachable"
+                    ),
+                }
+            ],
+        )
         return
 
     # Cleanup — drop now-unused Optional / Union typing imports. No abc / re
@@ -306,7 +333,20 @@ def main():
     )
 
     if new_module.code == src:
-        emit(ok=True, new_content="", preconditions=[])
+        emit(
+            ok=True,
+            new_content="",
+            preconditions=[
+                {
+                    "id": "rewrite_produced_no_diff",
+                    "satisfied": False,
+                    "reason": (
+                        "rewriter matched candidates but the post-cleanup "
+                        "output is byte-identical to the source"
+                    ),
+                }
+            ],
+        )
         return
 
     emit(

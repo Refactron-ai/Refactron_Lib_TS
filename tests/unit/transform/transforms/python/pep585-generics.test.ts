@@ -326,4 +326,25 @@ describe('pep585_generics (python) — rewrites on Python >= 3.9', () => {
     // No subscripts rewritten -> no change.
     expect(r.newContent).toBeNull();
   });
+
+  it('emits a precondition record when the file has no typing import in scope', async () => {
+    // Bug #3 (Ansible trial): silent refusals at the run stage made the
+    // analyze->run gap invisible. The "nothing to rewrite" path must surface
+    // a precondition so users can see why no diff was produced.
+    const src = 'def f(x: int) -> int:\n    return x + 1\n';
+    const p = await file(src);
+    const r = await transform({
+      absPath: p,
+      relPath: 'f.py',
+      source: src,
+      findings: [],
+      crossFile: cf('3.11'),
+    });
+    expect(r.newContent).toBeNull();
+    expect(
+      r.preconditions.some(
+        (c) => c.id === 'no_typing_import_in_scope' && !c.satisfied,
+      ),
+    ).toBe(true);
+  });
 });

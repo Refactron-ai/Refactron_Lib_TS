@@ -290,4 +290,22 @@ describe('datetime_utc_alias (python) — rewrites on Python >= 3.11', () => {
     // Function still references its parameter `timezone`.
     expect(r.newContent).toContain('def f(timezone):');
   });
+
+  it('emits a precondition record when no datetime import is in scope (Bug #3)', async () => {
+    const src = 'def f(x):\n    return x + 1\n';
+    const p = await file(src);
+    const r = await transform({
+      absPath: p,
+      relPath: 'f.py',
+      source: src,
+      findings: [],
+      crossFile: cf('3.11'),
+    });
+    expect(r.newContent).toBeNull();
+    expect(
+      r.preconditions.some(
+        (c) => c.id === 'no_datetime_import_in_scope' && !c.satisfied,
+      ),
+    ).toBe(true);
+  });
 });

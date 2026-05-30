@@ -337,4 +337,22 @@ describe('pep585 + pep604 composition', () => {
     expect(r604.newContent).toContain('list[int] | None');
     expect(r604.newContent).not.toMatch(/from typing import/);
   });
+
+  it('emits a precondition record when no Optional/Union import is in scope (Bug #3)', async () => {
+    const src = 'def f(x: int) -> int:\n    return x + 1\n';
+    const p = await file(src);
+    const r = await pep604({
+      absPath: p,
+      relPath: 'f.py',
+      source: src,
+      findings: [],
+      crossFile: cf('3.11'),
+    });
+    expect(r.newContent).toBeNull();
+    expect(
+      r.preconditions.some(
+        (c) => c.id === 'no_typing_import_in_scope' && !c.satisfied,
+      ),
+    ).toBe(true);
+  });
 });

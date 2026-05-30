@@ -157,4 +157,19 @@ describe('python: callback_to_async_await — cross-file', () => {
     expect(r.newContent).not.toBeNull();
     expect(r.newContent).toContain('async def fetch');
   });
+
+  it('emits a precondition record when no callback pattern is reachable (Bug #3)', async () => {
+    // No trailing `callback` / `cb` / `done` parameter anywhere in the file
+    // — previously the sidecar returned an empty precondition list, hiding
+    // the analyze->run gap from users.
+    const src = 'def f(x, y):\n    return x + y\n';
+    const p = await file(src);
+    const r = await transform({ absPath: p, relPath: 'f.py', source: src, findings: [] });
+    expect(r.newContent).toBeNull();
+    expect(
+      r.preconditions.some(
+        (c) => c.id === 'no_callback_pattern_matched' && !c.satisfied,
+      ),
+    ).toBe(true);
+  });
 });
