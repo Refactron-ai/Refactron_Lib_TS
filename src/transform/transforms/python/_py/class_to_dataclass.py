@@ -7,6 +7,8 @@ from _base import read_source, emit  # noqa: E402
 import libcst as cst  # noqa: E402
 import libcst.matchers as m  # noqa: E402
 
+from _typing_cleanup import _top_insertion_index  # noqa: E402
+
 
 def _bases_are_only_object(cls: cst.ClassDef) -> bool:
     if not cls.bases:
@@ -177,7 +179,10 @@ def _inject_imports(module: cst.Module, needed) -> cst.Module:
         )
     if not new_imports:
         return module
-    return module.with_changes(body=tuple(new_imports) + tuple(module.body))
+    insertion_idx = _top_insertion_index(module)
+    body = list(module.body)
+    body[insertion_idx:insertion_idx] = new_imports
+    return module.with_changes(body=tuple(body))
 
 
 def main():

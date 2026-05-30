@@ -40,4 +40,45 @@ describe('class_to_dataclass (python)', () => {
     const r = await transform({ absPath: p, relPath: 'f.py', source: src, findings: [] });
     expect(r.newContent).toBeNull();
   });
+
+  it('keeps `from __future__ import annotations` first when injecting imports', async () => {
+    const src =
+      'from __future__ import annotations\n' +
+      '\n' +
+      'class User:\n' +
+      '    def __init__(self, id, name):\n' +
+      '        self.id = id\n' +
+      '        self.name = name\n';
+    const p = await file(src);
+    const r = await transform({ absPath: p, relPath: 'f.py', source: src, findings: [] });
+    expect(r.newContent).not.toBeNull();
+    const out = r.newContent!;
+    const firstImport = out
+      .split('\n')
+      .find((l) => l.startsWith('from ') || l.startsWith('import '));
+    expect(firstImport).toBe('from __future__ import annotations');
+    expect(out.indexOf('from __future__ import annotations')).toBeLessThan(
+      out.indexOf('from dataclasses import dataclass'),
+    );
+  });
+
+  it('places injected imports after a module docstring + __future__ block', async () => {
+    const src =
+      '"""Module docstring."""\n' +
+      'from __future__ import annotations\n' +
+      '\n' +
+      'class User:\n' +
+      '    def __init__(self, id):\n' +
+      '        self.id = id\n';
+    const p = await file(src);
+    const r = await transform({ absPath: p, relPath: 'f.py', source: src, findings: [] });
+    expect(r.newContent).not.toBeNull();
+    const out = r.newContent!;
+    // Docstring stays first.
+    expect(out.startsWith('"""Module docstring."""')).toBe(true);
+    // __future__ stays before any injected import.
+    expect(out.indexOf('from __future__ import annotations')).toBeLessThan(
+      out.indexOf('from dataclasses import dataclass'),
+    );
+  });
 });
