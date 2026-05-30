@@ -548,18 +548,36 @@ export async function runDocumentCommand(
 
   // Record a journal entry so `rollback` can undo this document run — the
   // changed source files, the CHANGELOG, and the report.
+  const readMode = async (p: string): Promise<number | null> => {
+    try {
+      return (await fs.stat(p)).mode & 0o777;
+    } catch {
+      return null;
+    }
+  };
   const journalFiles: JournalFileChange[] = [];
   for (const [file, before] of preDoc) {
     if (recheck.broken.includes(file)) continue; // rolled back → ended unchanged
-    journalFiles.push({ path: file, before, after: await fs.readFile(file, 'utf8') });
+    journalFiles.push({
+      path: file,
+      before,
+      after: await fs.readFile(file, 'utf8'),
+      mode: await readMode(file),
+    });
   }
   journalFiles.push({
     path: changelogPath,
     before: changelogExisted ? existingChangelog : null,
     after: newChangelog,
+    mode: changelogExisted ? await readMode(changelogPath) : null,
   });
   if (reportFile !== null) {
-    journalFiles.push({ path: reportFile, before: reportBefore, after: reportAfter });
+    journalFiles.push({
+      path: reportFile,
+      before: reportBefore,
+      after: reportAfter,
+      mode: reportBefore !== null ? await readMode(reportFile) : null,
+    });
   }
   if (journalFiles.length > 0) {
     await appendJournalEntry(

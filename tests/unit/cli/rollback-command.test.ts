@@ -33,7 +33,7 @@ async function rollback(args: string[]): Promise<{ code: number; text: string }>
 describe('computeRevert', () => {
   it('restores `before` and uses `after` as the drift baseline', () => {
     const plan = computeRevert([entry([{ path: '/p/a', before: 'old', after: 'new' }])]);
-    expect(plan.restores.get('/p/a')).toBe('old');
+    expect(plan.restores.get('/p/a')?.content).toBe('old');
     expect(plan.baseline.get('/p/a')).toBe('new');
     expect(plan.deletes.size).toBe(0);
   });
@@ -50,7 +50,7 @@ describe('computeRevert', () => {
       entry([{ path: '/p/a', before: 'refactored', after: 'documented' }]),
       entry([{ path: '/p/a', before: 'original', after: 'refactored' }]),
     ]);
-    expect(plan.restores.get('/p/a')).toBe('original');
+    expect(plan.restores.get('/p/a')?.content).toBe('original');
     expect(plan.baseline.get('/p/a')).toBe('documented');
   });
 });
@@ -110,6 +110,21 @@ describe('runRollbackCommand', () => {
     expect(code).toBe(0);
     expect(text).toMatch(/dry run/i);
     expect(await fs.readFile(f, 'utf8')).toBe('NEW\n'); // unchanged
+  });
+
+  it('restores the original file mode, not just content', async () => {
+    const r = await root();
+    const f = path.join(r, 'script.sh');
+    // Simulate post-apply state: content is the journal's `after`, mode lost.
+    await fs.writeFile(f, 'NEW\n');
+    await fs.chmod(f, 0o644);
+    await appendJournalEntry(r, 'apply', 'op', [
+      { path: f, before: '#!/bin/sh\n', after: 'NEW\n', mode: 0o755 },
+    ]);
+    const { code } = await rollback([r]);
+    expect(code).toBe(0);
+    expect(await fs.readFile(f, 'utf8')).toBe('#!/bin/sh\n');
+    expect((await fs.stat(f)).mode & 0o777).toBe(0o755);
   });
 
   it('--all reverts every operation in one pass', async () => {

@@ -500,6 +500,7 @@ export async function executeCommand(
     // engine (or any post-apply consumer) can reconstruct old → new diffs
     // after writeBatchAtomic has replaced the on-disk contents.
     const originalsBeforeWrite = new Map<string, string>();
+    const modesBeforeWrite = new Map<string, number | null>();
     for (const change of plan.changes) {
       try {
         const buf = await fsp.readFile(change.path, 'utf8');
@@ -507,6 +508,11 @@ export async function executeCommand(
       } catch {
         // Missing/unreadable file — skip; documentation will simply not
         // generate for this path.
+      }
+      try {
+        modesBeforeWrite.set(change.path, (await fsp.stat(change.path)).mode & 0o777);
+      } catch {
+        modesBeforeWrite.set(change.path, null);
       }
     }
 
@@ -535,6 +541,7 @@ export async function executeCommand(
           path: c.path,
           before: originalsBeforeWrite.get(c.path) ?? null,
           after: c.newContent,
+          mode: modesBeforeWrite.get(c.path) ?? null,
         })),
       );
     }

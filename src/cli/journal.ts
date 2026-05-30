@@ -16,6 +16,9 @@ export interface JournalFileChange {
   before: string | null;
   /** Content the operation left on disk — the drift baseline for rollback. */
   after: string;
+  /** File mode (low 9 bits, e.g. 0o755) at apply time. Omitted on older
+   *  journals; `null` when the file did not exist beforehand. */
+  mode?: number | null;
 }
 
 export interface JournalEntry {

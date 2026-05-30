@@ -28,11 +28,29 @@ export async function writeBatchAtomic(changes: FileChange[]): Promise<void> {
     }),
   );
 
+  // Capture every target's existing mode (if any) so the renamed file ends
+  // up with the same permissions — write-file-atomic creates the temp file
+  // with default 0644, which would silently strip the executable bit on
+  // shebang scripts.
+  const targetModes = await Promise.all(
+    changes.map(async (c) => {
+      try {
+        return (await fs.stat(c.path)).mode & 0o777;
+      } catch {
+        return undefined;
+      }
+    }),
+  );
+
   const tempPaths: string[] = [];
   try {
-    for (const c of changes) {
+    for (let i = 0; i < changes.length; i++) {
+      const c = changes[i];
+      if (c === undefined) continue;
       const tmp = `${c.path}.refactron-${crypto.randomBytes(6).toString('hex')}`;
-      await writeAtomic(tmp, c.newContent);
+      const mode = targetModes[i];
+      const opts = mode !== undefined ? { mode } : {};
+      await writeAtomic(tmp, c.newContent, opts);
       tempPaths.push(tmp);
     }
     // Phase 2: rename each temp into place.

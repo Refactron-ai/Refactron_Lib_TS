@@ -63,9 +63,16 @@ function parseFlags(argv: string[]): RollbackFlags {
   return { target: target ?? '.', all, force, dryRun };
 }
 
+export interface RestoreTarget {
+  content: string;
+  /** Mode to restore (low 9 bits). `null` if the original file pre-dated mode
+   *  tracking — leave the destination's current mode untouched. */
+  mode: number | null;
+}
+
 interface RevertPlan {
-  /** path → content to restore. */
-  restores: Map<string, string>;
+  /** path → content + mode to restore. */
+  restores: Map<string, RestoreTarget>;
   /** paths the operation created — to delete. */
   deletes: Set<string>;
   /** path → content expected on disk now (drift baseline). */
@@ -75,22 +82,24 @@ interface RevertPlan {
 /**
  * Combine the selected entries (newest-first) into a single revert plan: each
  * file's drift baseline is the newest `after`, its revert target the oldest
- * `before`.
+ * `before` (with the matching `mode`).
  */
 export function computeRevert(selectedNewestFirst: JournalEntry[]): RevertPlan {
   const baseline = new Map<string, string>();
-  const target = new Map<string, string | null>();
+  const target = new Map<string, { before: string | null; mode: number | null }>();
   for (const entry of selectedNewestFirst) {
     for (const fc of entry.files) {
       if (!baseline.has(fc.path)) baseline.set(fc.path, fc.after);
-      target.set(fc.path, fc.before); // oldest entry wins (iterated newest→oldest)
+      // oldest entry wins (iterated newest→oldest), so the oldest `before` and
+      // its matching `mode` are what end up in the map.
+      target.set(fc.path, { before: fc.before, mode: fc.mode ?? null });
     }
   }
-  const restores = new Map<string, string>();
+  const restores = new Map<string, RestoreTarget>();
   const deletes = new Set<string>();
   for (const [p, t] of target) {
-    if (t === null) deletes.add(p);
-    else restores.set(p, t);
+    if (t.before === null) deletes.add(p);
+    else restores.set(p, { content: t.before, mode: t.mode });
   }
   return { restores, deletes, baseline };
 }
@@ -174,9 +183,9 @@ export async function runRollbackCommand(
 
   // ── Apply the revert ───────────────────────────────────────────────────────
   try {
-    for (const [p, content] of restoreList) {
+    for (const [p, { content, mode }] of restoreList) {
       await fs.mkdir(path.dirname(p), { recursive: true });
-      await atomicWrite(p, content);
+      await atomicWrite(p, content, mode ?? undefined);
     }
     for (const p of deleteList) {
       await fs.rm(p, { force: true });

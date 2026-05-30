@@ -62,4 +62,13 @@ describe('journal', () => {
     const r = await root();
     expect(await listJournalEntries(r)).toEqual([]);
   });
+
+  it('round-trips an optional mode field on a journal entry', async () => {
+    const r = await root();
+    await appendJournalEntry(r, 'apply', 'op', [
+      { path: '/p/a.py', before: 'old', after: 'new', mode: 0o755 },
+    ]);
+    const [stored] = await listJournalEntries(r);
+    expect(stored?.entry.files[0]?.mode).toBe(0o755);
+  });
 });

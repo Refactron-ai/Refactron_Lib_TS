@@ -297,11 +297,17 @@ export async function runRunCommand(argv: string[]): Promise<number> {
   // context after the verifier's atomic writes hit disk. Missing/unreadable
   // files are simply skipped — documentation will produce nothing for them.
   const originalsBeforeWrite = new Map<string, string>();
+  const modesBeforeWrite = new Map<string, number | null>();
   for (const change of plan.changes) {
     try {
       originalsBeforeWrite.set(change.path, await fs.readFile(change.path, 'utf8'));
     } catch {
       // best-effort
+    }
+    try {
+      modesBeforeWrite.set(change.path, (await fs.stat(change.path)).mode & 0o777);
+    } catch {
+      modesBeforeWrite.set(change.path, null);
     }
   }
 
@@ -330,6 +336,7 @@ export async function runRunCommand(argv: string[]): Promise<number> {
         path: c.path,
         before: originalsBeforeWrite.get(c.path) ?? null,
         after: c.newContent,
+        mode: modesBeforeWrite.get(c.path) ?? null,
       })),
     );
   }
