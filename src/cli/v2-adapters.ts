@@ -32,6 +32,45 @@ export const MESSAGE_BY_TRANSFORM: Record<TransformId, string> = {
     'Vue.set/Vue.delete (or this.$set/this.$delete) can use plain assignment / delete (Vue 3)',
 };
 
+/**
+ * Tier classifies a transform by how strong the case for applying it is:
+ *
+ *   - `debt`: real maintenance burden with a forward-looking argument
+ *     (deprecation timer, known bug class, Py2 / Vue 2 holdover). Worth a
+ *     dedicated PR.
+ *   - `modernization`: newer form is clearly better, but the old form still
+ *     works. Worth doing opportunistically alongside other work.
+ *   - `style`: semantically identical to the old form, pure preference.
+ *     Worth doing only on files you are already touching.
+ */
+export type TransformTier = 'debt' | 'modernization' | 'style';
+
+export const TIER_BY_TRANSFORM: Record<TransformId, TransformTier> = {
+  // — debt —
+  super_no_args: 'debt',
+  pep585_generics: 'debt',
+  var_to_const_let: 'debt',
+  implicit_any: 'debt',
+  commonjs_to_esm: 'debt',
+  vue_set_delete_to_assignment: 'debt',
+  // — modernization —
+  callback_to_async_await: 'modernization',
+  manual_typecheck_to_hints: 'modernization',
+  deprecated_api_requests_to_httpx: 'modernization',
+  class_to_dataclass: 'modernization',
+  promise_chains_to_async: 'modernization',
+  promise_constructor_to_async: 'modernization',
+  lru_cache_to_cache: 'modernization',
+  indexof_to_includes: 'modernization',
+  object_assign_to_spread: 'modernization',
+  yield_from_for_loop: 'modernization',
+  // — style —
+  format_to_fstring: 'style',
+  pep604_optional_union: 'style',
+  datetime_utc_alias: 'style',
+  string_concat_to_template_literal: 'style',
+};
+
 export const SUGGESTION_BY_TRANSFORM: Record<TransformId, string> = {
   callback_to_async_await:
     'Mark the function `async`, drop the callback parameter, and `return` the value instead.',

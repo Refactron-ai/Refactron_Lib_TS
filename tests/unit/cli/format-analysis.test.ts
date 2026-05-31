@@ -227,6 +227,7 @@ describe('formatAnalysisReport', () => {
     const lines = await formatAnalysisReport(report, { projectRoot: root, width: 200 });
     const text = lines.map((l) => l.text).join('\n');
     expect(text).toContain('TRANSFORMS');
+    expect(text).toContain('BY TIER');
     expect(text).toContain('BY TRANSFORM');
     expect(text).toContain('SUMMARY');
     // BY TRANSFORM box: each id and its count land on the same rendered line.
@@ -236,10 +237,18 @@ describe('formatAnalysisReport', () => {
     expect(lines.some((l) => l.text.includes('class_to_dataclass') && /\b1\b/.test(l.text))).toBe(
       true,
     );
-    // SUMMARY box: file count and severity tallies.
+    // BY TIER box: 2 style findings (format_to_fstring × 2) and 1 modernization
+    // (class_to_dataclass). Each row has its tier label + count on one line.
+    expect(lines.some((l) => l.text.includes('style') && /\b2\b/.test(l.text))).toBe(true);
+    expect(lines.some((l) => l.text.includes('modernization') && /\b1\b/.test(l.text))).toBe(true);
+    expect(lines.some((l) => l.text.includes('debt') && /\b0\b/.test(l.text))).toBe(true);
+    // SUMMARY box: file count, severity tallies, and the new tier breakdown.
     expect(lines.some((l) => l.text.includes('Files affected') && l.text.includes('2'))).toBe(true);
     expect(text).toMatch(/2 high/);
     expect(text).toMatch(/1 medium/);
+    expect(text).toMatch(/0 debt/);
+    expect(text).toMatch(/1 modernization/);
+    expect(text).toMatch(/2 style/);
   });
 
   it('sorts findings within a file by line number (gauntlet G2)', async () => {

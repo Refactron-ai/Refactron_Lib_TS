@@ -1,4 +1,7 @@
 import type { ExtendedAnalysisReport } from '../engine.js';
+import { TIER_BY_TRANSFORM, type TransformTier } from '../../cli/v2-adapters.js';
+
+type TierCounts = Record<TransformTier, number>;
 
 export function toJson(report: ExtendedAnalysisReport): string {
   const importGraph: Record<string, string[]> = {};
@@ -7,18 +10,28 @@ export function toJson(report: ExtendedAnalysisReport): string {
   )) {
     importGraph[src] = [...deps].sort();
   }
+
+  const byTransform = new Map<string, number>();
+  const byTier: TierCounts = { debt: 0, modernization: 0, style: 0 };
+  const minutesByTier: TierCounts = { debt: 0, modernization: 0, style: 0 };
+  let totalMinutes = 0;
+  for (const f of report.findings) {
+    byTransform.set(f.transformId, (byTransform.get(f.transformId) ?? 0) + 1);
+    totalMinutes += f.remediationMinutes;
+    const tier = TIER_BY_TRANSFORM[f.transformId];
+    byTier[tier] += 1;
+    minutesByTier[tier] += f.remediationMinutes;
+  }
+
   const out = {
     root: report.root,
     analyzedAt: report.analyzedAt.toISOString(),
     summary: {
       totalFindings: report.findings.length,
-      totalMinutes: report.findings.reduce((a, f) => a + f.remediationMinutes, 0),
-      byTransform: Object.fromEntries(
-        report.findings.reduce((map, f) => {
-          map.set(f.transformId, (map.get(f.transformId) ?? 0) + 1);
-          return map;
-        }, new Map<string, number>()),
-      ),
+      totalMinutes,
+      byTransform: Object.fromEntries(byTransform),
+      byTier,
+      minutesByTier,
     },
     findings: report.findings,
     importGraph,
