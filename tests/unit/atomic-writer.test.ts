@@ -5,6 +5,11 @@ import fs from 'fs/promises';
 import path from 'path';
 import os from 'os';
 
+// POSIX mode bits are a no-op on NTFS — `fs.chmod` succeeds but `fs.stat`
+// always reports 0o666 for writable files. Skip the mode-preservation cases
+// on Windows; the underlying fix only applies on POSIX filesystems.
+const itPosix = process.platform === 'win32' ? it.skip : it;
+
 describe('atomicWrite', () => {
   it('writes content to destination atomically', async () => {
     const dest = path.join(os.tmpdir(), `refactron-test-${Date.now()}.txt`);
@@ -23,7 +28,7 @@ describe('atomicWrite', () => {
     await fs.unlink(dest);
   });
 
-  it('preserves mode when overwriting an existing file (executable bit retained)', async () => {
+  itPosix('preserves mode when overwriting an existing file (executable bit retained)', async () => {
     const dest = path.join(os.tmpdir(), `refactron-mode-${Date.now()}.sh`);
     await fs.writeFile(dest, '#!/bin/sh\necho hi\n');
     await fs.chmod(dest, 0o755);
@@ -32,7 +37,7 @@ describe('atomicWrite', () => {
     await fs.unlink(dest);
   });
 
-  it('applies an explicit mode argument over the existing mode', async () => {
+  itPosix('applies an explicit mode argument over the existing mode', async () => {
     const dest = path.join(os.tmpdir(), `refactron-mode-explicit-${Date.now()}.sh`);
     await fs.writeFile(dest, 'x');
     await fs.chmod(dest, 0o644);

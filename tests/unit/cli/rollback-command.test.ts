@@ -6,6 +6,10 @@ import { computeRevert, runRollbackCommand } from '../../../src/cli/rollback-com
 import { appendJournalEntry } from '../../../src/cli/journal.js';
 import type { JournalEntry } from '../../../src/cli/journal.js';
 
+// POSIX file modes are a no-op on NTFS — the mode-preservation round-trip
+// only works on POSIX filesystems. Skip on Windows.
+const itPosix = process.platform === 'win32' ? it.skip : it;
+
 const tmp: string[] = [];
 afterEach(async () => {
   for (const d of tmp.splice(0)) await fs.rm(d, { recursive: true, force: true });
@@ -112,7 +116,7 @@ describe('runRollbackCommand', () => {
     expect(await fs.readFile(f, 'utf8')).toBe('NEW\n'); // unchanged
   });
 
-  it('restores the original file mode, not just content', async () => {
+  itPosix('restores the original file mode, not just content', async () => {
     const r = await root();
     const f = path.join(r, 'script.sh');
     // Simulate post-apply state: content is the journal's `after`, mode lost.
