@@ -28,14 +28,17 @@ describe('atomicWrite', () => {
     await fs.unlink(dest);
   });
 
-  itPosix('preserves mode when overwriting an existing file (executable bit retained)', async () => {
-    const dest = path.join(os.tmpdir(), `refactron-mode-${Date.now()}.sh`);
-    await fs.writeFile(dest, '#!/bin/sh\necho hi\n');
-    await fs.chmod(dest, 0o755);
-    await atomicWrite(dest, '#!/bin/sh\necho hi 2\n');
-    expect((await fs.stat(dest)).mode & 0o777).toBe(0o755);
-    await fs.unlink(dest);
-  });
+  itPosix(
+    'preserves mode when overwriting an existing file (executable bit retained)',
+    async () => {
+      const dest = path.join(os.tmpdir(), `refactron-mode-${Date.now()}.sh`);
+      await fs.writeFile(dest, '#!/bin/sh\necho hi\n');
+      await fs.chmod(dest, 0o755);
+      await atomicWrite(dest, '#!/bin/sh\necho hi 2\n');
+      expect((await fs.stat(dest)).mode & 0o777).toBe(0o755);
+      await fs.unlink(dest);
+    },
+  );
 
   itPosix('applies an explicit mode argument over the existing mode', async () => {
     const dest = path.join(os.tmpdir(), `refactron-mode-explicit-${Date.now()}.sh`);

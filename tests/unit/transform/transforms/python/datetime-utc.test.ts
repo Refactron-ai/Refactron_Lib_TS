@@ -303,9 +303,7 @@ describe('datetime_utc_alias (python) — rewrites on Python >= 3.11', () => {
     });
     expect(r.newContent).toBeNull();
     expect(
-      r.preconditions.some(
-        (c) => c.id === 'no_datetime_import_in_scope' && !c.satisfied,
-      ),
+      r.preconditions.some((c) => c.id === 'no_datetime_import_in_scope' && !c.satisfied),
     ).toBe(true);
   });
 });

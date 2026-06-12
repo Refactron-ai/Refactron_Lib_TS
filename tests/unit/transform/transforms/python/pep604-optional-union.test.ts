@@ -349,10 +349,8 @@ describe('pep585 + pep604 composition', () => {
       crossFile: cf('3.11'),
     });
     expect(r.newContent).toBeNull();
-    expect(
-      r.preconditions.some(
-        (c) => c.id === 'no_typing_import_in_scope' && !c.satisfied,
-      ),
-    ).toBe(true);
+    expect(r.preconditions.some((c) => c.id === 'no_typing_import_in_scope' && !c.satisfied)).toBe(
+      true,
+    );
   });
 });

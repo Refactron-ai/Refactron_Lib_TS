@@ -1,9 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { toJson } from '../../../../src/analyze/format/json.js';
-import {
-  TIER_BY_TRANSFORM,
-  type TransformTier,
-} from '../../../../src/cli/v2-adapters.js';
+import { TIER_BY_TRANSFORM, type TransformTier } from '../../../../src/cli/v2-adapters.js';
 import type { TransformId } from '../../../../src/contracts.js';
 
 type ParsedSummary = {
@@ -48,12 +45,40 @@ describe('toJson', () => {
       analyzedAt: new Date('2026-01-01'),
       findings: [
         // 1 debt finding (super_no_args), 5 min
-        { id: 'a', file: 'a.py', line: 1, transformId: 'super_no_args', remediationMinutes: 5, confidence: 'high' },
+        {
+          id: 'a',
+          file: 'a.py',
+          line: 1,
+          transformId: 'super_no_args',
+          remediationMinutes: 5,
+          confidence: 'high',
+        },
         // 2 style findings (format_to_fstring), 2 min each
-        { id: 'b', file: 'b.py', line: 1, transformId: 'format_to_fstring', remediationMinutes: 2, confidence: 'high' },
-        { id: 'c', file: 'b.py', line: 2, transformId: 'format_to_fstring', remediationMinutes: 2, confidence: 'high' },
+        {
+          id: 'b',
+          file: 'b.py',
+          line: 1,
+          transformId: 'format_to_fstring',
+          remediationMinutes: 2,
+          confidence: 'high',
+        },
+        {
+          id: 'c',
+          file: 'b.py',
+          line: 2,
+          transformId: 'format_to_fstring',
+          remediationMinutes: 2,
+          confidence: 'high',
+        },
         // 1 modernization finding (class_to_dataclass), 10 min
-        { id: 'd', file: 'c.py', line: 1, transformId: 'class_to_dataclass', remediationMinutes: 10, confidence: 'high' },
+        {
+          id: 'd',
+          file: 'c.py',
+          line: 1,
+          transformId: 'class_to_dataclass',
+          remediationMinutes: 10,
+          confidence: 'high',
+        },
       ],
       importGraph: new Map(),
       callEdges: [],

@@ -37,9 +37,9 @@ Index: models.py
 --- models.py	
 +++ models.py	
 @@ -1,15 +1,17 @@
+ """Legacy data-holder classes with trivial __init__ assignments."""
 +from dataclasses import dataclass
 +from typing import Any
- """Legacy data-holder classes with trivial __init__ assignments."""
  
  
 +@dataclass
@@ -68,11 +68,11 @@ Index: typecheck.py
 --- typecheck.py	
 +++ typecheck.py	
 @@ -1,16 +1,18 @@
-+from dataclasses import dataclass
-+from typing import Any
  """Legacy isinstance-chain dispatch over a small shape hierarchy."""
  
  import math
++from dataclasses import dataclass
++from typing import Any
  
  
 +@dataclass
