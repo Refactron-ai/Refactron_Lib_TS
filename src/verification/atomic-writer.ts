@@ -16,11 +16,7 @@ async function resolveTargetMode(
   }
 }
 
-export async function atomicWrite(
-  destPath: string,
-  content: string,
-  mode?: number,
-): Promise<void> {
+export async function atomicWrite(destPath: string, content: string, mode?: number): Promise<void> {
   const dir = path.dirname(destPath);
   const tmpName = `.refactron-tmp-${randomBytes(8).toString('hex')}`;
   const tmpPath = path.join(dir, tmpName);

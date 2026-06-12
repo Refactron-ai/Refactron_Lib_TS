@@ -167,9 +167,7 @@ describe('python: callback_to_async_await — cross-file', () => {
     const r = await transform({ absPath: p, relPath: 'f.py', source: src, findings: [] });
     expect(r.newContent).toBeNull();
     expect(
-      r.preconditions.some(
-        (c) => c.id === 'no_callback_pattern_matched' && !c.satisfied,
-      ),
+      r.preconditions.some((c) => c.id === 'no_callback_pattern_matched' && !c.satisfied),
     ).toBe(true);
   });
 });

@@ -11,7 +11,7 @@ import Table from 'cli-table3';
 import type { ExtendedAnalysisReport } from '../analyze/engine.js';
 import type { DetectorFinding, Confidence } from '../analyze/detectors/types.js';
 import type { TransformId } from '../contracts.js';
-import { SUGGESTION_BY_TRANSFORM } from './v2-adapters.js';
+import { SUGGESTION_BY_TRANSFORM, TIER_BY_TRANSFORM, type TransformTier } from './v2-adapters.js';
 import { theme } from '../ui/theme.js';
 import { type RenderedLine, toPosix, clipPathLeft, tableChars } from './format-types.js';
 
@@ -173,9 +173,14 @@ export async function formatAnalysisReport(
   const distinctTransforms = [...new Set(report.findings.map((f) => f.transformId))];
   const byTransform = new Map<TransformId, number>();
   const bySeverity: Record<Severity, number> = { critical: 0, high: 0, medium: 0, low: 0 };
+  const byTier: Record<TransformTier, number> = { debt: 0, modernization: 0, style: 0 };
+  const minutesByTier: Record<TransformTier, number> = { debt: 0, modernization: 0, style: 0 };
   for (const f of report.findings) {
     byTransform.set(f.transformId, (byTransform.get(f.transformId) ?? 0) + 1);
     bySeverity[confidenceToSeverity(f.confidence)]++;
+    const tier = TIER_BY_TRANSFORM[f.transformId];
+    byTier[tier]++;
+    minutesByTier[tier] += f.remediationMinutes;
   }
   const total = report.findings.length;
 
@@ -208,6 +213,26 @@ export async function formatAnalysisReport(
   }
   section('TRANSFORMS', tTable);
 
+  // ── BY TIER — Tier · Count · Minutes, debt first ─────────────────────────
+  // The tier label classifies a finding by the strength of the case for fixing
+  // it: `debt` (real maintenance burden with a forward-looking argument),
+  // `modernization` (newer form is clearly better), `style` (semantically
+  // identical, pure preference). Surfaces the long-tail style noise separately
+  // from the actually-urgent items.
+  const tierTable = new Table({
+    head: ['Tier', 'Count', 'Minutes'],
+    colWidths: [idColW, 9, 11],
+    colAligns: ['left', 'right', 'right'],
+    style: { head: [], border: [], 'padding-left': 1, 'padding-right': 1 },
+    wordWrap: false,
+    truncate: '…',
+    chars: tableChars,
+  });
+  for (const tier of ['debt', 'modernization', 'style'] as const) {
+    tierTable.push([tier, String(byTier[tier]), String(minutesByTier[tier])]);
+  }
+  section('BY TIER', tierTable);
+
   // ── BY TRANSFORM — Transform · Count, most-frequent first ─────────────────
   const btTable = new Table({
     head: ['Transform', 'Count'],
@@ -230,9 +255,14 @@ export async function formatAnalysisReport(
   // safely). Report findings as auto-fix *candidates* and defer the real count
   // to `run --dry-run`, rather than the misleading "N / N" that read as a
   // guarantee every finding would be fixed.
+  const tierLine =
+    `${byTier.debt} debt  ${theme.symbols.bullet}  ` +
+    `${byTier.modernization} modernization  ${theme.symbols.bullet}  ` +
+    `${byTier.style} style`;
   const summaryRows: Array<[string, string]> = [
     ['Files affected', String(groups.size)],
     ['By severity', sevLine],
+    ['By tier', tierLine],
     ['Auto-fixable', `${total} candidate(s) — \`run --dry-run\` shows real changes`],
   ];
   const METRIC_W = 18;
