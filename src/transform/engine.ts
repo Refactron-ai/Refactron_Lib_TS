@@ -41,7 +41,11 @@ import { impl as t19 } from './transforms/typescript/string-concat-to-template-l
 // v0.2.3 Phase 5 — Vue 2 reactivity-helper rewrite (.js/.ts only; .vue deferred to v0.4)
 import { impl as t20 } from './transforms/typescript/vue-set-delete.js';
 
-const TRANSFORM_ORDER: TransformId[] = [
+// Canonical ordering. Exported so the CLI flag-parser (run-command.ts) and the
+// REPL handler (runner.ts) share a single source of truth and cannot drift
+// behind when new transforms ship. Drift is what dropped 8 v0.2.3 transforms
+// from `refactron run --transforms=all` until the bug was caught on Ansible.
+export const TRANSFORM_ORDER: TransformId[] = [
   'callback_to_async_await',
   'format_to_fstring',
   'manual_typecheck_to_hints',

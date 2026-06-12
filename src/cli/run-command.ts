@@ -2,7 +2,7 @@
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 import { RefactronAnalyzer } from '../analyze/engine.js';
-import { RefactronRefactorer } from '../transform/engine.js';
+import { RefactronRefactorer, TRANSFORM_ORDER } from '../transform/engine.js';
 import { runApplyWithVerification } from './apply-orchestrator.js';
 import type { Confidence } from '../analyze/detectors/types.js';
 import type { TransformId } from '../contracts.js';
@@ -50,23 +50,10 @@ async function findProjectRoot(start: string): Promise<string> {
 
 // Exported so the REPL `run` command in `runner.ts` can apply the SAME
 // "rc.transforms === ['all'] → expand to every id" semantics as one-shot
-// `refactron run`. Keep this list ordered to mirror the v2 engine's
-// TRANSFORM_ORDER (additive at the end).
-export const TRANSFORM_IDS: TransformId[] = [
-  'callback_to_async_await',
-  'format_to_fstring',
-  'manual_typecheck_to_hints',
-  'deprecated_api_requests_to_httpx',
-  'class_to_dataclass',
-  'var_to_const_let',
-  'promise_chains_to_async',
-  'implicit_any',
-  'commonjs_to_esm',
-  'promise_constructor_to_async',
-  // v0.2.3 additions
-  'super_no_args',
-  'lru_cache_to_cache',
-];
+// `refactron run`. Sourced from the engine's TRANSFORM_ORDER — there is one
+// list, not two; a local copy here is exactly how Bug #4 dropped 8 v0.2.3
+// transforms silently from `--transforms=all` until the Ansible trial caught it.
+export const TRANSFORM_IDS: TransformId[] = TRANSFORM_ORDER;
 const CONFIDENCES: Confidence[] = ['high', 'medium', 'low'];
 
 export class RunFlagError extends Error {}
