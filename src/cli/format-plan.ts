@@ -65,7 +65,10 @@ function groupByPath(changes: FileChange[]): FileGroup[] {
 // Minimal glob: handles `*` (matches anything but path sep within a segment)
 // and matches against either the full path or the basename. Tracked v2.1:
 // proper minimatch-style support (negation, `**`, character classes).
-function matchesGlob(filePath: string, pattern: string): boolean {
+// Exported so run-command.ts can apply the same `--files=<glob>` filter to the
+// apply path, not just the dry-run preview — without this, a glob the user
+// passed to scope their changes had no effect on what got written.
+export function matchesGlob(filePath: string, pattern: string): boolean {
   const re = new RegExp(
     '^' + pattern.replace(/[.+^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '[^/]*') + '$',
   );

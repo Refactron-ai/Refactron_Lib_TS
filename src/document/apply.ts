@@ -58,6 +58,84 @@ export function normalizeDocstringContent(language: Language, raw: string): stri
   return s;
 }
 
+// True iff the line is `def X(...): <something>` / `class X: <something>` —
+// i.e., the signature's terminating `:` is followed by a non-comment, non-blank
+// token on the same line, so the body is inline. This is the Protocol-stub
+// pattern (`def f() -> T: ...`) and the trivial `def f(): pass`.
+function isSingleLineDefWithBody(line: string): boolean {
+  // Find the FIRST top-level `:` (depth 0, outside strings). If there's
+  // anything non-comment/non-blank after it, the body is on this line.
+  let depth = 0;
+  let inStr: '"' | "'" | null = null;
+  for (let i = 0; i < line.length; i++) {
+    const c = line[i]!;
+    if (inStr) {
+      if (c === '\\') {
+        i += 1;
+        continue;
+      }
+      if (c === inStr) inStr = null;
+      continue;
+    }
+    if (c === '#') return false; // ran into a comment without seeing a top-level `:`
+    if (c === '"' || c === "'") {
+      inStr = c;
+      continue;
+    }
+    if (c === '(' || c === '[' || c === '{') depth += 1;
+    else if (c === ')' || c === ']' || c === '}') depth -= 1;
+    else if (c === ':' && depth === 0) {
+      const after = line.slice(i + 1);
+      const trimmed = after.replace(/#.*$/, '').trim();
+      return trimmed.length > 0;
+    }
+  }
+  return false;
+}
+
+// Count net `(`, `[`, `{` minus their closers on a line, ignoring brackets that
+// appear inside `'`, `"`, or `# …` comments. Pure-ASCII; fast.
+function netBracketDelta(line: string): number {
+  let depth = 0;
+  let i = 0;
+  let inStr: '"' | "'" | null = null;
+  let strTriple = false;
+  while (i < line.length) {
+    const c = line[i]!;
+    if (inStr) {
+      // Naive: walk to the matching closer. Triple-quote handling is best-effort
+      // — Python docstring headers don't occur inside def/class signature lines.
+      if (c === '\\') {
+        i += 2;
+        continue;
+      }
+      if (strTriple) {
+        if (c === inStr && line[i + 1] === inStr && line[i + 2] === inStr) {
+          inStr = null;
+          strTriple = false;
+          i += 3;
+          continue;
+        }
+      } else if (c === inStr) {
+        inStr = null;
+      }
+      i += 1;
+      continue;
+    }
+    if (c === '#') break; // rest is a comment
+    if (c === '"' || c === "'") {
+      inStr = c;
+      strTriple = line[i + 1] === c && line[i + 2] === c;
+      i += strTriple ? 3 : 1;
+      continue;
+    }
+    if (c === '(' || c === '[' || c === '{') depth += 1;
+    else if (c === ')' || c === ']' || c === '}') depth -= 1;
+    i += 1;
+  }
+  return depth;
+}
+
 function planPythonDocstring(
   source: string,
   symbol: string,
@@ -73,24 +151,40 @@ function planPythonDocstring(
     if (!defRe.test(line) && !classRe.test(line)) continue;
     const headerIndent = leadingWhitespace(line).length;
 
-    // Walk forward to the first body line, skipping a multi-line signature.
+    // Single-line `def X(): pass` / `def X(): ...` (Protocol stubs are the
+    // common case) — body lives on the same line as the signature, so there's
+    // no body line to insert above. Bail out; otherwise the multi-line-walk
+    // below would scan forward and latch onto the NEXT def with this name,
+    // mis-attributing the docstring to a sibling.
+    if (isSingleLineDefWithBody(line)) return null;
+
+    // Walk forward to the end of the (possibly multi-line) signature, then to
+    // the first body line. The signature is closed when the running bracket
+    // depth is 0 AND the line ends with `:` — Python's def/class statement
+    // terminator — AND its indent matches headerIndent (so we don't walk into
+    // a sibling class/def by accident). Until then, every line — INCLUDING
+    // ones whose indent is greater than headerIndent (Ansible's
+    // `def f() -> type[\n    t.Union[\n …]:` spans 8 lines, all inner) — is
+    // part of the signature, not the body.
+    let depth = netBracketDelta(line);
+    let headerEnd = -1;
+    for (let j = i; j < lines.length; j++) {
+      const ln = lines[j] ?? '';
+      if (j > i) depth += netBracketDelta(ln);
+      if (depth <= 0 && leadingWhitespace(ln).length === headerIndent && /:\s*(#.*)?$/.test(ln)) {
+        headerEnd = j;
+        break;
+      }
+    }
+    if (headerEnd === -1) return null; // unterminated signature — defensive
+
+    // Walk forward to the first body line at indent > headerIndent.
     let bodyIdx = -1;
-    for (let j = i + 1; j < lines.length; j++) {
+    for (let j = headerEnd + 1; j < lines.length; j++) {
       const cand = lines[j] ?? '';
       if (cand.trim() === '') continue;
       const candIndent = leadingWhitespace(cand).length;
-      if (candIndent <= headerIndent) {
-        const stripped = cand.trim();
-        if (
-          stripped.startsWith(')') ||
-          stripped.endsWith(',') ||
-          stripped.endsWith('(') ||
-          stripped.endsWith('->')
-        ) {
-          continue;
-        }
-        return null; // no body found
-      }
+      if (candIndent <= headerIndent) return null; // no body found
       bodyIdx = j;
       break;
     }
