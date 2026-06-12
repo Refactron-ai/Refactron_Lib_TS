@@ -58,6 +58,60 @@ describe('insertDocstring — python', () => {
     const src = `def f(x):\n    return x\n`;
     expect(insertDocstring('python', src, 'missing', 'doc')).toBe(src);
   });
+
+  // Regression: Ansible's `_ssh_agent.py` has a static method whose return
+  // type subscript spans 8 lines (`def get_dataclass(...) -> type[\n    t.Union[\n …]:`).
+  // The pre-fix inserter latched onto the first inner line (`        t.Union[`)
+  // as the body and produced syntactically invalid Python — the post-apply
+  // syntax recheck caught and rolled the file back, but only after the bad
+  // write. Inserter must walk the full bracket-balanced signature, then place
+  // the docstring above the first true body line.
+  it('walks a multi-line bracketed return-type signature before placing the docstring', () => {
+    const src = [
+      'class C:',
+      '    @staticmethod',
+      '    def get_dataclass(t: KeyAlgo) -> type[',
+      '        Union[',
+      '            A,',
+      '            B,',
+      '        ]',
+      '    ]:',
+      '        match t:',
+      '            case _: return A',
+      '',
+    ].join('\n');
+    const out = insertDocstring('python', src, 'get_dataclass', 'Documents get_dataclass.');
+    // Docstring lands inside the function body, NOT inside the type subscript.
+    const idx = out.indexOf('"""');
+    const sigEnd = out.indexOf('    ]:');
+    const bodyStart = out.indexOf('        match t:');
+    expect(idx).toBeGreaterThan(sigEnd);
+    expect(idx).toBeLessThan(bodyStart);
+    // And syntactically valid: nothing inserted inside the `type[…]` subscript.
+    expect(out).not.toMatch(/type\[\n\s*"""/);
+    expect(out).not.toMatch(/Union\[\n\s*"""/);
+  });
+
+  // Protocol stubs (`def f(...) -> T: ...`) have the body inline with the
+  // signature — there's no separate body line to insert above. The inserter
+  // must bail rather than walk forward and latch onto the NEXT def with this
+  // name (which would stack a docstring inside an unrelated sibling).
+  it('bails on single-line `def …: ...` stubs (Protocol) without latching onto a sibling', () => {
+    const src = [
+      'class Stub(t.Protocol):',
+      '    def encode(self) -> bytes: ...',
+      '',
+      'class Real:',
+      '    def encode(self) -> bytes:',
+      '        return b""',
+      '',
+    ].join('\n');
+    const out = insertDocstring('python', src, 'encode', 'Documents encode.');
+    // Source returned unchanged — the Protocol stub is the first match and
+    // it's inline; the real `Real.encode` below MUST NOT inherit the docstring
+    // intended for the Protocol method.
+    expect(out).toBe(src);
+  });
 });
 
 describe('insertDocstring — typescript', () => {

@@ -11,7 +11,8 @@ import { loadRefactronConfig, resolvePythonVersion } from './config-loader.js';
 import { persistLastApply, collapseChangesByPath } from './last-apply.js';
 import { appendJournalEntry } from './journal.js';
 import { scopePlanChanges } from './runner.js';
-import { formatPlanAsDryRun } from './format-plan.js';
+import { formatPlanAsDryRun, matchesGlob } from './format-plan.js';
+import { toPosix } from './format-types.js';
 import { applyColor } from './apply-color.js';
 
 // Markers that identify a project root. Walked up from a file argument to find
@@ -246,6 +247,20 @@ export async function runRunCommand(argv: string[]): Promise<number> {
 
   if (scopedPath !== null) {
     plan.changes = scopePlanChanges(plan.changes, scopedPath, scopedIsFile);
+  }
+
+  // --files=<glob> is a user-facing scope filter on what gets WRITTEN, not
+  // just what gets previewed. Apply it here, BEFORE the dry-run/apply split,
+  // so both code paths see the same filtered set. (Issue #50: the glob used
+  // to only narrow the dry-run formatter, while `--apply` silently walked the
+  // full plan — surprising any user who passed `--files=lib/foo.py --apply`
+  // and got their whole tree rewritten.)
+  if (flags.filesGlob !== null) {
+    const glob = flags.filesGlob;
+    plan.changes = plan.changes.filter((c) => {
+      const rel = toPosix(path.relative(projectRoot, c.path));
+      return matchesGlob(rel, glob) || matchesGlob(toPosix(c.path), glob);
+    });
   }
 
   if (plan.changes.length === 0) {
