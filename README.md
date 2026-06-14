@@ -138,4 +138,4 @@ Security findings: do not open a public issue. Email `security@refactron.dev`.
 
 ## License
 
-[Apache License 2.0](./LICENSE) © 2024–2026 Om Sherikar. See [`LICENSE`](./LICENSE) and [`NOTICE`](./NOTICE).
+[Apache License 2.0](./LICENSE). See [`LICENSE`](./LICENSE) and [`NOTICE`](./NOTICE).
