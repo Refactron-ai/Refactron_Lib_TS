@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="https://raw.githubusercontent.com/Refactron-ai/Refactron_Lib_TS/main/docs/assets/demo.gif" alt="Refactron — analyze, dry-run, apply, with the three verification gates" width="100%">
+  <img src="https://raw.githubusercontent.com/Refactron-ai/Refactron_Lib_TS/main/docs/assets/banner.svg" alt="Refactron — source files flow through Analyze, then three verification gates (Syntax, Imports, Tests), then atomic write; a verified file emerges on the right" width="100%">
 </p>
 
 # Refactron

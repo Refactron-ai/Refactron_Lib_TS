@@ -1,0 +1,295 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1500 880" width="1500" height="880"
+     font-family="'Segoe UI', system-ui, -apple-system, Helvetica, Arial, sans-serif"
+     role="img"
+     aria-label="Refactron — a stream of candidate changes narrows through three verification gates and converges into an atomic write">
+  <defs>
+    <radialGradient id="ambient" cx="50%" cy="40%" r="60%">
+      <stop offset="0%"   stop-color="#38abbd" stop-opacity="0.16"/>
+      <stop offset="60%"  stop-color="#1d6878" stop-opacity="0.04"/>
+      <stop offset="100%" stop-color="#0c2c33" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="wm" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%"  stop-color="#e8f4f6"/>
+      <stop offset="100%" stop-color="#7fc6d2"/>
+    </linearGradient>
+    <linearGradient id="streamFade" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%"   stop-color="#38abbd" stop-opacity="0.0"/>
+      <stop offset="20%"  stop-color="#38abbd" stop-opacity="0.55"/>
+      <stop offset="80%"  stop-color="#7fc6d2" stop-opacity="0.85"/>
+      <stop offset="100%" stop-color="#a2d6df" stop-opacity="1.0"/>
+    </linearGradient>
+    <linearGradient id="commitBeam" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%"   stop-color="#7fc6d2" stop-opacity="0.0"/>
+      <stop offset="100%" stop-color="#e8f4f6" stop-opacity="1.0"/>
+    </linearGradient>
+    <filter id="glow" x="-80%" y="-80%" width="260%" height="260%">
+      <feGaussianBlur stdDeviation="3" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <filter id="soft" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="6"/>
+    </filter>
+
+    <!-- Each particle is a reusable circle; many instances stagger across the pipeline -->
+    <g id="p"><circle r="2.4" fill="#7fc6d2"/></g>
+    <g id="p2"><circle r="1.8" fill="#38abbd"/></g>
+
+    <style>
+      /* Brand font for the wordmark — matches docs.json (Mintlify uses Space Grotesk).
+         Falls back gracefully to system-ui if the @import is stripped by a sanitizer. */
+      @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&amp;display=swap');
+      .wm-text { font-family: 'Space Grotesk', system-ui, -apple-system, 'Segoe UI', Helvetica, sans-serif; }
+
+      /* The drift: every particle slides left→right and loops via translateX */
+      .drift-a { animation: dA 6s linear infinite; }
+      .drift-b { animation: dA 6s linear infinite; animation-delay: -2s; }
+      .drift-c { animation: dA 6s linear infinite; animation-delay: -4s; }
+      @keyframes dA { from { transform: translateX(0) } to { transform: translateX(360px) } }
+
+      .drift2-a { animation: dB 5.4s linear infinite; }
+      .drift2-b { animation: dB 5.4s linear infinite; animation-delay: -1.8s; }
+      .drift2-c { animation: dB 5.4s linear infinite; animation-delay: -3.6s; }
+      @keyframes dB { from { transform: translateX(0) } to { transform: translateX(290px) } }
+
+      .drift3-a { animation: dC 4.8s linear infinite; }
+      .drift3-b { animation: dC 4.8s linear infinite; animation-delay: -1.6s; }
+      .drift3-c { animation: dC 4.8s linear infinite; animation-delay: -3.2s; }
+      @keyframes dC { from { transform: translateX(0) } to { transform: translateX(290px) } }
+
+      .drift4-a { animation: dD 3.6s linear infinite; }
+      .drift4-b { animation: dD 3.6s linear infinite; animation-delay: -1.2s; }
+      .drift4-c { animation: dD 3.6s linear infinite; animation-delay: -2.4s; }
+      @keyframes dD { from { transform: translateX(0) } to { transform: translateX(220px) } }
+
+      /* Gate breathing pulse on its border */
+      .gate { animation: gate 3.2s ease-in-out infinite; }
+      @keyframes gate { 0%,100% { opacity: 0.55 } 50% { opacity: 1 } }
+
+      /* Vertical scan-line inside each gate */
+      .scan { animation: scan 2.4s ease-in-out infinite; transform-box: fill-box; transform-origin: center; }
+      @keyframes scan { 0% { transform: translateY(-60px); opacity: 0 } 20% { opacity: 1 } 80% { opacity: 1 } 100% { transform: translateY(60px); opacity: 0 } }
+
+      /* Atomic write flashpoint */
+      .commit { transform-box: fill-box; transform-origin: center; animation: commit 3.6s ease-out infinite; }
+      @keyframes commit { 0%,60% { opacity: 0.4; r: 6 } 70% { opacity: 1; r: 18 } 100% { opacity: 0.4; r: 6 } }
+
+      .ring { transform-box: fill-box; transform-origin: center; animation: ring 3.6s ease-out infinite; }
+      @keyframes ring { 0%,60% { opacity: 0; r: 8 } 70% { opacity: 0.9; r: 12 } 100% { opacity: 0; r: 48 } }
+
+      /* Twinkles */
+      .tw { transform-box: fill-box; transform-origin: center; animation: tw 4.4s ease-in-out infinite; }
+      @keyframes tw { 0%,100% { opacity:.1; transform:scale(.6) } 50% { opacity:.7; transform:scale(1.05) } }
+
+      /* Rejected particle: drift down + fade — visualizes a precondition refusal */
+      .reject-1 { animation: rej 4s ease-out infinite; }
+      .reject-2 { animation: rej 4s ease-out infinite; animation-delay: -2s; }
+      @keyframes rej { 0% { transform: translate(0,0); opacity: 0 } 10% { opacity: 1 } 100% { transform: translate(0,90px); opacity: 0 } }
+
+      /* Wordmark intro */
+      .word { animation: wi 1.4s ease-out both; }
+      @keyframes wi { from { opacity:0; transform: translateY(10px) } to { opacity:1 } }
+      .caret { animation: bl 1.1s step-end infinite; }
+      @keyframes bl { 0%,49% { opacity:1 } 50%,100% { opacity:0 } }
+    </style>
+  </defs>
+
+  <!-- ─── BACKGROUND ─────────────────────────────────────────────────────── -->
+  <rect width="1500" height="880" fill="#070d10"/>
+  <ellipse cx="750" cy="320" rx="900" ry="380" fill="url(#ambient)"/>
+
+  <!-- Horizontal momentum guides (replaces concentric circles — flow, not orbit) -->
+  <g stroke="#14323a" stroke-width="1" opacity="0.55">
+    <line x1="0" y1="200" x2="1500" y2="200"/>
+    <line x1="0" y1="320" x2="1500" y2="320"/>
+    <line x1="0" y1="440" x2="1500" y2="440"/>
+  </g>
+
+  <!-- Ambient twinkles -->
+  <path class="tw" style="animation-delay:.4s"
+        d="M180 130 l3 7 7 3 -7 3 -3 7 -3 -7 -7 -3 7 -3z" fill="#7fc6d2"/>
+  <path class="tw" style="animation-delay:2.1s"
+        d="M1320 150 l3 7 7 3 -7 3 -3 7 -3 -7 -7 -3 7 -3z" fill="#7fc6d2"/>
+  <path class="tw" style="animation-delay:1.4s"
+        d="M120 480 l2.4 5.5 5.5 2.4 -5.5 2.4 -2.4 5.5 -2.4 -5.5 -5.5 -2.4 5.5 -2.4z" fill="#a2d6df"/>
+  <path class="tw" style="animation-delay:3.0s"
+        d="M1380 500 l2.4 5.5 5.5 2.4 -5.5 2.4 -2.4 5.5 -2.4 -5.5 -5.5 -2.4 5.5 -2.4z" fill="#a2d6df"/>
+
+  <!-- ─── TOP EYEBROW ────────────────────────────────────────────────────── -->
+  <text x="750" y="95" text-anchor="middle" font-size="13" letter-spacing="0.42em"
+        fill="#54676f" font-family="monospace">
+    THREE GATES · SHADOW TREE · ATOMIC COMMIT
+  </text>
+
+  <!-- ─── SECTION LABELS (above the pipeline) ──────────────────────────── -->
+  <g font-family="monospace" font-size="11" fill="#54676f" letter-spacing="0.3em">
+    <text x="200" y="160" text-anchor="middle">CANDIDATES</text>
+    <text x="540" y="160" text-anchor="middle">SHADOW · GATE 1</text>
+    <text x="820" y="160" text-anchor="middle">SHADOW · GATE 2</text>
+    <text x="1100" y="160" text-anchor="middle">SHADOW · GATE 3</text>
+    <text x="1340" y="160" text-anchor="middle">ATOMIC WRITE</text>
+  </g>
+
+  <!-- ─── STREAM 1: wide candidate stream (left) ────────────────────────── -->
+  <g transform="translate(80,220)">
+    <!-- Faint stream backdrop -->
+    <path d="M0 0 H360 V200 H0 Z" fill="url(#streamFade)" opacity="0.12"/>
+    <!-- Particles — 12, drifting -->
+    <g class="drift-a"><use href="#p"  x="0"   y="20"/></g>
+    <g class="drift-b"><use href="#p2" x="-40" y="55"/></g>
+    <g class="drift-c"><use href="#p"  x="-80" y="92"/></g>
+    <g class="drift-a"><use href="#p2" x="-120" y="35"/></g>
+    <g class="drift-b"><use href="#p"  x="-160" y="138"/></g>
+    <g class="drift-c"><use href="#p"  x="-200" y="170"/></g>
+    <g class="drift-a"><use href="#p2" x="-240" y="78"/></g>
+    <g class="drift-b"><use href="#p"  x="-280" y="118"/></g>
+    <g class="drift-c"><use href="#p2" x="-320" y="42"/></g>
+    <g class="drift-a"><use href="#p"  x="-360" y="160"/></g>
+    <g class="drift-b"><use href="#p2" x="-30"  y="180"/></g>
+    <g class="drift-c"><use href="#p"  x="-100" y="8"/></g>
+  </g>
+
+  <!-- ─── GATE 1: SYNTAX (x = 460-500) ──────────────────────────────────── -->
+  <g transform="translate(460,180)">
+    <rect class="gate" x="0" y="0" width="40" height="280" rx="6"
+          fill="#0d1518" stroke="#38abbd" stroke-width="1.6"/>
+    <line class="scan" x1="4" y1="140" x2="36" y2="140"
+          stroke="#7fc6d2" stroke-width="1.2"/>
+    <!-- Glyph: "syntax" → balanced bracket -->
+    <text x="20" y="20" text-anchor="middle" font-size="9" font-weight="700"
+          fill="#7fc6d2" font-family="monospace" letter-spacing="0.1em">SYNTAX</text>
+    <text x="20" y="155" text-anchor="middle" font-size="22" fill="#38abbd"
+          font-family="monospace">{ }</text>
+    <text x="20" y="275" text-anchor="middle" font-size="8"
+          fill="#54676f" font-family="monospace">parse</text>
+  </g>
+  <!-- Rejection: a particle drifting downward, fading — refused at gate 1 -->
+  <g transform="translate(485,300)">
+    <use href="#p" class="reject-1"/>
+    <text class="reject-1" x="-8" y="22" font-size="8" font-family="monospace"
+          fill="#3a7a87">preconditions[]</text>
+  </g>
+
+  <!-- ─── STREAM 2 (narrower, fewer particles) ──────────────────────────── -->
+  <g transform="translate(510,250)">
+    <path d="M0 0 H290 V140 H0 Z" fill="url(#streamFade)" opacity="0.16"/>
+    <g class="drift2-a"><use href="#p"  x="0"    y="30"/></g>
+    <g class="drift2-b"><use href="#p2" x="-50"  y="70"/></g>
+    <g class="drift2-c"><use href="#p"  x="-100" y="110"/></g>
+    <g class="drift2-a"><use href="#p2" x="-160" y="50"/></g>
+    <g class="drift2-b"><use href="#p"  x="-200" y="90"/></g>
+    <g class="drift2-c"><use href="#p2" x="-260" y="20"/></g>
+    <g class="drift2-a"><use href="#p"  x="-30"  y="125"/></g>
+    <g class="drift2-b"><use href="#p2" x="-130" y="14"/></g>
+  </g>
+
+  <!-- ─── GATE 2: IMPORTS (x = 760) ─────────────────────────────────────── -->
+  <g transform="translate(760,210)">
+    <rect class="gate" x="0" y="0" width="40" height="220" rx="6"
+          fill="#0d1518" stroke="#38abbd" stroke-width="1.6"/>
+    <line class="scan" x1="4" y1="110" x2="36" y2="110"
+          stroke="#7fc6d2" stroke-width="1.2"/>
+    <text x="20" y="20" text-anchor="middle" font-size="9" font-weight="700"
+          fill="#7fc6d2" font-family="monospace" letter-spacing="0.1em">IMPORTS</text>
+    <!-- Glyph: arrow representing dependency resolution -->
+    <g transform="translate(20,125)">
+      <line x1="-10" y1="0" x2="10" y2="0" stroke="#38abbd" stroke-width="2"/>
+      <path d="M5 -5 L10 0 L5 5" fill="none" stroke="#38abbd" stroke-width="2"/>
+    </g>
+    <text x="20" y="215" text-anchor="middle" font-size="8"
+          fill="#54676f" font-family="monospace">resolve</text>
+  </g>
+  <!-- Rejection at gate 2 -->
+  <g transform="translate(785,320)">
+    <use href="#p" class="reject-2"/>
+    <text class="reject-2" x="-8" y="22" font-size="8" font-family="monospace"
+          fill="#3a7a87">preconditions[]</text>
+  </g>
+
+  <!-- ─── STREAM 3 (even narrower) ──────────────────────────────────────── -->
+  <g transform="translate(810,260)">
+    <path d="M0 0 H290 V110 H0 Z" fill="url(#streamFade)" opacity="0.20"/>
+    <g class="drift3-a"><use href="#p"  x="0"    y="25"/></g>
+    <g class="drift3-b"><use href="#p2" x="-60"  y="60"/></g>
+    <g class="drift3-c"><use href="#p"  x="-130" y="92"/></g>
+    <g class="drift3-a"><use href="#p2" x="-200" y="42"/></g>
+    <g class="drift3-b"><use href="#p"  x="-260" y="78"/></g>
+    <g class="drift3-c"><use href="#p2" x="-30"  y="100"/></g>
+  </g>
+
+  <!-- ─── GATE 3: TESTS (x = 1060) ──────────────────────────────────────── -->
+  <g transform="translate(1060,230)">
+    <rect class="gate" x="0" y="0" width="40" height="180" rx="6"
+          fill="#0d1518" stroke="#38abbd" stroke-width="1.6"/>
+    <line class="scan" x1="4" y1="90" x2="36" y2="90"
+          stroke="#7fc6d2" stroke-width="1.2"/>
+    <text x="20" y="20" text-anchor="middle" font-size="9" font-weight="700"
+          fill="#7fc6d2" font-family="monospace" letter-spacing="0.1em">TESTS</text>
+    <!-- Glyph: checkmark inside a circle -->
+    <g transform="translate(20,100)">
+      <circle r="11" fill="none" stroke="#38abbd" stroke-width="1.8"/>
+      <path d="M-5 1 L-1 5 L6 -3" fill="none" stroke="#7fc6d2" stroke-width="2"
+            stroke-linecap="round" stroke-linejoin="round"/>
+    </g>
+    <text x="20" y="175" text-anchor="middle" font-size="8"
+          fill="#54676f" font-family="monospace">run</text>
+  </g>
+
+  <!-- ─── STREAM 4: very narrow, very bright — the verified beam ────────── -->
+  <g transform="translate(1110,290)">
+    <path d="M0 0 H220 V50 H0 Z" fill="url(#streamFade)" opacity="0.3"/>
+    <g class="drift4-a"><use href="#p" x="0"    y="14"/></g>
+    <g class="drift4-b"><use href="#p" x="-60"  y="26"/></g>
+    <g class="drift4-c"><use href="#p" x="-130" y="36"/></g>
+    <g class="drift4-a"><use href="#p" x="-180" y="20"/></g>
+  </g>
+
+  <!-- ─── ATOMIC WRITE: the commit point ────────────────────────────────── -->
+  <g transform="translate(1340,315)">
+    <!-- Soft halo -->
+    <circle cx="0" cy="0" r="36" fill="#38abbd" opacity="0.12" filter="url(#soft)"/>
+    <!-- Pulse rings -->
+    <circle cx="0" cy="0" class="ring" fill="none" stroke="#7fc6d2" stroke-width="1.5"/>
+    <circle cx="0" cy="0" class="ring" fill="none" stroke="#7fc6d2" stroke-width="1.5"
+            style="animation-delay: 1.2s"/>
+    <circle cx="0" cy="0" class="ring" fill="none" stroke="#7fc6d2" stroke-width="1.5"
+            style="animation-delay: 2.4s"/>
+    <!-- The commit point -->
+    <circle cx="0" cy="0" class="commit" fill="#a2d6df" filter="url(#glow)"/>
+    <!-- Two brackets framing it: "[ ]" = atomic boundary -->
+    <text x="-30" y="6" text-anchor="middle" font-size="42" fill="#38abbd"
+          font-family="monospace" font-weight="200">[</text>
+    <text x="30" y="6" text-anchor="middle" font-size="42" fill="#38abbd"
+          font-family="monospace" font-weight="200">]</text>
+    <text x="0" y="60" text-anchor="middle" font-size="9" font-weight="600"
+          fill="#7fc6d2" font-family="monospace" letter-spacing="0.18em">rename(2)</text>
+    <text x="0" y="74" text-anchor="middle" font-size="8" fill="#54676f"
+          font-family="monospace">all or nothing</text>
+  </g>
+
+  <!-- Narrowing reference line — visually anchors the funnel shape -->
+  <g stroke="#1a3a44" stroke-width="1" stroke-dasharray="3 6" opacity="0.4" fill="none">
+    <path d="M80 220 L460 180 M80 420 L460 460"/>
+    <path d="M500 180 L760 210 M500 460 L760 430"/>
+    <path d="M800 210 L1060 230 M800 430 L1060 410"/>
+    <path d="M1100 230 L1340 300 M1100 410 L1340 330"/>
+  </g>
+
+  <!-- ─── WORDMARK BLOCK (bottom half) ──────────────────────────────────── -->
+  <g class="word" text-anchor="middle">
+    <text x="750" y="662" font-size="14" letter-spacing="0.28em" fill="#6b8089"
+          font-family="monospace">
+      DETERMINISTIC&#160;REFACTORING&#160;FOR&#160;PYTHON&#160;&amp;&#160;TYPESCRIPT
+    </text>
+    <text x="750" y="772" class="wm-text" font-size="112" font-weight="700"
+          letter-spacing="-0.01em" fill="url(#wm)" filter="url(#glow)">Refactron</text>
+    <rect x="690" y="796" width="120" height="4" rx="2" fill="#38abbd"/>
+    <text x="750" y="842" font-size="21" fill="#9aabb5">
+      Three gates filter every change. Only verified rewrites cross the
+      <tspan fill="#7fc6d2"> atomic-write boundary</tspan>.
+    </text>
+    <text x="750" y="872" font-size="13.5" letter-spacing="0.16em" fill="#54676f"
+          font-family="monospace">
+      syntax · imports · tests · atomic — no LLM in path
+    </text>
+  </g>
+</svg>
