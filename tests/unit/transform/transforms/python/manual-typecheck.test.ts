@@ -78,9 +78,7 @@ describe('manual_typecheck_to_hints (python)', () => {
     const r = await transform({ absPath: p, relPath: 'f.py', source: src, findings: [] });
     expect(r.newContent).toBeNull();
     expect(
-      r.preconditions.some(
-        (c) => !c.satisfied && /body-not-pure-dispatcher:handle/.test(c.id),
-      ),
+      r.preconditions.some((c) => !c.satisfied && /body-not-pure-dispatcher:handle/.test(c.id)),
     ).toBe(true);
   });
 
@@ -100,9 +98,7 @@ describe('manual_typecheck_to_hints (python)', () => {
     const r = await transform({ absPath: p, relPath: 'f.py', source: src, findings: [] });
     expect(r.newContent).toBeNull();
     expect(
-      r.preconditions.some(
-        (c) => !c.satisfied && /body-not-pure-dispatcher:handle/.test(c.id),
-      ),
+      r.preconditions.some((c) => !c.satisfied && /body-not-pure-dispatcher:handle/.test(c.id)),
     ).toBe(true);
   });
 
@@ -114,9 +110,7 @@ describe('manual_typecheck_to_hints (python)', () => {
     const r = await transform({ absPath: p, relPath: 'f.py', source: src, findings: [] });
     expect(r.newContent).toBeNull();
     expect(
-      r.preconditions.some(
-        (c) => !c.satisfied && /lone-statement-not-if:handle/.test(c.id),
-      ),
+      r.preconditions.some((c) => !c.satisfied && /lone-statement-not-if:handle/.test(c.id)),
     ).toBe(true);
   });
 
