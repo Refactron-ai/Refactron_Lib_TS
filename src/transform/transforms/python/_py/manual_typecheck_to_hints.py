@@ -76,6 +76,19 @@ def _has_typing_union_import(module: cst.Module) -> bool:
     return False
 
 
+def _function_has_isinstance_signal(func: cst.FunctionDef) -> bool:
+    """True iff the function body contains at least one ``isinstance(<Name>, <Name>)``
+    call — the shape the rewriter knows how to convert into a ``Union[...]``
+    annotation. Gates precondition emission so unrelated siblings in the same
+    file stay silent (otherwise a 50-function file would log 49 spurious
+    refusals around the one real candidate, drowning the signal).
+    """
+    for call in m.findall(func, m.Call(func=m.Name("isinstance"))):
+        if is_isinstance_call(call):
+            return True
+    return False
+
+
 class Annotator(cst.CSTTransformer):
     def __init__(self):
         self.preconditions = []
@@ -85,21 +98,58 @@ class Annotator(cst.CSTTransformer):
     def leave_FunctionDef(
         self, original: cst.FunctionDef, updated: cst.FunctionDef
     ) -> cst.FunctionDef:
+        # Only emit refusal records for functions that LOOK like candidates
+        # (have at least one isinstance(Name, Name) call). Without this gate
+        # every silently-walked-past function would generate noise.
+        is_candidate = _function_has_isinstance_signal(updated)
+        funcname = updated.name.value
+
         body = updated.body
         if not isinstance(body, cst.IndentedBlock):
+            if is_candidate:
+                self.preconditions.append(
+                    {
+                        "id": f"non-block-body:{funcname}",
+                        "satisfied": False,
+                        "reason": f"function {funcname} body is not a standard indented block",
+                    }
+                )
             return updated
         meaningful = _body_stmts_no_pass(body)
         if len(meaningful) != 1:
+            if is_candidate:
+                self.preconditions.append(
+                    {
+                        "id": f"body-not-pure-dispatcher:{funcname}",
+                        "satisfied": False,
+                        "reason": (
+                            f"function {funcname} body has {len(meaningful)} statements; "
+                            "rewriter requires the isinstance chain to be the sole body "
+                            "statement (a docstring or guard clause blocks the rewrite)"
+                        ),
+                    }
+                )
             return updated
         only = meaningful[0]
         if not isinstance(only, cst.If):
+            if is_candidate:
+                self.preconditions.append(
+                    {
+                        "id": f"lone-statement-not-if:{funcname}",
+                        "satisfied": False,
+                        "reason": (
+                            f"function {funcname}'s lone body statement is not an "
+                            "if/elif chain — isinstance check appears outside a dispatcher"
+                        ),
+                    }
+                )
             return updated
 
         chain = extract_chain(only)
         if chain is None:
             self.preconditions.append(
                 {
-                    "id": f"single-param-chain:{updated.name.value}",
+                    "id": f"single-param-chain:{funcname}",
                     "satisfied": False,
                     "reason": "isinstance chain does not discriminate a single parameter",
                 }
@@ -115,6 +165,16 @@ class Annotator(cst.CSTTransformer):
                 target_idx = i
                 break
         if target_idx is None:
+            self.preconditions.append(
+                {
+                    "id": f"param-not-in-signature:{funcname}:{param_name}",
+                    "satisfied": False,
+                    "reason": (
+                        f"isinstance chain discriminates '{param_name}' which is not "
+                        f"a parameter of {funcname}"
+                    ),
+                }
+            )
             return updated
 
         target = params[target_idx]
