@@ -165,4 +165,27 @@ describe('manual_typecheck_to_hints (python)', () => {
     expect(r.newContent).not.toBeNull();
     expect(r.preconditions.every((c) => !/unrelated/.test(c.id))).toBe(true);
   });
+
+  it("doesn't propagate isinstance signal from a nested function up to its outer", async () => {
+    // Closure pattern: only `inner` is a candidate; `outer` is not. Without
+    // the nested-def cutoff on the candidate probe, `outer` would inherit
+    // `inner`'s isinstance signal and emit a spurious
+    // body-not-pure-dispatcher:outer record (its body is `def inner` +
+    // `return inner`, meaningful=2).
+    const src =
+      'def outer():\n' +
+      '    def inner(x):\n' +
+      '        if isinstance(x, int):\n' +
+      '            return 1\n' +
+      '        elif isinstance(x, str):\n' +
+      '            return 2\n' +
+      '    return inner\n';
+    const p = await file(src);
+    const r = await transform({ absPath: p, relPath: 'f.py', source: src, findings: [] });
+    // inner is rewritten successfully.
+    expect(r.newContent).not.toBeNull();
+    expect(r.newContent).toContain('def inner(x: Union[int, str])');
+    // outer is invisible — no precondition record carries its name.
+    expect(r.preconditions.every((c) => !/:outer\b/.test(c.id))).toBe(true);
+  });
 });

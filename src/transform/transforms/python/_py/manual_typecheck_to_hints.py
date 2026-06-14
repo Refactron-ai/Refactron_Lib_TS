@@ -76,17 +76,41 @@ def _has_typing_union_import(module: cst.Module) -> bool:
     return False
 
 
-def _function_has_isinstance_signal(func: cst.FunctionDef) -> bool:
-    """True iff the function body contains at least one ``isinstance(<Name>, <Name>)``
-    call — the shape the rewriter knows how to convert into a ``Union[...]``
-    annotation. Gates precondition emission so unrelated siblings in the same
-    file stay silent (otherwise a 50-function file would log 49 spurious
-    refusals around the one real candidate, drowning the signal).
+class _IsinstanceProbe(cst.CSTVisitor):
+    """Detects an ``isinstance(<Name>, <Name>)`` call in a function's OWN body —
+    excluding nested function/class definitions. Without the nested-def cutoff
+    a closure like ``def outer(): def inner(x): if isinstance(x, int): ...``
+    would inflate ``outer`` to a candidate, producing a spurious
+    ``body-not-pure-dispatcher:outer`` record on every multi-statement closure.
     """
-    for call in m.findall(func, m.Call(func=m.Name("isinstance"))):
-        if is_isinstance_call(call):
-            return True
-    return False
+
+    def __init__(self) -> None:
+        self.found = False
+
+    def visit_FunctionDef(self, node: cst.FunctionDef) -> bool:
+        return False  # skip nested defs
+
+    def visit_ClassDef(self, node: cst.ClassDef) -> bool:
+        return False  # skip nested classes (their methods get their own visit)
+
+    def visit_Call(self, node: cst.Call) -> bool:
+        if not self.found and is_isinstance_call(node):
+            self.found = True
+        return not self.found  # short-circuit once we have a hit
+
+
+def _function_has_isinstance_signal(func: cst.FunctionDef) -> bool:
+    """True iff the function's own body contains at least one
+    ``isinstance(<Name>, <Name>)`` call — the shape the rewriter knows how to
+    convert into a ``Union[...]`` annotation. Gates precondition emission so
+    unrelated siblings in the same file stay silent (otherwise a 50-function
+    file would log 49 spurious refusals around the one real candidate).
+    """
+    probe = _IsinstanceProbe()
+    # Visit the body, not `func` itself: starting from `func` would not give the
+    # visitor a chance to short-circuit at the outermost FunctionDef boundary.
+    func.body.visit(probe)
+    return probe.found
 
 
 class Annotator(cst.CSTTransformer):
@@ -111,7 +135,10 @@ class Annotator(cst.CSTTransformer):
                     {
                         "id": f"non-block-body:{funcname}",
                         "satisfied": False,
-                        "reason": f"function {funcname} body is not a standard indented block",
+                        "reason": (
+                            f"function {funcname} body is inline (single-line def form); "
+                            "rewriter requires a multi-line body to place the annotation"
+                        ),
                     }
                 )
             return updated
