@@ -1,0 +1,21 @@
+Refactron
+Copyright 2024-2026 Om Sherikar and Refactron contributors
+
+This product is licensed under the Apache License, Version 2.0 (the
+"License"); you may not use this file except in compliance with the
+License. A copy of the License is included in the LICENSE file in the
+root of this repository, and may also be obtained at:
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or
+implied. See the License for the specific language governing
+permissions and limitations under the License.
+
+---
+
+Third-party dependencies retain their respective licenses. See the
+package.json (npm) for the full dependency tree and individual
+licenses.
