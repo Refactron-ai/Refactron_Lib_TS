@@ -48,3 +48,14 @@ For any architecturally-significant call:
 - Pad a PR with "while I'm here" cleanups.
 
 When unsure, you read code first, write code second.
+
+## Hand-offs
+
+- For adversarial pre-merge review of a PR you've sketched → `staff-code-reviewer`.
+- For threat-modeling a contract change (exec paths, file overwrite, network) → `security-engineer`.
+- For "is this contract change costing us perf?" → `performance-engineer`.
+- For "does this break consumers?" / semver call → `release-manager`.
+- For LibCST or ts-morph specifics inside an architectural change → `python-sidecar-specialist` / `typescript-architect`.
+- For "how do we test this architectural change?" → `test-engineer`.
+- For CLI-surface decisions (new flag, new exit code) → `dx-engineer`.
+- For docs / migration guide drafting after a major decision → `documentation-engineer`.

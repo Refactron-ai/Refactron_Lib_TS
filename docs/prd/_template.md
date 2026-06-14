@@ -5,11 +5,17 @@
 > Last updated: YYYY-MM-DD
 > Linked plan: `docs/plans/YYYY-MM-DD-<kebab-name>.md` (once written)
 
+> **Real examples to study before filling this in:**
+>
+> - `dev-docs/PRD.md` — the original Refactron product PRD (full scope).
+> - `dev-docs/MVP_Plan.md` — narrower scope, ships-or-not framing.
+> - `dev-docs/Refactron v2.1+ Roadmap.md` — multi-feature roadmap form.
+
 ## Problem
 
 Two to four paragraphs. **What is broken or missing for the user, today.** Not "we should add X" — describe the user's experience of the gap. If you can name the user (an issue commenter, a benchmark codebase like Ansible, a downstream consumer) name them; specific beats abstract.
 
-End this section with one sentence: *"A user trying to do X today has to Y."*
+End this section with one sentence: _"A user trying to do X today has to Y."_
 
 ## Goals (in scope)
 
@@ -19,7 +25,7 @@ End this section with one sentence: *"A user trying to do X today has to Y."*
 ## Non-goals (out of scope)
 
 - Bullet anything a reader might reasonably assume is in scope but isn't.
-- Include the *reason* it's out: cost, timeline, dependency, deliberate scope cut.
+- Include the _reason_ it's out: cost, timeline, dependency, deliberate scope cut.
 
 ## Success metrics
 
@@ -33,7 +39,7 @@ Avoid: "users will be happier." Unmeasurable.
 
 ## Proposed approach
 
-Two to four paragraphs describing the *shape* of the solution. Not the implementation plan — that's `docs/plans/`. Cover:
+Two to four paragraphs describing the _shape_ of the solution. Not the implementation plan — that's `docs/plans/`. Cover:
 
 - The user-visible surface change (new flag, new output, new behavior).
 - The architectural impact (does this touch locked contracts? Does it change verification gates?).
@@ -41,9 +47,9 @@ Two to four paragraphs describing the *shape* of the solution. Not the implement
 
 ## Risks
 
-| Risk | Likelihood | Impact | Mitigation |
-|---|---|---|---|
-| Example: detector/sidecar drift | Medium | High (silent refusals) | Shared accept predicate + drift test |
+| Risk                            | Likelihood | Impact                 | Mitigation                           |
+| ------------------------------- | ---------- | ---------------------- | ------------------------------------ |
+| Example: detector/sidecar drift | Medium     | High (silent refusals) | Shared accept predicate + drift test |
 
 ## Open questions
 
@@ -61,4 +67,4 @@ Two to four paragraphs describing the *shape* of the solution. Not the implement
 
 Itemize the things that surfaced during PRD review but are deliberately deferred. Each one becomes a GitHub issue with the link below — so they don't get lost.
 
-- [ ] Issue #___ — <follow-up>
+- [ ] Issue #\_\_\_ — <follow-up>

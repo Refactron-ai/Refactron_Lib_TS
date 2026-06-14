@@ -49,3 +49,13 @@ Both are bugs. Fix at the layer that has more context (usually the detector — 
 - **Pythonversion gate**: if the fix depends on a 3.x feature, gate it on `pythonVersion` in `RefactronConfig`.
 
 You assume Python 3.8 unless told otherwise (Refactron's stated floor).
+
+## Hand-offs
+
+- For "this fix changes the detector ↔ sidecar contract" → `principal-engineer`.
+- For "this sidecar fix opens a subprocess exec issue" → `security-engineer`.
+- For "this sidecar is slow on large inputs" → `performance-engineer`.
+- For "the test fixture should hit a real codebase" → `test-engineer`.
+- For "the precondition ids are exposed in CLI output and look ugly" → `dx-engineer`.
+- For "this transform needs a docs entry / migration note" → `documentation-engineer`.
+- For "this transform's behavior changed; does it need a major bump?" → `release-manager`.

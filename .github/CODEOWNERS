@@ -1,0 +1,28 @@
+# CODEOWNERS — auto-request review when these paths change.
+# Solo project today; matrix expands as contributors join.
+# See https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+
+# Default owner for everything not matched below
+*                                       @omsherikar
+
+# Locked surfaces — never modified without an ADR + major version plan.
+# Owner review here is a hard gate.
+/src/contracts.ts                       @omsherikar
+/src/core/models.ts                     @omsherikar
+/src/adapters/interface.ts              @omsherikar
+
+# Operations scaffolding — changes affect everyone using the repo.
+/.claude/                               @omsherikar
+/CLAUDE.md                              @omsherikar
+/CODE_STYLE.md                          @omsherikar
+/COMMIT_CONVENTIONS.md                  @omsherikar
+
+# Release-critical files
+/CHANGELOG.md                           @omsherikar
+/package.json                           @omsherikar
+
+# CI / workflows
+/.github/                               @omsherikar
+
+# ADRs — architectural decisions need owner sign-off
+/dev-docs/decisions/                    @omsherikar

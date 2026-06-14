@@ -5,6 +5,11 @@
 > Started: YYYY-MM-DD
 > Target merge: YYYY-MM-DD
 
+> **Real examples to study before filling this in:**
+>
+> - `dev-docs/Refactron_Detailed_Execution_Plan.md` — multi-week build plan, week-by-week task decomposition.
+> - `dev-docs/decisions/07-week-5-architecture.md` — narrower one-week scope wrapped in an ADR.
+
 ## Goal
 
 One sentence. What this plan delivers.
@@ -28,6 +33,7 @@ Each task is a self-contained PR-sized unit. Aim for ≤ 6 hours of focused work
 ### Task 1: <name>
 
 **Files:**
+
 - Create: `path/to/new.ts`
 - Modify: `path/to/existing.ts:42-58`
 - Test: `tests/unit/path/to/new.test.ts`
@@ -63,4 +69,4 @@ How you'll confirm in production / the next nightly that this actually shipped w
 
 ## Out of scope (deferred)
 
-- [ ] Issue #___ — <follow-up>
+- [ ] Issue #\_\_\_ — <follow-up>

@@ -4,6 +4,11 @@
 > Date: YYYY-MM-DD
 > Deciders: <github-handles>
 
+> **Real examples to study before filling this in (in increasing scope):**
+> - `dev-docs/decisions/01-ts-morph-vs-babel.md` — a single tool-choice decision (smallest useful ADR).
+> - `dev-docs/decisions/04-verify-engine-architecture.md` — engine-level architectural call with alternatives + rollout.
+> - `dev-docs/decisions/06-refactor-engine-architecture.md` — multi-component decision with explicit compliance plan.
+
 ## Context
 
 Two to four paragraphs. What architectural pressure is forcing this decision now? Cite the constraints: locked contracts, blast radius, performance budget, dependency timeline.

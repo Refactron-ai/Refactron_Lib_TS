@@ -4,13 +4,46 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Operations scaffolding (`.claude/` + repo root)
 
-Route through these resources instead of redoing the work each session:
+Route through these resources instead of redoing the work each session.
 
-- **Subagents (`.claude/agents/`)**: senior personas for delegation. `principal-engineer` (architecture/locked-contract calls), `staff-code-reviewer` (adversarial pre-merge review), `security-engineer` (threat modeling, sidecar safety), `python-sidecar-specialist` (LibCST, refusal preconditions), `typescript-architect` (ts-morph, ESM, type-level safety), `release-manager` (semver, changelog, npm publish), `test-engineer` (TDD discipline, fixtures, snapshot review).
-- **Slash commands (`.claude/commands/`)**: `/review` (dispatch the code reviewer on the current branch), `/check-locked` (verify the locked-files invariant), `/new-transform` (end-to-end transform scaffolding).
-- **Rules**: `CODE_STYLE.md` (TS + Python concrete rules), `COMMIT_CONVENTIONS.md` (Conventional Commits scope vocabulary + repo-specific authorship rules).
-- **Templates**: `docs/prd/_template.md`, `docs/plans/_template.md`, `dev-docs/decisions/_template.md` (ADR). Use these to start new work; don't invent ad-hoc structures.
-- **Settings (`.claude/settings.json`)**: team-wide permissions including a `deny` rule on the locked files and on `playground/` mutations.
+**Subagents (`.claude/agents/`)** — 10 senior personas (10+ yrs framing) for delegation. Each declares its peers under "Hand-offs."
+
+| Agent                       | Use for                                                 |
+| --------------------------- | ------------------------------------------------------- |
+| `principal-engineer`        | Architecture / locked-contract calls / breaking changes |
+| `staff-code-reviewer`       | Adversarial pre-merge review                            |
+| `security-engineer`         | Threat modeling, sidecar safety, supply chain           |
+| `python-sidecar-specialist` | LibCST patterns, refusal preconditions, drift           |
+| `typescript-architect`      | ts-morph, ESM, type-level safety                        |
+| `release-manager`           | Semver, changelog, npm publish                          |
+| `test-engineer`             | TDD, fixtures, snapshot discipline                      |
+| `dx-engineer`               | CLI ergonomics, error messages, Ink TUI                 |
+| `documentation-engineer`    | README, mdx, changelog tone, migrations                 |
+| `performance-engineer`      | Throughput, sidecar latency, profiling                  |
+
+**Slash commands (`.claude/commands/`)** — `/review` (dispatch code reviewer on current branch), `/check-locked` (verify locked-files invariant), `/new-transform` (end-to-end transform scaffolding).
+
+**Rules**
+
+- `CODE_STYLE.md` — concrete TS + Python rules
+- `COMMIT_CONVENTIONS.md` — Conventional Commits + this repo's scope vocabulary + authorship rules
+
+**Operations & navigation**
+
+- `ARCHITECTURE.md` — engines, locked surfaces, pipeline, invariants
+- `GLOSSARY.md` — blast radius, tier, sidecar, atomic write, precondition, gate, …
+- `RUNBOOK.md` — release, rollback, CVE response, snapshot regeneration
+
+**Templates** — `docs/prd/_template.md`, `docs/plans/_template.md`, `dev-docs/decisions/_template.md` (each links real examples in this repo).
+
+**Settings & hooks (`.claude/settings.json`, `.claude/hooks/`)** — team-wide permissions plus three live hooks:
+
+- `block-dangerous-bash.sh` (PreToolUse:Bash) — blocks `--no-verify`, `--force` push, `git reset --hard`, real `npm publish`, broad `rm -rf`
+- `block-locked-file-writes.sh` (PreToolUse:Write|Edit) — blocks edits to `src/contracts.ts`, `src/core/models.ts`, `src/adapters/interface.ts`
+- `auto-format.sh` (PostToolUse:Write|Edit) — runs prettier on supported files so format:check stays green
+- `.githooks/commit-msg` — enforces COMMIT_CONVENTIONS (Conventional Commits shape, no AI names, no co-author trailers, ≤72-char subject). Activated by `npm install` via `prepare` script.
+
+**Ownership** — `.github/CODEOWNERS` auto-requests review on locked files, ADRs, ops scaffolding, and release-critical files.
 
 When a non-trivial task arrives, the first move is usually: pick the matching subagent, read the relevant rule doc, and start from the template — not from scratch.
 

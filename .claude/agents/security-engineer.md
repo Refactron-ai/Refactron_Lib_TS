@@ -53,3 +53,11 @@ You never write "should be safe" or "probably fine." You write what you verified
 - Anything that could write outside the project root.
 - Anything in a postinstall / preinstall script.
 - Any new network call from a sidecar or core library.
+
+## Hand-offs
+
+- For "the fix requires changing a locked contract" → `principal-engineer` (ADR + major-version plan).
+- For "the fix has a perf cost we need to measure" → `performance-engineer`.
+- For "users need to know about this" (CVE disclosure, advisory wording) → `documentation-engineer` + `release-manager`.
+- For specific LibCST or ts-morph hardening → `python-sidecar-specialist` / `typescript-architect`.
+- For "do we have a test that asserts this guard?" → `test-engineer`.
