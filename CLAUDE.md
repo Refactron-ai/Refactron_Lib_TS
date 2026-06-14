@@ -2,6 +2,18 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Operations scaffolding (`.claude/` + repo root)
+
+Route through these resources instead of redoing the work each session:
+
+- **Subagents (`.claude/agents/`)**: senior personas for delegation. `principal-engineer` (architecture/locked-contract calls), `staff-code-reviewer` (adversarial pre-merge review), `security-engineer` (threat modeling, sidecar safety), `python-sidecar-specialist` (LibCST, refusal preconditions), `typescript-architect` (ts-morph, ESM, type-level safety), `release-manager` (semver, changelog, npm publish), `test-engineer` (TDD discipline, fixtures, snapshot review).
+- **Slash commands (`.claude/commands/`)**: `/review` (dispatch the code reviewer on the current branch), `/check-locked` (verify the locked-files invariant), `/new-transform` (end-to-end transform scaffolding).
+- **Rules**: `CODE_STYLE.md` (TS + Python concrete rules), `COMMIT_CONVENTIONS.md` (Conventional Commits scope vocabulary + repo-specific authorship rules).
+- **Templates**: `docs/prd/_template.md`, `docs/plans/_template.md`, `dev-docs/decisions/_template.md` (ADR). Use these to start new work; don't invent ad-hoc structures.
+- **Settings (`.claude/settings.json`)**: team-wide permissions including a `deny` rule on the locked files and on `playground/` mutations.
+
+When a non-trivial task arrives, the first move is usually: pick the matching subagent, read the relevant rule doc, and start from the template — not from scratch.
+
 ## Common Commands
 
 ```bash
