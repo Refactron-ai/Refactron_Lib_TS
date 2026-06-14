@@ -15,6 +15,10 @@ coverage/
 # Session data
 .refactron/
 
+# Personal Claude Code overrides — settings.json (team) is committed,
+# settings.local.json (personal) is not. Same pattern as .vscode.
+.claude/settings.local.json
+
 # OS
 .DS_Store
 Thumbs.db

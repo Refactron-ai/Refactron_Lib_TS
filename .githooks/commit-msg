@@ -1,0 +1,64 @@
+#!/usr/bin/env bash
+# Enforces Refactron's commit-message rules (see COMMIT_CONVENTIONS.md).
+# Wired in by `npm install` via the `prepare` script (sets core.hooksPath).
+# To bypass, fix the underlying issue — never --no-verify.
+
+set -euo pipefail
+
+MSG_FILE="$1"
+MSG="$(cat "$MSG_FILE")"
+
+fail() {
+  echo
+  echo "✗ commit rejected: $1" >&2
+  echo "  see COMMIT_CONVENTIONS.md" >&2
+  echo
+  exit 1
+}
+
+# The rule "no AI attribution" targets two surfaces — the commit SUBJECT
+# (line 1) and TRAILER lines (lines matching `Word-Word: ...`). Prose body
+# may legitimately mention assistants by name (release notes, docs of a
+# `.claude/` scaffolding commit, etc.) — that's documentation, not
+# attribution.
+
+SUBJECT_LINE="$(printf '%s\n' "$MSG" | head -n1)"
+
+# 1a. Subject must not name an AI assistant — but allow `.claude/` path
+#     references (e.g. `chore: tighten .claude/hooks/...`). The matcher
+#     requires the name to be bounded by NON-path characters on at least
+#     one side (no `.`, `/`, `_`, `-` immediately before or after).
+if printf '%s\n' "$SUBJECT_LINE" | grep -iqE '(^|[^./_-])(claude|gemini|gpt-?[0-9]|copilot)([^./_a-z0-9-]|$)'; then
+  fail "commit subject must not name an AI assistant"
+fi
+
+# 1b. Trailer lines (e.g. "Co-Authored-By: Claude") must not name one.
+#     A trailer is any line of the form `Word-Word: …` after a blank line.
+TRAILERS="$(printf '%s\n' "$MSG" | awk 'BEGIN{seen_blank=0} /^$/{seen_blank=1; next} seen_blank && /^[A-Za-z][A-Za-z0-9-]*:[[:space:]]/{print}')"
+if printf '%s\n' "$TRAILERS" | grep -iqE '(^|[^./_-])(claude|gemini|gpt-?[0-9]|copilot)([^./_a-z0-9-]|$)'; then
+  fail "commit trailers must not name an AI assistant"
+fi
+
+# 2. No co-author trailers — authorship belongs to the human committer.
+if printf '%s\n' "$TRAILERS" | grep -iqE '^Co-Authored-By:'; then
+  fail "Co-Authored-By trailers are not allowed (see COMMIT_CONVENTIONS.md)"
+fi
+
+# 3. Conventional Commits subject shape: type(scope?): subject
+#    Allowed types match COMMIT_CONVENTIONS.md.
+SUBJECT="$(printf '%s\n' "$MSG" | head -n1)"
+if ! printf '%s\n' "$SUBJECT" | grep -qE '^(feat|fix|perf|refactor|test|docs|chore|ci|style|revert)(\([a-z0-9,_-]+\))?!?: .+'; then
+  fail "subject must be Conventional Commits (e.g. 'fix(transform-sidecar): subject'). Got: $SUBJECT"
+fi
+
+# 4. Subject length ≤ 72 chars.
+if [ ${#SUBJECT} -gt 72 ]; then
+  fail "subject is ${#SUBJECT} chars; max 72 (be concise)"
+fi
+
+# 5. Subject ends without a period.
+if printf '%s' "$SUBJECT" | grep -qE '\.$'; then
+  fail "subject must not end with a period"
+fi
+
+exit 0

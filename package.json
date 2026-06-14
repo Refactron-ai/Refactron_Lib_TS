@@ -37,7 +37,8 @@
     "test:coverage": "vitest run --coverage",
     "test:verification": "vitest run tests/verification/",
     "clean": "rimraf dist",
-    "prepublishOnly": "npm run clean && npm run build && npm run typecheck && npm run lint && npm test"
+    "prepublishOnly": "npm run clean && npm run build && npm run typecheck && npm run lint && npm test",
+    "prepare": "git config core.hooksPath .githooks 2>/dev/null || true"
   },
   "keywords": [
     "refactoring",
