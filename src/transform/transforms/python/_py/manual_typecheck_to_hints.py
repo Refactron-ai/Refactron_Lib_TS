@@ -76,6 +76,43 @@ def _has_typing_union_import(module: cst.Module) -> bool:
     return False
 
 
+class _IsinstanceProbe(cst.CSTVisitor):
+    """Detects an ``isinstance(<Name>, <Name>)`` call in a function's OWN body —
+    excluding nested function/class definitions. Without the nested-def cutoff
+    a closure like ``def outer(): def inner(x): if isinstance(x, int): ...``
+    would inflate ``outer`` to a candidate, producing a spurious
+    ``body-not-pure-dispatcher:outer`` record on every multi-statement closure.
+    """
+
+    def __init__(self) -> None:
+        self.found = False
+
+    def visit_FunctionDef(self, node: cst.FunctionDef) -> bool:
+        return False  # skip nested defs
+
+    def visit_ClassDef(self, node: cst.ClassDef) -> bool:
+        return False  # skip nested classes (their methods get their own visit)
+
+    def visit_Call(self, node: cst.Call) -> bool:
+        if not self.found and is_isinstance_call(node):
+            self.found = True
+        return not self.found  # short-circuit once we have a hit
+
+
+def _function_has_isinstance_signal(func: cst.FunctionDef) -> bool:
+    """True iff the function's own body contains at least one
+    ``isinstance(<Name>, <Name>)`` call — the shape the rewriter knows how to
+    convert into a ``Union[...]`` annotation. Gates precondition emission so
+    unrelated siblings in the same file stay silent (otherwise a 50-function
+    file would log 49 spurious refusals around the one real candidate).
+    """
+    probe = _IsinstanceProbe()
+    # Visit the body, not `func` itself: starting from `func` would not give the
+    # visitor a chance to short-circuit at the outermost FunctionDef boundary.
+    func.body.visit(probe)
+    return probe.found
+
+
 class Annotator(cst.CSTTransformer):
     def __init__(self):
         self.preconditions = []
@@ -85,21 +122,61 @@ class Annotator(cst.CSTTransformer):
     def leave_FunctionDef(
         self, original: cst.FunctionDef, updated: cst.FunctionDef
     ) -> cst.FunctionDef:
+        # Only emit refusal records for functions that LOOK like candidates
+        # (have at least one isinstance(Name, Name) call). Without this gate
+        # every silently-walked-past function would generate noise.
+        is_candidate = _function_has_isinstance_signal(updated)
+        funcname = updated.name.value
+
         body = updated.body
         if not isinstance(body, cst.IndentedBlock):
+            if is_candidate:
+                self.preconditions.append(
+                    {
+                        "id": f"non-block-body:{funcname}",
+                        "satisfied": False,
+                        "reason": (
+                            f"function {funcname} body is inline (single-line def form); "
+                            "rewriter requires a multi-line body to place the annotation"
+                        ),
+                    }
+                )
             return updated
         meaningful = _body_stmts_no_pass(body)
         if len(meaningful) != 1:
+            if is_candidate:
+                self.preconditions.append(
+                    {
+                        "id": f"body-not-pure-dispatcher:{funcname}",
+                        "satisfied": False,
+                        "reason": (
+                            f"function {funcname} body has {len(meaningful)} statements; "
+                            "rewriter requires the isinstance chain to be the sole body "
+                            "statement (a docstring or guard clause blocks the rewrite)"
+                        ),
+                    }
+                )
             return updated
         only = meaningful[0]
         if not isinstance(only, cst.If):
+            if is_candidate:
+                self.preconditions.append(
+                    {
+                        "id": f"lone-statement-not-if:{funcname}",
+                        "satisfied": False,
+                        "reason": (
+                            f"function {funcname}'s lone body statement is not an "
+                            "if/elif chain — isinstance check appears outside a dispatcher"
+                        ),
+                    }
+                )
             return updated
 
         chain = extract_chain(only)
         if chain is None:
             self.preconditions.append(
                 {
-                    "id": f"single-param-chain:{updated.name.value}",
+                    "id": f"single-param-chain:{funcname}",
                     "satisfied": False,
                     "reason": "isinstance chain does not discriminate a single parameter",
                 }
@@ -115,6 +192,16 @@ class Annotator(cst.CSTTransformer):
                 target_idx = i
                 break
         if target_idx is None:
+            self.preconditions.append(
+                {
+                    "id": f"param-not-in-signature:{funcname}:{param_name}",
+                    "satisfied": False,
+                    "reason": (
+                        f"isinstance chain discriminates '{param_name}' which is not "
+                        f"a parameter of {funcname}"
+                    ),
+                }
+            )
             return updated
 
         target = params[target_idx]
