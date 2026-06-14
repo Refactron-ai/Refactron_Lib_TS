@@ -114,6 +114,37 @@ describe('manual_typecheck_to_hints (python)', () => {
     ).toBe(true);
   });
 
+  it('emits a precondition when an isinstance-bearing function has an inline (non-block) body', async () => {
+    // `def f(x): return isinstance(x, int)` — body is a SimpleStatementSuite,
+    // not an IndentedBlock. Previously a silent bail at the first guard.
+    const src = 'def handle(x): return isinstance(x, int)\n';
+    const p = await file(src);
+    const r = await transform({ absPath: p, relPath: 'f.py', source: src, findings: [] });
+    expect(r.newContent).toBeNull();
+    expect(r.preconditions.some((c) => !c.satisfied && /non-block-body:handle/.test(c.id))).toBe(
+      true,
+    );
+  });
+
+  it('emits a precondition when the isinstance chain discriminates a non-parameter name', async () => {
+    // Chain shape is valid, but `globalvar` is not a parameter of the
+    // (zero-arg) function. Previously a silent bail at the param lookup.
+    const src =
+      'def handle():\n' +
+      '    if isinstance(globalvar, int):\n' +
+      '        return 1\n' +
+      '    elif isinstance(globalvar, str):\n' +
+      '        return 2\n';
+    const p = await file(src);
+    const r = await transform({ absPath: p, relPath: 'f.py', source: src, findings: [] });
+    expect(r.newContent).toBeNull();
+    expect(
+      r.preconditions.some(
+        (c) => !c.satisfied && /param-not-in-signature:handle:globalvar/.test(c.id),
+      ),
+    ).toBe(true);
+  });
+
   it('stays silent for functions with NO isinstance call at all', async () => {
     // Gate check: an unrelated function in the same file must not generate
     // noise. Without this, a 50-function file would emit 49 spurious refusals
