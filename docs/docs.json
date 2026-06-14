@@ -20,16 +20,7 @@
     "eyebrows": "breadcrumbs"
   },
   "contextual": {
-    "options": [
-      "copy",
-      "view",
-      "chatgpt",
-      "claude",
-      "perplexity",
-      "mcp",
-      "cursor",
-      "vscode"
-    ]
+    "options": ["copy", "view", "chatgpt", "claude", "perplexity", "mcp", "cursor", "vscode"]
   },
   "logo": {
     "light": "/logo/logo.svg",
@@ -82,7 +73,7 @@
       },
       {
         "group": "Reference",
-        "pages": ["faq", "changelog"]
+        "pages": ["faq", "changelog", "reference/performance", "reference/citations"]
       }
     ]
   },

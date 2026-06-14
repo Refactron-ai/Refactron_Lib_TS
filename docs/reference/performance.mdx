@@ -1,0 +1,86 @@
+---
+title: Performance
+description: Wall-clock numbers, methodology, and how to reproduce.
+---
+
+Refactron is built to stay fast on real codebases — not just toy fixtures. The numbers below are reproducible benchmarks against synthetic trees that mix Python and TypeScript files sprinkled with every shipped transform pattern.
+
+## Headline numbers
+
+`analyze` on an Apple M2 (8 cores, 8 GB RAM, Node 24, Refactron 0.2.x):
+
+| Tree size | Files | Median     | Min    | Max    |
+| --------- | ----- | ---------- | ------ | ------ |
+| 10k LOC   | 448   | **1.21s**  | 1.19s  | 1.31s  |
+| 100k LOC  | 4,465 | **11.13s** | 10.56s | 13.14s |
+
+Validated end-to-end on Ansible (`playground/ansible`, ~100k LOC, 4,465 files) — every shipped transform runs through `analyze` → `run --dry-run` → `run --apply` without timing out or running out of memory.
+
+## Full pipeline (analyze → plan → apply with verification)
+
+Against `fixtures/python-legacy-mini` (9 files, 189 LOC, real pytest suite):
+
+| Step                                   | Median    | Min   | Max   |
+| -------------------------------------- | --------- | ----- | ----- |
+| `analyze`                              | **0.16s** | 0.16s | 0.19s |
+| `run --dry-run`                        | **1.70s** | 1.66s | 1.87s |
+| `run --apply` (3 gates + atomic write) | **3.38s** | 3.27s | 3.72s |
+
+The `--apply` cost is dominated by the **test gate** — Refactron runs your full project test suite inside a shadow tree. On larger projects that figure scales with your suite's runtime, not Refactron's.
+
+## Methodology
+
+- 1 warm-up run per command (discarded), then 5 measured runs.
+- Wall-clock seconds via `/usr/bin/time -p`.
+- Fresh fixture copy per iteration of `--apply` (it mutates the tree).
+- Report median (middle of 5), min, max.
+
+Hardware for the headline numbers:
+
+- Apple M2 · 8 physical cores · 8 GB RAM · Darwin 25.4 arm64
+- Node v24 · npm 11
+
+## Reproduce it yourself
+
+```bash
+# Generate a synthetic 10k-LOC tree mixing Python + TypeScript
+# with every Refactron transform pattern sprinkled in.
+npx tsx bench/gen-fixture.ts 10000 bench/10k-loc
+
+# Time analyze.
+time node dist/cli/index.js analyze bench/10k-loc
+
+# Time the full pipeline against a real fixture with a test suite.
+bash bench/run-pipeline-bench.sh
+
+# Cleanup.
+rm -rf bench/10k-loc
+```
+
+## Performance targets (v0.2 release gate)
+
+| Tree size                | Target                     | Current                 |
+| ------------------------ | -------------------------- | ----------------------- |
+| 10k LOC                  | `analyze` < 6s             | **1.21s** ✓             |
+| 100k LOC                 | `analyze` < 60s            | **11.13s** ✓            |
+| 500k LOC                 | `analyze` < 5min           | Local-only, see notes   |
+| 100k LOC + `run --apply` | < 5min including test gate | Dominated by your suite |
+
+The 500k-LOC tree generation requires ~25 MB of disk and ~30s wall-clock; skipped in CI, run locally before each release.
+
+## Where the time goes
+
+The dominant costs, in order:
+
+1. **Python sidecar spawn** — `child_process.spawn('python3', [sidecar, file])` for every Python file × every Python transform. Spawn cost is ~30ms per invocation. Mitigated by per-file transform composition (one spawn covers all transforms for a file).
+2. **Tree-sitter / ts-morph parsing** — re-parsing the same file for each detector. The detector layer caches the tree per file per command.
+3. **ts-morph project initialization** — building a `Project` over a large TS codebase is expensive; built once per command, reused across transforms.
+4. **Atomic batch writes** — fsync per file. Amortizes well on batches > 100 files.
+
+If you observe a regression against these numbers, file an issue with the output of `bash bench/run-bench.sh` and your hardware.
+
+## Concurrency
+
+`refactron analyze` and `run --dry-run` are CPU-bound on the parser; the engine fan-outs at the per-file boundary up to `min(16, cpu_cores - 2)` concurrent workers. Set `REFACTRON_CONCURRENCY=<n>` to override.
+
+`run --apply` runs the verifier sequentially per gate — syntax and imports concurrently within their gates, tests serially (your suite owns its own parallelism).

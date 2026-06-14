@@ -1,137 +1,141 @@
+<p align="center">
+  <img src="https://raw.githubusercontent.com/Refactron-ai/Refactron_Lib_TS/main/docs/assets/banner.svg" alt="Refactron — source files flow through Analyze, then three verification gates (Syntax, Imports, Tests), then atomic write; a verified file emerges on the right" width="100%">
+</p>
+
 # Refactron
 
-Refactron finds legacy patterns in your Python and TypeScript code, refactors them deterministically, and proves nothing broke before writing a single byte.
-
-[![npm version](https://img.shields.io/npm/v/refactron)](https://www.npmjs.com/package/refactron)
-[![npm downloads](https://img.shields.io/npm/dm/refactron)](https://www.npmjs.com/package/refactron)
-[![Node.js](https://img.shields.io/badge/node-%3E%3D18.0.0-brightgreen)](https://nodejs.org)
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](./LICENSE)
 [![CI](https://github.com/Refactron-ai/Refactron_Lib_TS/actions/workflows/ci.yml/badge.svg)](https://github.com/Refactron-ai/Refactron_Lib_TS/actions/workflows/ci.yml)
 
-![Refactron in action — analyze, dry-run, apply, with the three verification gates](https://raw.githubusercontent.com/Refactron-ai/Refactron_Lib_TS/main/docs/assets/demo.gif)
+**A deterministic refactoring engine for Python and TypeScript that proves the rewrite is safe before writing.** Every planned change runs against your own test suite in a shadow tree first; if a single test fails, nothing lands on disk.
+
+Run `refactron analyze` to see what's rewriteable; `run --dry-run` for the diff; `run --apply` to commit it through three verification gates — syntax, imports, your tests — and an atomic batch write. No LLM in the path. No partial writes. Every refusal carries a precondition explaining itself.
+
+**Jump to:** [Quickstart](#quickstart) · [How it works](#how-it-works) · [Architecture](#architecture) · [Configuration](#configuration) · [Status](#status--scope) · [Docs](#docs)
 
 ---
 
-## Install + first refactor
+## Quickstart
+
+Requires Node.js ≥ 18 and (for Python projects) Python ≥ 3.8.
 
 ```bash
 npm install -g refactron@0.2.3
-cd your-project && refactron login
-refactron analyze .
-refactron run --apply
+cd your-project
+refactron analyze .            # findings + blast radius + tier
+refactron run --dry-run        # preview the diff (no writes)
+refactron run --apply          # 3 gates, then atomic write
 ```
 
-Or via PyPI: `pip install refactron` (Python wrapper around the npm package).
+Scope a run if you don't want every transform at once:
+
+```bash
+refactron run --apply --transforms=super_no_args,pep585_generics
+refactron run --apply --files='src/legacy/**'
+```
+
+Also available as a PyPI wrapper: `pip install refactron`.
 
 ---
 
-## The 3-gate safety model
+## How it works
+
+| Piece             | What it is                                                                                                                                                                 |
+| ----------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Analyzer**      | Tree-sitter / ts-morph detectors. Reports findings with blast radius and tier (debt / modernization / style).                                                              |
+| **Refactorer**    | LibCST sidecars (Python) and ts-morph transforms (TypeScript) composed per file. Emits a `RefactorPlan` of file changes plus a `precondition` for every refusal.           |
+| **Verifier**      | Three gates against a shadow tree: syntax → imports → tests. Depth scales with blast radius — a one-character edit runs syntax only; a multi-file refactor runs all three. |
+| **Atomic writer** | Temp → fsync → rename, all-or-nothing per batch. Partial failure rolls back; your working tree is never half-written.                                                      |
+
+All four engines compose around the locked adapter interface in `src/adapters/interface.ts` — adding a language is "implement `ILanguageAdapter`," not "fork the engine."
+
+20 deterministic transforms ship today: 6 debt, 9 modernization, 5 style — full list in [`docs/transforms/`](docs/transforms/).
+
+---
+
+## Architecture
+
+The pipeline a refactor flows through:
 
 ```mermaid
 flowchart LR
-  Plan[RefactorPlan] --> G1{Gate 1<br/>Syntax}
-  G1 -- pass --> G2{Gate 2<br/>Imports}
-  G2 -- pass --> G3{Gate 3<br/>Tests}
-  G3 -- pass --> AW[Atomic batch write]
-  G1 -- fail --> Reject[✗ Reject — your tree untouched]
-  G2 -- fail --> Reject
-  G3 -- fail --> Reject
+  S["source files"] --> A["Analyzer<br/>detectors · blast radius · tier"]
+  A --> R["Refactorer<br/>LibCST · ts-morph<br/>per-file composition"]
+  R --> V{"Verifier<br/>3-gate shadow tree"}
+  V -- "any gate fails" --> X["✗ reject<br/>tree untouched"]
+  V -- "all pass" --> W["Atomic batch write<br/>temp · fsync · rename"]
+  W --> D["Documenter<br/>docstrings · CHANGELOG"]
+
+  classDef accent fill:#d97757,stroke:#b85c3c,color:#160f0c;
+  class V accent;
 ```
 
-Every refactor passes three gates before any byte is written: (1) the new content re-parses cleanly; (2) all imports resolve; (3) your project's full test suite passes on a shadow tree. Atomic write or rollback — never partial state. See [`docs/concepts/safety-model.mdx`](docs/concepts/safety-model.mdx) for the full breakdown.
+The three verification gates, in order:
 
----
+```mermaid
+flowchart LR
+  P["RefactorPlan"] --> G1{"Gate 1<br/>Syntax"}
+  G1 -- pass --> G2{"Gate 2<br/>Imports"}
+  G2 -- pass --> G3{"Gate 3<br/>Tests"}
+  G3 -- pass --> OK["✓ atomic write"]
+  G1 -- fail --> NO["✗ reject"]
+  G2 -- fail --> NO
+  G3 -- fail --> NO
 
-## Transform catalog
-
-Twenty deterministic transforms — eleven for Python, nine for TypeScript.
-
-| Transform | Language | Description |
-|---|---|---|
-| [`callback_to_async_await`](docs/transforms/callback-to-async-await.mdx) | Python | Convert trailing-callback functions into async functions that return the result |
-| [`format_to_fstring`](docs/transforms/format-to-fstring.mdx) | Python | Convert old-style `%`-formatting and `.format()` calls into f-strings |
-| [`class_to_dataclass`](docs/transforms/class-to-dataclass.mdx) | Python | Promote pure data-holder classes (trivial `__init__`) to `@dataclass` |
-| [`manual_typecheck_to_hints`](docs/transforms/manual-typecheck-to-hints.mdx) | Python | Promote `isinstance`-chain dispatch into a `Union[...]` annotation on the parameter |
-| [`deprecated_api_requests_to_httpx`](docs/transforms/deprecated-api-requests-to-httpx.mdx) | Python | Migrate the `requests` library to the modern `httpx` equivalent |
-| [`super_no_args`](docs/transforms/super-no-args.mdx) | Python | Drop the redundant class/self arguments from explicit `super()` calls |
-| [`lru_cache_to_cache`](docs/transforms/lru-cache-to-cache.mdx) | Python | `@functools.lru_cache(maxsize=None)` → `@functools.cache` (≥ 3.9) |
-| [`pep585_generics`](docs/transforms/pep585-generics.mdx) | Python | `typing.List` / `Dict` / `Tuple` → built-in `list` / `dict` / `tuple` (PEP 585) |
-| [`pep604_optional_union`](docs/transforms/pep604-optional-union.mdx) | Python | `Optional[X]` → `X \| None`, `Union[A, B]` → `A \| B` (PEP 604) |
-| [`datetime_utc_alias`](docs/transforms/datetime-utc-alias.mdx) | Python | `datetime.timezone.utc` → `datetime.UTC` (≥ 3.11) |
-| [`yield_from_for_loop`](docs/transforms/yield-from-for-loop.mdx) | Python | `for x in y: yield x` → `yield from y` when the loop has no other body |
-| [`promise_chains_to_async`](docs/transforms/promise-chains-to-async.mdx) | TypeScript | Convert `.then()` chains into async/await with named bindings per stage |
-| [`promise_constructor_to_async`](docs/transforms/promise-constructor-to-async.mdx) | TypeScript | Replace `new Promise((resolve) => resolve(value))` with an async function returning the value |
-| [`var_to_const_let`](docs/transforms/var-to-const-let.mdx) | TypeScript | Replace `var` declarations with `const` (or `let` if reassigned) per binding |
-| [`commonjs_to_esm`](docs/transforms/commonjs-to-esm.mdx) | TypeScript | Migrate CommonJS `require` / `module.exports` to ES module `import` / `export` |
-| [`implicit_any`](docs/transforms/implicit-any.mdx) | TypeScript | Annotate untyped parameters when call-site inference yields a single primitive |
-| [`indexof_to_includes`](docs/transforms/indexof-to-includes.mdx) | TypeScript | `arr.indexOf(x) !== -1` / `>= 0` → `arr.includes(x)` (type-aware via ts-morph; ES2016+) |
-| [`object_assign_to_spread`](docs/transforms/object-assign-to-spread.mdx) | TypeScript | `Object.assign({}, a, b)` → `{ ...a, ...b }` (ES2018+) |
-| [`string_concat_to_template_literal`](docs/transforms/string-concat-to-template-literal.mdx) | TypeScript | `"Hello " + name + "!"` → `` `Hello ${name}!` `` (ES2015+) |
-| [`vue_set_delete_to_assignment`](docs/transforms/vue-set-delete-to-assignment.mdx) | TypeScript | `Vue.set` / `this.$set` → direct assignment; Vue 3 codebases (`.js`/`.ts` only) |
-
----
-
-## Honest limitations
-
-- Python and TypeScript only at v0.2; no Ruby/Go/Rust adapters yet.
-- Documentation engine requires a reachable LLM provider (graceful skip otherwise — refactor still ships).
-- Self-analysis on Refactron's own repo fails the test gate by design (mutating the bundled fixtures breaks meta-tests). See [Self-test paradox](#self-test-paradox) below.
-- Public extension API for custom transforms is post-launch.
-- Test gate is bound by your project's own suite — runs `npm test` / `pytest` in a shadow tree.
-
-### Self-test paradox
-
-If you `git clone` Refactron and run `refactron run --apply` on the repo itself, the test gate **will** fail and **no files will be written**. That's working as designed — the meta-tests exercise transforms on `fixtures/python-legacy-mini/` and `fixtures/ts-legacy-mini/`, which are deliberately full of legacy patterns. Refactoring them invalidates the tests' expected inputs, the verification engine catches the regression, and the write is refused — exactly what would happen on any project where a refactor breaks downstream tests.
-
-To self-analyze without triggering this, exclude the fixtures via `.refactronrc.json`:
-
-```json
-{ "exclude": ["fixtures/**"] }
+  classDef hold fill:#d97757,stroke:#b85c3c,color:#160f0c;
+  class NO hold;
 ```
 
----
+A trivial whitespace edit runs only Gate 1; a critical-blast-radius change runs all three with a 120-second test timeout. Verification depth follows the change's reach.
 
-## Performance
-
-Reproducible benchmark on Apple M2, Node 24:
-
-| Tree size | Files | Median analyze | Range |
-|---|---|---|---|
-| 10k LOC | 448 | 1.31s | 1.16s – 1.64s |
-| 100k LOC | 4,465 | 20.58s | 14.99s – 38.65s |
-
-Run it yourself: `bash bench/run-bench.sh`.
+Full design: [`ARCHITECTURE.md`](./ARCHITECTURE.md). Vocabulary: [`GLOSSARY.md`](./GLOSSARY.md). ADRs: [`dev-docs/decisions/`](./dev-docs/decisions/).
 
 ---
 
-## Documentation
+## Configuration
 
-Full documentation: [docs.refactron.dev](https://docs.refactron.dev) (or [`docs/`](docs/) in this repo).
+`refactron.yaml` at your project root. Every key is optional.
 
----
+| Key             | Default  | Purpose                                                         |
+| --------------- | -------- | --------------------------------------------------------------- |
+| `transforms`    | all      | Subset of transform ids to run                                  |
+| `confidence`    | `low`    | Minimum finding confidence (`low` / `medium` / `high`)          |
+| `pythonVersion` | `"3.11"` | Drives PEP version-gated transforms (585, 604, etc.)            |
+| `testCmd`       | auto     | Override the test command (auto-detects pytest / vitest / jest) |
+| `exclude`       | —        | Globs to ignore beyond `.gitignore`                             |
 
-## Citations
-
-- Opdyke 1992 — *Refactoring Object-Oriented Frameworks* (UIUC PhD thesis) — academic foundation for behavior-preserving refactoring
-- Brunsfeld 2018 — *Tree-sitter: a new parsing system for programming tools* (Strange Loop) — analysis layer
-- Instagram engineering — [LibCST](https://github.com/Instagram/LibCST) — Python codemod foundation
-- Microsoft / TypeScript team — [ts-morph](https://github.com/dsherret/ts-morph) — TypeScript AST transforms
-- Wang et al. ICSE 2018 — *Towards Refactoring-Aware Regression Test Selection* — coverage-of-changed-surface insight
-
----
-
-## Contributing
-
-See [CONTRIBUTING.md](./CONTRIBUTING.md).
+Full schema in `src/core/config.ts`.
 
 ---
 
-## Changelog
+## Status & scope
 
-See [CHANGELOG.md](./CHANGELOG.md).
+**Built and shipped (v0.2.x, 739 tests):** the 4 engines, 20 transforms, 3-gate verification, atomic batch write, blast-radius scoring, tier taxonomy, precondition discipline, `.refactron/` session store, Ink TUI, JSON output, CLI flag scoping (`--transforms`, `--files`). Validated end-to-end on Ansible (4,465 files, ~100k LOC).
+
+**Deliberately not built:**
+
+- **No LLM in the refactor path.** The documenter is the only LLM consumer; it operates on already-verified, already-written code.
+- **No network calls** from sidecars or the core engine.
+- **No self-apply on this repo.** The fixtures under `fixtures/python-legacy-mini/` and `fixtures/ts-legacy-mini/` are deliberately full of legacy patterns; refactoring them invalidates the meta-tests, the test gate catches that, and the write is refused. Exclude `fixtures/**` in `refactron.yaml` to self-analyze.
+- **No Ruby / Go / Rust adapters yet** — adapter interface is locked; adding one is a follow-on.
+- **No public custom-transform API yet** — targeted for v0.3.
+
+**Coming:** v0.3 — catalog refresh, expanded `manual_typecheck_to_hints` coverage, custom-transform API. v0.4 — Go adapter (demand-gated). v1.0 — once external usage has characterized the real bug surface.
+
+---
+
+## Docs
+
+- [`ARCHITECTURE.md`](./ARCHITECTURE.md) — engines, locked surfaces, pipeline, invariants
+- [`GLOSSARY.md`](./GLOSSARY.md) — blast radius, tier, sidecar, precondition, gate
+- [`RUNBOOK.md`](./RUNBOOK.md) — release, rollback, CVE response
+- [`CLAUDE.md`](./CLAUDE.md) — agent working rules + ops scaffolding
+- [`CONTRIBUTING.md`](./CONTRIBUTING.md) — development workflow
+- [`docs/`](./docs/) — full user docs (also at [docs.refactron.dev](https://docs.refactron.dev))
+
+Security findings: do not open a public issue. Email `security@refactron.dev`.
 
 ---
 
 ## License
 
-MIT — see [LICENSE](./LICENSE).
+[Apache License 2.0](./LICENSE). See [`LICENSE`](./LICENSE) and [`NOTICE`](./NOTICE).
