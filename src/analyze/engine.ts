@@ -31,6 +31,10 @@ import './detectors/typescript/object-assign-empty.js';
 import './detectors/typescript/string-concat.js';
 // v0.2.3 Phase 5 — Vue 2 reactivity helpers (.js/.ts; .vue files are not visited by walker)
 import './detectors/typescript/vue-set-delete.js';
+// v0.3.0 — SQLAlchemy 1.x → 2.0 query-to-select migration (detector only;
+// rewriter sidecar lands in a later task and the TransformId is added to the
+// locked contract in Task 18).
+import './detectors/python/sqlalchemy-query.js';
 
 export interface AnalyzeOptions {
   confidence?: Confidence;
