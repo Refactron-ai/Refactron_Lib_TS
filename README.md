@@ -19,7 +19,7 @@ Run `refactron analyze` to see what's rewriteable; `run --dry-run` for the diff;
 Requires Node.js ≥ 18 and (for Python projects) Python ≥ 3.8.
 
 ```bash
-npm install -g refactron@0.2.3
+npm install -g refactron@0.2.4
 cd your-project
 refactron analyze .            # findings + blast radius + tier
 refactron run --dry-run        # preview the diff (no writes)

@@ -7,7 +7,7 @@ description: Install Refactron and run your first verified refactor in 60 second
 ## 1 — Install
 
 ```bash
-npm install -g refactron@0.2.3
+npm install -g refactron@0.2.4
 ```
 
 Or via PyPI (Python wrapper around the npm package — Node.js 18+ still required):
@@ -19,7 +19,7 @@ pip install refactron
 Confirm:
 
 ```bash
-refactron --version       # → 0.2.3
+refactron --version       # → 0.2.4
 ```
 
 ---
@@ -62,10 +62,13 @@ Output (sample) — findings render as one bordered box per file, followed by
 summary tables:
 
 <Frame caption="analyze output — one bordered box per file plus a SUMMARY block">
-  <img src="/assets/demo_cli.png" alt="Refactron analyze output: a bordered table of format_to_fstring findings under src/api/users.py followed by a SUMMARY block listing files affected, severity counts, and auto-fixable candidates" />
+  <img
+    src="/assets/demo_cli.png"
+    alt="Refactron analyze output: a bordered table of format_to_fstring findings under src/api/users.py followed by a SUMMARY block listing files affected, severity counts, and auto-fixable candidates"
+  />
 </Frame>
 
-`analyze` reports every finding as an auto-fix *candidate* — it never runs a
+`analyze` reports every finding as an auto-fix _candidate_ — it never runs a
 transform, so `run --dry-run` is the source of truth for what actually changes.
 
 ---
@@ -101,7 +104,8 @@ Runs on the snapshot from the last `run --apply` and writes **docstrings**, **in
 This is the one step that uses an LLM, and it runs **only on the already-verified diff** — the worst case is a wrong sentence, never broken code. It needs an LLM provider configured (managed backend, Ollama, OpenAI, Anthropic, or Groq) — see [`.refactronrc.json` → documentation](/configuration/refactronrc#documentation).
 
 <Note>
-Made a change you want to undo? `refactron rollback` reverts the last `run --apply` or `document --apply` — a drift-safe LIFO undo. See the [CLI reference](/cli/reference#rollback).
+  Made a change you want to undo? `refactron rollback` reverts the last `run --apply` or `document
+  --apply` — a drift-safe LIFO undo. See the [CLI reference](/cli/reference#rollback).
 </Note>
 
 ---
