@@ -61,4 +61,34 @@ def list_active(session):
       });
     });
   }
+
+  it('tags findings with testCovered=yes when the line is covered', () => {
+    const source = `
+def list_active(session):
+    return session.query(User).filter(User.active == True).all()
+`;
+    const ctx = ctxFor(source);
+    (ctx as { coveredLines?: Set<string> }).coveredLines = new Set(['svc.py:3']); // the query line
+    const findings = detect(ctx as never);
+    expect(findings[0]!.testCovered).toBe('yes');
+  });
+
+  it('tags findings with testCovered=no when the line is not covered', () => {
+    const ctx = ctxFor(`
+def list_active(session):
+    return session.query(User).all()
+`);
+    (ctx as { coveredLines?: Set<string> }).coveredLines = new Set(['other.py:1']);
+    const findings = detect(ctx as never);
+    expect(findings[0]!.testCovered).toBe('no');
+  });
+
+  it('tags findings with testCovered=unknown when no coverage set was passed', () => {
+    const ctx = ctxFor(`
+def list_active(session):
+    return session.query(User).all()
+`);
+    const findings = detect(ctx as never);
+    expect(findings[0]!.testCovered).toBe('unknown');
+  });
 });

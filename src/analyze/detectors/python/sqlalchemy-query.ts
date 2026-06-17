@@ -18,6 +18,11 @@ import { register } from '../index.js';
 
 const REMEDIATION = 25;
 
+/** Engine flag — when true, the analyze engine builds a `coveredLines` set via
+ *  `reportCoverage` once per analyze call and threads it into every
+ *  `DetectorContext`. Read by `src/analyze/engine.ts` at orchestration time. */
+export const NEEDS_COVERAGE = true;
+
 /** Walk the call chain leftward from a tail call node. Returns the head
  *  attribute (e.g. `session.query`), the head call node (e.g. the
  *  `session.query(...)` call) and the list of method names in source order. */
@@ -110,6 +115,13 @@ export function detect(ctx: DetectorContext): DetectorFinding[] {
         const { head, headCall, methods } = walkChain(node);
         if (isQueryHead(head) && headCall) {
           const meta = classifyMeta(headCall, methods);
+          const lineKey = `${ctx.relPath}:${node.startPosition.row + 1}`;
+          const testCovered: 'yes' | 'no' | 'unknown' =
+            ctx.coveredLines === undefined
+              ? 'unknown'
+              : ctx.coveredLines.has(lineKey)
+                ? 'yes'
+                : 'no';
           findings.push({
             id: `sql-${ctx.relPath}-${node.startPosition.row}-${counter++}`,
             file: ctx.relPath,
@@ -118,6 +130,7 @@ export function detect(ctx: DetectorContext): DetectorFinding[] {
             transformId: 'sqlalchemy_query_to_select' as never,
             remediationMinutes: REMEDIATION,
             confidence: 'medium',
+            testCovered,
             // `meta` is not on the locked `Finding` shape — sidecar (Task 7)
             // reads it via the same cast on the consumer side.
             ...({ meta } as object),
