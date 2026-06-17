@@ -3,6 +3,14 @@ import * as fs from 'node:fs/promises';
 import * as os from 'node:os';
 import * as path from 'node:path';
 
+/** Canonical form for path keys in the covered-lines set: no leading `./`,
+ *  forward slashes only. Both producer (this module) and consumer (any
+ *  detector that looks up `${ctx.relPath}:${line}`) must apply this so the
+ *  set lookup actually hits. */
+export function normalizePath(p: string): string {
+  return p.replace(/\\/g, '/').replace(/^\.\//, '');
+}
+
 export interface CoverageReportInput {
   projectRoot: string;
   testCmd?: string; // default: 'pytest -q'
@@ -81,8 +89,13 @@ export async function reportCoverage(input: CoverageReportInput): Promise<Covera
       const raw = await fs.readFile(jsonFile, 'utf8');
       const parsed = JSON.parse(raw) as { files?: Record<string, { executed_lines?: number[] }> };
       for (const [relPath, fileData] of Object.entries(parsed.files ?? {})) {
+        // Normalize the path: strip a leading `./` and force forward slashes
+        // so keys match whatever convention the detector emits for its own
+        // relPath. Without this, coverage.json's `flask_appbuilder/foo.py`
+        // never matches a detector lookup of `./flask_appbuilder/foo.py:42`.
+        const normalized = normalizePath(relPath);
         for (const line of fileData.executed_lines ?? []) {
-          covered.add(`${relPath}:${line}`);
+          covered.add(`${normalized}:${line}`);
         }
       }
     } catch {

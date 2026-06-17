@@ -115,7 +115,11 @@ export function detect(ctx: DetectorContext): DetectorFinding[] {
         const { head, headCall, methods } = walkChain(node);
         if (isQueryHead(head) && headCall) {
           const meta = classifyMeta(headCall, methods);
-          const lineKey = `${ctx.relPath}:${node.startPosition.row + 1}`;
+          // Normalize the lookup key the same way the coverage reporter
+          // normalizes its set keys — strip leading `./` and force forward
+          // slashes — so the lookup actually hits (see python-line-coverage.ts).
+          const normalizedRel = ctx.relPath.replace(/\\/g, '/').replace(/^\.\//, '');
+          const lineKey = `${normalizedRel}:${node.startPosition.row + 1}`;
           const testCovered: 'yes' | 'no' | 'unknown' =
             ctx.coveredLines === undefined
               ? 'unknown'
