@@ -13,7 +13,7 @@ Refactron is a CLI for **safety-first refactoring** of Python and TypeScript cod
 </Frame>
 
 ```bash
-npm install -g refactron@0.2.3
+npm install -g refactron@0.2.4
 cd your-project && refactron login
 refactron analyze .
 refactron run --apply
@@ -33,22 +33,28 @@ Refactron does the opposite. The engine is deterministic; the LLM is confined to
 
 <CardGroup cols={2}>
   <Card title="Deterministic engine" icon="microchip">
-    10 transforms (5 Python, 5 TypeScript) implemented as pure AST rewrites via LibCST and ts-morph. No statistical inference; no model temperature.
+    10 transforms (5 Python, 5 TypeScript) implemented as pure AST rewrites via LibCST and ts-morph.
+    No statistical inference; no model temperature.
   </Card>
   <Card title="3-gate verification" icon="shield-check">
-    Syntax → imports → tests on a shadow tree. Every gate must pass before any byte hits your filesystem.
+    Syntax → imports → tests on a shadow tree. Every gate must pass before any byte hits your
+    filesystem.
   </Card>
   <Card title="Atomic batch write" icon="lock">
-    All-or-nothing rename via write-file-atomic. Either every change in a refactor commits, or none does.
+    All-or-nothing rename via write-file-atomic. Either every change in a refactor commits, or none
+    does.
   </Card>
   <Card title="Cross-file preconditions" icon="diagram-project">
-    Transforms refuse to apply when callers, mocks, or other-file dependencies would break. Skipped, not silently broken.
+    Transforms refuse to apply when callers, mocks, or other-file dependencies would break. Skipped,
+    not silently broken.
   </Card>
   <Card title="LLM only for docs" icon="book-open">
-    Documentation generation (Step 4) runs only on already-verified diffs. Five providers: Ollama, Groq, OpenAI, Anthropic, or our managed backend.
+    Documentation generation (Step 4) runs only on already-verified diffs. Five providers: Ollama,
+    Groq, OpenAI, Anthropic, or our managed backend.
   </Card>
   <Card title="Honest limitations" icon="circle-info">
-    No Ruby/Go/Rust adapters yet. Self-analysis fails by design. We tell you what doesn't work in [the FAQ](/faq).
+    No Ruby/Go/Rust adapters yet. Self-analysis fails by design. We tell you what doesn't work in
+    [the FAQ](/faq).
   </Card>
 </CardGroup>
 
