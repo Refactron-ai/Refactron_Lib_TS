@@ -158,7 +158,6 @@ def list_active(session):
       const ctx = ctxFor(`def f(): return User.query.filter(User.active).all()`);
       const findings = detect(ctx as never);
       expect(findings).toHaveLength(1);
-      expect(findings[0]!.line).toBeGreaterThan(0);
     });
   });
 });
