@@ -150,5 +150,15 @@ def list_active(session):
       const findings = detect(ctx as never);
       expect((findings[0] as { meta: unknown }).meta).toEqual({ shape: 'safe' });
     });
+
+    it('emits exactly one finding for a chained class-attr expression', () => {
+      // Both the outer .all() and the inner .filter(...) are `call` nodes; the
+      // detector should fire only at the outer one (the inner is its function
+      // attribute's receiver).
+      const ctx = ctxFor(`def f(): return User.query.filter(User.active).all()`);
+      const findings = detect(ctx as never);
+      expect(findings).toHaveLength(1);
+      expect(findings[0]!.line).toBeGreaterThan(0);
+    });
   });
 });
