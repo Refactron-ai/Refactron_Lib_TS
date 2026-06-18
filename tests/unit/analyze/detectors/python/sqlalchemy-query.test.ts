@@ -91,4 +91,17 @@ def list_active(session):
     const findings = detect(ctx as never);
     expect(findings[0]!.testCovered).toBe('unknown');
   });
+
+  describe('Flask-SQLAlchemy class-attr query head', () => {
+    it('classifies User.query.filter(C).all() as safe', () => {
+      const ctx = ctxFor(`
+def list_active():
+    return User.query.filter(User.active == True).all()
+`);
+      const findings = detect(ctx as never);
+      expect(findings).toHaveLength(1);
+      expect(findings[0]!.transformId).toBe('sqlalchemy_query_to_select');
+      expect((findings[0] as { meta: unknown }).meta).toEqual({ shape: 'safe' });
+    });
+  });
 });
