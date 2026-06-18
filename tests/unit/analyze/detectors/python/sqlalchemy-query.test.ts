@@ -159,5 +159,26 @@ def list_active(session):
       const findings = detect(ctx as never);
       expect(findings).toHaveLength(1);
     });
+
+    it('tags class-attr findings with testCovered=yes when line is covered', () => {
+      const source = `
+def list_active():
+    return User.query.filter(User.active == True).all()
+`;
+      const ctx = ctxFor(source);
+      (ctx as { coveredLines?: Set<string> }).coveredLines = new Set(['svc.py:3']);
+      const findings = detect(ctx as never);
+      expect(findings[0]!.testCovered).toBe('yes');
+    });
+
+    it('tags class-attr findings with testCovered=no when line is not covered', () => {
+      const ctx = ctxFor(`
+def list_active():
+    return User.query.all()
+`);
+      (ctx as { coveredLines?: Set<string> }).coveredLines = new Set(['other.py:1']);
+      const findings = detect(ctx as never);
+      expect(findings[0]!.testCovered).toBe('no');
+    });
   });
 });
