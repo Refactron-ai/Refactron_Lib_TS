@@ -23,7 +23,7 @@ export function formatSafetyReport(report: SafetyReport): RenderedLine[] {
   const lines: RenderedLine[] = [];
   lines.push({ text: `Migration safety report — ${report.transformId}` });
   lines.push({ text: `  scanned ${report.root}`, color: theme.colors.textDim });
-  if (!report.coverageAvailable) {
+  if (report.total > 0 && !report.coverageAvailable) {
     lines.push({
       text: '  ⚠ coverage.py not available — every safe-shape site is UNPROVEN (cannot verify).',
       color: theme.colors.warning,

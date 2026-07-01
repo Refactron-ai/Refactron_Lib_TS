@@ -11,7 +11,7 @@ const FIXTURE = path.resolve(__dirname, '../fixtures/sqlalchemy-mini');
 
 function pythonHasCoverage(): boolean {
   try {
-    execSync('python3 -c "import coverage"', { stdio: 'ignore' });
+    execSync('python3 -c "import coverage, pytest"', { stdio: 'ignore' });
     return true;
   } catch {
     return false;
@@ -22,7 +22,9 @@ describe('preflight integration (sqlalchemy-mini)', () => {
   it('splits covered vs uncovered query sites into safe-to-automate vs unproven', async () => {
     if (!pythonHasCoverage()) {
       // eslint-disable-next-line no-console
-      console.warn('[skip] coverage.py not installed in python3; skipping preflight integration');
+      console.warn(
+        '[skip] coverage.py or pytest not installed in python3; skipping preflight integration',
+      );
       return;
     }
     const analyzer = new RefactronAnalyzer({

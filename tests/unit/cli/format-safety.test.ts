@@ -45,6 +45,20 @@ describe('formatSafetyReport', () => {
       .join('\n');
     expect(text).toContain('coverage.py not available');
   });
+  it('does not warn about coverage on a zero-site report', () => {
+    const emptyReport: SafetyReport = {
+      root: 'app/',
+      transformId: 'sqlalchemy_query_to_select',
+      total: 0,
+      counts: { 'safe-to-automate': 0, unproven: 0, 'needs-review': 0 },
+      coverageAvailable: false,
+      sites: [],
+    };
+    const text = formatSafetyReport(emptyReport)
+      .map((l) => l.text)
+      .join('\n');
+    expect(text).not.toContain('coverage.py not available');
+  });
 });
 
 describe('safetyReportToJson', () => {
