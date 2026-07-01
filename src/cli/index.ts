@@ -12,6 +12,7 @@ const STATIC_HELP = `
 
   Commands:
     analyze  [target]              Scan for transform patterns
+    preflight [target]             SQLAlchemy 1.x→2.0 migration safety report (coverage-aware)
     run      [target] [--apply]    Plan + verify + apply transforms (default dry-run)
     document [target] [--apply]    Generate docstrings + CHANGELOG for the last verified refactor
     init     [target]              Scaffold .refactronrc.json
@@ -24,6 +25,10 @@ const STATIC_HELP = `
     --confidence=<level>    high | medium | low (default: high)
     --fail-on=<level>       Exit 1 if any finding at this confidence or above
     --graph=<path>          Write import + call graph JSON
+
+  preflight flags:
+    --json                  Machine-readable safety report
+    --fail-on-unproven      Exit 1 if any safe-shape site is unproven (no test coverage)
 
   run flags:
     --apply                 Actually write to disk (otherwise dry-run)
@@ -59,6 +64,12 @@ if (cmd === '--help' || cmd === '-h') {
 if (cmd === 'analyze') {
   const { runAnalyzeCommand } = await import('./analyze-command.js');
   const code = await runAnalyzeCommand(process.argv.slice(3));
+  process.exit(code);
+}
+
+if (cmd === 'preflight') {
+  const { runPreflightCommand } = await import('./preflight-command.js');
+  const code = await runPreflightCommand(process.argv.slice(3));
   process.exit(code);
 }
 
