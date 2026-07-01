@@ -29,6 +29,9 @@ describe('assessFinding', () => {
       'safe-to-automate',
     );
   });
+  it('safe verdict carries no flagReason (null)', () => {
+    expect(assessFinding(finding({ shape: 'safe', testCovered: 'yes' })).flagReason).toBeNull();
+  });
   it('safe shape + uncovered -> unproven', () => {
     expect(assessFinding(finding({ shape: 'safe', testCovered: 'no' })).verdict).toBe('unproven');
   });
@@ -43,6 +46,20 @@ describe('assessFinding', () => {
     );
     expect(a.verdict).toBe('needs-review');
     expect(a.flagReason).toBe('bulk-delete-semantics');
+  });
+  it('missing meta -> needs-review with unclassified flagReason (fail safe)', () => {
+    const malformed = {
+      id: 'id-nometa',
+      file: 'svc.py',
+      line: 1,
+      transformId: 'sqlalchemy_query_to_select',
+      remediationMinutes: 25,
+      confidence: 'medium',
+      testCovered: 'yes',
+    } as unknown as DetectorFinding;
+    const a = assessFinding(malformed);
+    expect(a.verdict).toBe('needs-review');
+    expect(a.flagReason).toBe('unclassified');
   });
 });
 
@@ -62,5 +79,11 @@ describe('buildSafetyReport', () => {
       finding({ shape: 'safe', testCovered: 'unknown' }),
     ]);
     expect(report.coverageAvailable).toBe(false);
+  });
+  it('reports total site count in the all-unknown case', () => {
+    const report = buildSafetyReport('app/', 'sqlalchemy_query_to_select', [
+      finding({ shape: 'safe', testCovered: 'unknown' }),
+    ]);
+    expect(report.total).toBe(1);
   });
 });
