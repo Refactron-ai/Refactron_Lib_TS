@@ -45,4 +45,28 @@ describe('fuseVerdict', () => {
   it('tests pass + coverage unknown → UNPROVEN, never SAFE (fail-safe)', () => {
     expect(fuseVerdict(result(true), ['a.ts'], unknown).verdict).toBe('UNPROVEN');
   });
+  it('no test runner detected → UNPROVEN, not UNSAFE (honest: nothing proven)', () => {
+    const r = fuseVerdict(
+      result(false, 'no test runner detected (pytest, vitest, jest); pass testCmd to override'),
+      ['a.py'],
+      unknown,
+    );
+    expect(r.verdict).toBe('UNPROVEN');
+  });
+  it('pre-existing baseline failure → UNPROVEN, not the diff breaking things', () => {
+    const r = fuseVerdict(
+      result(false, 'baseline tests already fail before refactoring; fix them first.'),
+      ['a.py'],
+      unknown,
+    );
+    expect(r.verdict).toBe('UNPROVEN');
+  });
+  it('tests fail after refactoring for a normal reason → still UNSAFE (remap not over-broad)', () => {
+    const r = fuseVerdict(
+      result(false, 'tests fail after refactoring: test_x broke'),
+      ['a.py'],
+      unknown,
+    );
+    expect(r.verdict).toBe('UNSAFE');
+  });
 });

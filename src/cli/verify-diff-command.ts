@@ -31,8 +31,18 @@ export function parseVerifyDiffFlags(argv: string[]): VerifyDiffFlags {
       if (!diffPath) throw new VerifyDiffFlagError('--diff requires a file path');
       continue;
     }
+    if (a.startsWith('--diff=')) {
+      diffPath = a.slice('--diff='.length);
+      if (!diffPath) throw new VerifyDiffFlagError('--diff requires a file path');
+      continue;
+    }
     if (a === '--test-cmd') {
       testCmd = argv[++i] ?? null;
+      if (!testCmd) throw new VerifyDiffFlagError('--test-cmd requires a command');
+      continue;
+    }
+    if (a.startsWith('--test-cmd=')) {
+      testCmd = a.slice('--test-cmd='.length);
       if (!testCmd) throw new VerifyDiffFlagError('--test-cmd requires a command');
       continue;
     }

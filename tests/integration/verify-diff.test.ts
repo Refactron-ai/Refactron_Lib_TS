@@ -50,6 +50,25 @@ describe('verifyDiff (python three-way, real coverage)', () => {
     expect(report.verdict).toBe('UNSAFE');
   }, 180_000);
 
+  it('mixed-language diff (covered .py + unassessable .ts) → UNPROVEN, never SAFE', async () => {
+    if (!pythonHasCoverage()) return;
+    const report = await verifyDiff({
+      repoRoot: FIXTURE,
+      edits: [
+        {
+          path: 'calc.py',
+          newContent:
+            'def add(a, b):\n    return b + a\n\n\ndef unused_helper(a, b):\n    return a - b\n',
+        },
+        { path: 'note.ts', newContent: 'export const note = 1;\n' },
+      ],
+      testCmd: TEST_CMD,
+    });
+    // The .py change alone would be SAFE, but the .ts change is unassessable by
+    // the Python-only coverage tool — so the whole change must not read as SAFE.
+    expect(report.verdict).toBe('UNPROVEN');
+  }, 180_000);
+
   it('edit to UNCOVERED code, tests still pass → UNPROVEN', async () => {
     if (!pythonHasCoverage()) return;
     const report = await verifyDiff({

@@ -81,7 +81,12 @@ async function assessCoverage(
   edits: FileEdit[],
 ): Promise<CoverageAssessment> {
   const pyEdits = edits.filter((e) => e.path.endsWith('.py'));
-  if (pyEdits.length === 0) {
+  // Coverage is Python-only. If ANY edit is non-Python (or there are no Python
+  // edits at all), we cannot assess the WHOLE change. Reporting "covered" here
+  // would silently pass an unverified non-Python change through as SAFE — a
+  // false SAFE, which is forbidden. Bail to 'unknown' (→ UNPROVEN) unless every
+  // edit is a `.py` file we can actually assess.
+  if (pyEdits.length !== edits.length || pyEdits.length === 0) {
     return { tool: 'none', changedLinesCovered: 'unknown', uncovered: [] };
   }
   const shadow = await createShadowTree(input.repoRoot, toChanges(input.repoRoot, edits));

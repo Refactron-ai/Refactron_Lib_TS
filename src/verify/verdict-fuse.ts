@@ -20,6 +20,13 @@ export interface VerdictReport {
   missingTests?: Array<{ file: string; hint: string }>;
 }
 
+// Stable substrings emitted by the tests gate (src/verify/gates/tests.ts) for
+// the two "we cannot establish a verdict" cases. A tests-gate failure carrying
+// either of these does NOT mean the diff broke anything — it means we could not
+// prove anything at all — so it must map to UNPROVEN, never UNSAFE.
+const NO_RUNNER_SUBSTRING = 'no test runner detected';
+const BASELINE_RED_SUBSTRING = 'baseline tests already fail';
+
 export function fuseVerdict(
   result: VerificationResult,
   changedFiles: string[],
@@ -34,6 +41,19 @@ export function fuseVerdict(
         ? 'imports'
         : 'tests';
     const reason = result.gates[failedGate].blockingReason ?? `${failedGate} gate failed`;
+    // "Cannot establish a verdict" case: syntax + imports both passed, and the
+    // ONLY failure is the tests gate reporting no runner or an already-red
+    // baseline. Neither is evidence the diff broke anything, so report UNPROVEN
+    // (honest) rather than UNSAFE. A genuine syntax/imports failure, or a tests
+    // failure for any other reason, still falls through to UNSAFE below.
+    if (
+      failedGate === 'tests' &&
+      result.gates.syntax.passed &&
+      result.gates.imports.passed &&
+      (reason.includes(NO_RUNNER_SUBSTRING) || reason.includes(BASELINE_RED_SUBSTRING))
+    ) {
+      return { verdict: 'UNPROVEN', ...base, reason };
+    }
     return { verdict: 'UNSAFE', ...base, reason };
   }
 

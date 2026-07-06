@@ -20,6 +20,14 @@ describe('parseVerifyDiffFlags', () => {
       testCmd: 'pytest -q',
     });
   });
+  it('parses --diff= and --test-cmd= equals form', () => {
+    expect(parseVerifyDiffFlags(['proj/', '--diff=c.patch', '--test-cmd=pytest -q'])).toEqual({
+      repoRoot: 'proj/',
+      diffPath: 'c.patch',
+      json: false,
+      testCmd: 'pytest -q',
+    });
+  });
   it('throws on unknown flag', () => {
     expect(() => parseVerifyDiffFlags(['--nope'])).toThrow(VerifyDiffFlagError);
   });
