@@ -68,12 +68,19 @@ export async function runVerifyDiffCommand(argv: string[]): Promise<number> {
     return 2;
   }
 
-  const unifiedDiff = await fs.readFile(flags.diffPath, 'utf8');
-  const report = await verifyDiff({
-    repoRoot: flags.repoRoot,
-    unifiedDiff,
-    ...(flags.testCmd ? { testCmd: flags.testCmd } : {}),
-  });
+  let report;
+  try {
+    const unifiedDiff = await fs.readFile(flags.diffPath, 'utf8');
+    report = await verifyDiff({
+      repoRoot: flags.repoRoot,
+      unifiedDiff,
+      ...(flags.testCmd ? { testCmd: flags.testCmd } : {}),
+    });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    process.stderr.write(`refactron verify-diff: ${msg}\n`);
+    return 2;
+  }
 
   if (flags.json) {
     process.stdout.write(JSON.stringify(report, null, 2) + '\n');
