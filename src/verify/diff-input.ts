@@ -66,6 +66,8 @@ export async function changedLinesForEdits(
           newLineNo += 1;
         } else if (l.startsWith('-')) {
           // old-only line; does not advance the new-file counter
+        } else if (l.startsWith('\\')) {
+          // "\ No newline at end of file" marker — not a real line; do not advance
         } else {
           newLineNo += 1; // context line
         }
