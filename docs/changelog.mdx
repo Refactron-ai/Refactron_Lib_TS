@@ -62,7 +62,8 @@ unabridged log lives in [`CHANGELOG.md`](https://github.com/Refactron-ai/Refactr
   and dispatcher + fallthrough is tracked as #59.
 - Eight new transform candidates derived from a deeper Ansible scan are filed
   as #62–#69 for v0.3 / v0.4 prioritisation.
-  </Update>
+
+</Update>
 
 <Update label="0.2.3" description="May 27, 2026">
   Ten new deterministic transforms — six for Python, four for TypeScript — roughly
@@ -92,7 +93,8 @@ unabridged log lives in [`CHANGELOG.md`](https://github.com/Refactron-ai/Refactr
 **Changed**
 
 - **Engine composition** — multi-transform composition is now order-stable: when several transforms touch the same file, each emits its own `FileChange` carrying the cumulative content, and the last one per path is what's written to disk. Fixes a silent-data-loss bug where only the LAST transform's rewrite survived under `run --apply` (PR #38).
-  </Update>
+
+</Update>
 
 <Update label="0.2.2" description="May 18, 2026">
   Quality-of-life release for the analyze → run → document pipeline: boxed CLI
@@ -117,7 +119,8 @@ unabridged log lives in [`CHANGELOG.md`](https://github.com/Refactron-ai/Refactr
 - `document` six-quote docstring bug (`""""""…""""""`); rate-limited runs that ground on for minutes; report / CHANGELOG paths normalized to forward slashes on Windows.
 - `analyze` — old-string-format findings now anchor on the operator, not the opening quote; `manual_typecheck_to_hints` no longer flags already-annotated parameters; the misleading "Fixable N/N" became an honest auto-fix-candidate count.
 - `deprecated_api_requests_to_httpx` no longer emits runtime-broken code — it refuses files using `requests` API that is not a safe `httpx` drop-in.
-  </Update>
+
+</Update>
 
 <Update label="0.2.1" description="May 16, 2026">
   Patch release — a large-file crash fix and two transform-coverage improvements.
@@ -130,7 +133,8 @@ unabridged log lives in [`CHANGELOG.md`](https://github.com/Refactron-ai/Refactr
 **Changed**
 
 - `format_to_fstring` now converts the full printf grammar — `%d`, `%.2f`, `%x`, `%o`, `%e`, `%g`, width/precision specifiers, and `%%`. Mapping `%(name)s`, non-literal targets, and dynamic `*` widths are still conservatively skipped.
-  </Update>
+
+</Update>
 
 <Update label="0.2.0" description="May 15, 2026">
   First public release of the v2.0 deterministic-refactoring rebuild.
@@ -143,4 +147,5 @@ unabridged log lives in [`CHANGELOG.md`](https://github.com/Refactron-ai/Refactr
 - **`.refactronrc.json` config** — cosmiconfig + Ajv schema validation.
 - **Authentication** — OAuth device flow with `REFACTRON_TOKEN` support and long-lived API keys.
 - A Mintlify documentation site and reproducible performance benchmarks under `bench/`.
-  </Update>
+
+</Update>
