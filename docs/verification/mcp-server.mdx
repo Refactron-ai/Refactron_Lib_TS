@@ -1,0 +1,102 @@
+---
+title: MCP server
+icon: plug
+description: "Give your AI agent the deterministic gate it can call before it lands a change: a verify_change tool over MCP that returns a SAFE, UNSAFE, or UNPROVEN verdict."
+---
+
+Refactron ships an [MCP](https://modelcontextprotocol.io) server that exposes one tool: **`verify_change`**. An agent proposes an edit, calls `verify_change`, and gets back a `SAFE` / `UNSAFE` / `UNPROVEN` verdict with a reproducible report, before it writes anything to your repo.
+
+This is how Refactron fits an agentic workflow: it isn't a competing code generator, it's the deterministic gate the generator calls to check its own work.
+
+<Frame caption="An agent proposes a change, calls verify_change, and decides whether to land it based on the verdict.">
+  <img
+    src="/assets/mcp.svg"
+    alt="An AI agent calling Refactron's verify_change MCP tool and receiving a SAFE, UNSAFE, or UNPROVEN verdict before landing the change"
+  />
+</Frame>
+
+## Install (from source)
+
+Prerequisites: Node.js ≥ 18, and for a coverage-backed `SAFE` verdict, Python 3.8+ with `pytest` and `coverage.py` (the same prerequisites as the [quickstart](/quickstart#build-from-source)).
+
+<Note>
+  The MCP server is unreleased; it is **not** in `refactron@0.2.4` on npm. Build from source until
+  the next release, which ships a `refactron-mcp` bin.
+</Note>
+
+```bash
+git clone https://github.com/Refactron-ai/Refactron_Lib_TS
+cd Refactron_Lib_TS
+npm install
+npm run build
+```
+
+The server is then at `dist/mcp/server.js`. It speaks MCP over **stdio** and registers itself under the name `refactron`.
+
+## Register it with your client
+
+For Claude Code:
+
+```bash
+claude mcp add refactron -- node /absolute/path/to/Refactron_Lib_TS/dist/mcp/server.js
+```
+
+Any MCP client works the same way: point it at `node <repo>/dist/mcp/server.js` as a stdio server. Use an absolute path; the server resolves your repo from the tool arguments, not its own working directory.
+
+## The `verify_change` tool
+
+Verify a proposed change and get the verdict. The change is supplied as **either** full-file contents **or** a unified diff; one of the two is required.
+
+| Argument      | Type                     | Required     | Description                                               |
+| ------------- | ------------------------ | ------------ | --------------------------------------------------------- |
+| `repoRoot`    | string (absolute path)   | yes          | The repository root to verify against.                    |
+| `edits`       | `[{ path, newContent }]` | one of these | Proposed full-file contents, keyed by repo-relative path. |
+| `unifiedDiff` | string                   | one of these | A unified/git diff to apply and verify.                   |
+| `testCmd`     | string                   | no           | Override the test command (e.g. `python3 -m pytest -q`).  |
+
+The tool returns the [verification report](/verification/verify-diff#the-json-report) as JSON text content: the same structure `verify-diff --json` prints:
+
+```json
+{
+  "verdict": "SAFE",
+  "gates": {
+    "syntax": { "passed": true, "durationMs": 11 },
+    "imports": { "passed": true, "durationMs": 8 },
+    "tests": { "passed": true, "durationMs": 2980 }
+  },
+  "changedFiles": ["calc.py"],
+  "coverage": { "tool": "coverage.py", "changedLinesCovered": true, "uncovered": [] },
+  "reason": "Tests pass and the changed code is covered."
+}
+```
+
+An agent reads `verdict` and decides: land on `SAFE`, stop on `UNSAFE`, and on `UNPROVEN` either add the test named in `missingTests` or ask a human.
+
+<Warning>
+  Coverage is **Python-only**. A TypeScript or mixed-language change returns `UNPROVEN` ("coverage
+  of the changed code could not be determined"), never `SAFE`. See
+  [Verdicts](/verification/verdicts).
+</Warning>
+
+## What it does and doesn't do
+
+- **Runs entirely local.** The verification happens on your machine, in a shadow tree. Nothing about your code leaves it.
+- **Never mutates your repo.** `verify_change` reads your tree and applies the change in an isolated copy. Landing the change is the agent's job, after a verdict it trusts.
+- **Deterministic.** The same repo state and the same diff produce the same verdict every time.
+
+<Note>
+  The `verify-diff` **CLI** is auth-gated (`refactron login`, or `REFACTRON_TOKEN` in CI;
+  unauthenticated exits `7`). The MCP `verify_change` handler runs the same local verification
+  engine directly and makes no network calls.
+</Note>
+
+## Next
+
+<CardGroup cols={2}>
+  <Card title="Verdicts" icon="scale-balanced" href="/verification/verdicts">
+    What SAFE, UNSAFE, and UNPROVEN mean, and how coverage fuses in.
+  </Card>
+  <Card title="Verify a diff (CLI)" icon="terminal" href="/verification/verify-diff">
+    The same engine from the command line and CI.
+  </Card>
+</CardGroup>

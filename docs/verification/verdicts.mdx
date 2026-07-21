@@ -1,0 +1,112 @@
+---
+title: Verdicts
+icon: scale-balanced
+description: "SAFE, UNSAFE, and UNPROVEN: the three-way verdict at the center of Refactron, how coverage fuses with the gates, and why UNPROVEN is the honest answer."
+---
+
+Every verification returns exactly one of three verdicts. Two of them exist in most tools. The third, `UNPROVEN`, is the one that makes Refactron trustworthy.
+
+<CardGroup cols={3}>
+  <Card title="SAFE">
+    <img src="/assets/verdict-safe.svg" alt="The SAFE verdict mark" />
+    Gates pass **and** your tests exercise the changed lines.
+  </Card>
+  <Card title="UNSAFE">
+    <img src="/assets/verdict-unsafe.svg" alt="The UNSAFE verdict mark" />A gate failed. The change
+    broke something.
+  </Card>
+  <Card title="UNPROVEN">
+    <img src="/assets/verdict-unproven.svg" alt="The UNPROVEN verdict mark" />
+    Tests pass, but the changed code isn't proven safe.
+  </Card>
+</CardGroup>
+
+## How a verdict is decided
+
+Refactron runs two independent checks and fuses them:
+
+1. **The gates**: syntax, then imports, then your test suite, all against the change applied in an isolated [shadow tree](/concepts/safety-model). A gate either passes or fails.
+2. **Changed-line coverage**: did your tests actually execute the lines the change touched? Assessed only when the gates pass.
+
+The fusion rule:
+
+| Gates         | Changed lines covered? | Verdict    | Reason                                                                  |
+| ------------- | ---------------------- | ---------- | ----------------------------------------------------------------------- |
+| A gate failed | n/a                    | `UNSAFE`   | The failing gate's blocking reason.                                     |
+| All passed    | yes                    | `SAFE`     | "Tests pass and the changed code is covered."                           |
+| All passed    | no                     | `UNPROVEN` | "Tests pass, but the changed code is not exercised by any test."        |
+| All passed    | couldn't tell          | `UNPROVEN` | "Tests pass, but coverage of the changed code could not be determined." |
+
+## SAFE
+
+Every gate passed, and at least one changed line in every changed file was executed by your test suite. The change is on a tested path, and that path is green.
+
+`SAFE` is a per-file check, not a per-line one. It means every changed file had at least one changed line run by your suite; it does not mean every changed line ran. A file with some covered and some uncovered changed lines still reads as covered, so `SAFE` can leave individual changed lines unexercised. Full line-level strictness is a planned fast-follow. Until then, read `SAFE` as "the change is on a tested path," not "every changed line is tested."
+
+`SAFE` requires coverage, and [coverage is Python-only](#the-python-only-limitation). A change that isn't entirely Python can't reach `SAFE` today.
+
+## UNSAFE
+
+A gate rejected the change:
+
+- **Syntax**: the changed file no longer parses.
+- **Imports**: an import in the changed content doesn't resolve, or a previously-resolving import now fails.
+- **Tests**: your suite went red on the change.
+
+`UNSAFE` exits `1`, and a failing test gate prints the test output so you can see what broke. This is a real signal that the change is wrong, not merely unproven.
+
+<Note>
+  One case looks like a test failure but isn't a real one: if your suite is **already red before**
+  the change, or **no test runner** is detected, Refactron can't blame the change for anything, so
+  it returns `UNPROVEN`, not `UNSAFE`. A broken baseline is a "can't prove it" situation, not
+  evidence the diff broke something.
+</Note>
+
+## UNPROVEN
+
+The gates passed, but Refactron won't claim the change is safe, because the evidence isn't there. This is the verdict no other gate gives you honestly.
+
+There are two ways to land here:
+
+- **The changed code isn't exercised.** Your tests pass, but none of them run the lines you changed. A green suite tells you nothing about untested lines. Refactron lists each uncovered line and, in the JSON report, a `missingTests` hint:
+
+  ```json
+  "missingTests": [
+    { "file": "calc.py", "hint": "add a test exercising calc.py:14" }
+  ]
+  ```
+
+- **Coverage couldn't be assessed.** The change isn't entirely Python, or `coverage.py` isn't installed. Refactron can't measure whether the changed lines ran, so it declines to certify `SAFE`. The reason reads "coverage of the changed code could not be determined."
+
+`UNPROVEN` exits `0`. It is a warning, not a rejection: nothing is known to be broken, but nothing is proven either. The right response is to add the missing test, then re-run and earn `SAFE`.
+
+<Tip>
+  `UNPROVEN` turns your test suite's blind spots into a to-do list. Every uncovered changed line is
+  a test you could write to move the verdict to `SAFE`.
+</Tip>
+
+## The Python-only limitation
+
+Coverage fusion depends on `coverage.py`, so it is **Python-only** today:
+
+- A diff where **every** changed file is `.py`, with `coverage.py` available, can be assessed, and can reach `SAFE`.
+- A diff touching **any** TypeScript (or any non-Python) file, or run without `coverage.py`, returns `UNPROVEN` with `coverage.tool: "none"`. The gates still run; only the coverage half is unavailable.
+
+Refactron never guesses here. Reporting a non-Python change as "covered" would let an unverified change through as `SAFE`: a false `SAFE`, which the engine forbids. When it can't measure, it says `UNPROVEN`.
+
+## Exit codes
+
+The verdict maps to a process exit code so it can gate CI directly:
+
+| Verdict    | Exit code |
+| ---------- | --------- |
+| `SAFE`     | `0`       |
+| `UNPROVEN` | `0`       |
+| `UNSAFE`   | `1`       |
+
+Both `SAFE` and `UNPROVEN` pass, so a green suite on untested lines never silently blocks a merge. To fail CI on `UNPROVEN` too, read the `verdict` field from the [JSON report](/verification/verify-diff#the-json-report) and decide for yourself.
+
+<Note>
+  Bad input (a diff that doesn't apply, a missing flag) exits `2`; an unauthenticated CLI run exits
+  `7`. Those are operational errors, not verdicts.
+</Note>

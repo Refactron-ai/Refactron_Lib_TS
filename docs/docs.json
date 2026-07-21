@@ -2,11 +2,11 @@
   "$schema": "https://mintlify.com/docs.json",
   "theme": "mint",
   "name": "Refactron",
-  "description": "Safety-first refactoring for Python and TypeScript — deterministic AST transforms verified before any byte is written.",
+  "description": "Prove that any change, your AI agent's, a codemod's, or your own, preserved behavior. Refactron runs your real tests in an isolated shadow tree and lands only on green, with a reproducible record of why it's safe.",
   "colors": {
-    "primary": "#1E3A8A",
-    "light": "#3B82F6",
-    "dark": "#1E3A8A"
+    "primary": "#141416",
+    "light": "#EAE7DE",
+    "dark": "#141416"
   },
   "fonts": {
     "body": {
@@ -23,22 +23,42 @@
     "options": ["copy", "view", "chatgpt", "claude", "perplexity", "mcp", "cursor", "vscode"]
   },
   "logo": {
-    "light": "/logo/logo.svg",
-    "dark": "/logo/logo.svg"
+    "light": "/logo/refactron-wordmark-dark.svg",
+    "dark": "/logo/refactron-wordmark-light.svg"
   },
-  "favicon": "/logo/logo.svg",
+  "favicon": {
+    "light": "/logo/refactron-symbol-light.svg",
+    "dark": "/logo/refactron-symbol-dark.svg"
+  },
   "navigation": {
     "groups": [
       {
         "group": "Getting Started",
-        "pages": ["overview", "quickstart"]
+        "pages": ["overview", "quickstart", "faq"]
+      },
+      {
+        "group": "Verification",
+        "pages": [
+          "verification/verify-diff",
+          "verification/mcp-server",
+          "verification/verdicts",
+          "verification/preflight"
+        ]
       },
       {
         "group": "Concepts",
         "pages": ["concepts/safety-model", "concepts/why-no-llm"]
       },
       {
-        "group": "Transforms",
+        "group": "CLI",
+        "pages": ["cli/reference"]
+      },
+      {
+        "group": "Configuration",
+        "pages": ["configuration", "configuration/refactronrc"]
+      },
+      {
+        "group": "Migration mode",
         "pages": [
           "transforms/index",
           "transforms/callback-to-async-await",
@@ -64,16 +84,8 @@
         ]
       },
       {
-        "group": "CLI",
-        "pages": ["cli/reference"]
-      },
-      {
-        "group": "Configuration",
-        "pages": ["configuration", "configuration/refactronrc"]
-      },
-      {
         "group": "Reference",
-        "pages": ["faq", "changelog", "reference/performance", "reference/citations"]
+        "pages": ["changelog", "reference/performance", "reference/citations"]
       }
     ]
   },

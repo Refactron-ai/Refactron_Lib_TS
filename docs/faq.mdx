@@ -1,101 +1,85 @@
 ---
 title: FAQ
 icon: circle-question
-description: Frequently-asked questions about Refactron — what it is, what it isn't, and why.
+description: "Frequently-asked questions about Refactron: the verification layer for AI code change."
 ---
 
-## Why not Cursor or Copilot?
+## What does Refactron actually do?
 
-Both are LLM-driven and non-deterministic — the same input may yield a different output, and neither verifies its proposed change against your tests before suggesting it. NYU's 2022 study found ~40% of Copilot suggestions across MITRE Top-25 CWE scenarios contained an exploitable vulnerability.
-
-Refactron is the opposite: a deterministic engine where every change passes [three verification gates](/concepts/safety-model) before a single byte is written. You don't have to trust it — you can read the same plan twice and get the same diff.
-
-See [Why No LLM](/concepts/why-no-llm) for the full case.
+It verifies a change. You give it a diff (from your AI agent, a codemod, or your own editor) and it proves whether the change preserved behavior. It applies the change in an isolated [shadow tree](/concepts/safety-model), runs the syntax, imports, and test gates, checks whether your tests exercise the changed lines, and returns one of three [verdicts](/verification/verdicts): `SAFE`, `UNSAFE`, or `UNPROVEN`. Your working tree is never touched.
 
 ---
 
-## Why no Rust / Go / Ruby support?
+## What is UNPROVEN?
 
-Each new language is a fully-implemented adapter — parser, detector, refactorer, verifier path. Picking Python and TypeScript first gives one engine team broad coverage: TypeScript reaches the entire JavaScript world; Python covers most of the data / scripting / ML surface.
+It's the honest verdict, and the reason to trust the other two. `UNPROVEN` means the gates passed (nothing is known to be broken), but the change isn't _proven_ safe, either because no test exercises the changed lines, or because coverage couldn't be measured.
 
-Adding more languages is a roadmap question of demand and contributor bandwidth. If you'd use Refactron in a Go monorepo, [open an issue](https://github.com/Refactron-ai/Refactron_Lib_TS/issues) — concrete demand moves it up the priority list.
-
----
-
-## Doesn't ESLint / Pyflakes already do this?
-
-ESLint and Pyflakes **report** issues. A handful have `--fix` modes, but they don't verify the fix against your test suite before writing.
-
-Refactron **transforms and verifies** — every change is parsed, re-imported, and tested in a shadow tree before disk gets touched. The two are complementary: keep your linter for style; add Refactron for legacy-pattern migration with safety guarantees.
+"Tests pass" is not the same as "this change is proven safe." If nothing runs the lines you changed, a green suite tells you nothing about them. Most tools quietly treat green as good enough. Refactron says `UNPROVEN` and, when it can, names the exact line to add a test for. `UNPROVEN` exits `0`; it's a warning, not a rejection. See [Verdicts](/verification/verdicts).
 
 ---
 
-## What about Comby?
+## Does it work with my AI agent?
 
-[Comby](https://comby.dev/) is excellent for structural search-and-replace. It works on parse trees, not regex — that's a real advantage over `sed`. But it has no type information and no verification gate. If your replacement breaks an import or fails a test, you find out at runtime.
-
-Refactron's transforms know the type of each parameter (TypeScript) or import target (Python) and refuse to apply when the rewrite would invalidate a downstream caller.
+Yes, that's the point. Refactron ships an [MCP server](/verification/mcp-server) with a `verify_change` tool. Your agent proposes an edit, calls `verify_change`, and gets back the `SAFE` / `UNSAFE` / `UNPROVEN` report before it lands anything. Refactron doesn't replace Cursor, Claude Code, Copilot, or Codex; it's the deterministic gate they call to check their own work.
 
 ---
 
-## How is this different from jscodeshift?
+## Does Refactron modify my repo?
 
-Same AST-codemod tradition, different priorities. jscodeshift gives you a programmatic API to write your own transforms — Refactron ships ten verified transforms with cross-file precondition checks and a baked-in test gate.
+`verify-diff` and the MCP `verify_change` tool are **read-only**. They copy your project into a shadow tree, apply the change _there_, run the tests, and clean up. Your working tree is never mutated; landing the change is your (or your agent's) decision.
 
-Meta archived active development on jscodeshift in 2024 ([issue #587](https://github.com/facebook/jscodeshift/issues/587)). The library still works, but it's no longer maintained by its original team.
-
----
-
-## What about OpenRewrite?
-
-[OpenRewrite](https://docs.openrewrite.org/) is the gold standard in the JVM world — Java-first, Maven / Gradle integration, recipe ecosystem. But it's heavy (Java runtime, Spring-style configuration) and Python / TypeScript adoption has lagged.
-
-Refactron is positioned for Python and TypeScript codebases where OpenRewrite isn't a fit.
+[Migration mode](/transforms/index) is the one path that writes, and it writes only on green, atomically: either every file in the change lands or none does. See the [safety model](/concepts/safety-model#atomic-batch-write-landing).
 
 ---
 
-## Why no LLM in the engine itself?
+## Why does my TypeScript change never come back SAFE?
 
-LLMs are great at fluent natural language. They are not yet reliable at formal correctness:
-
-- ~40% of Copilot suggestions contain vulnerabilities (NYU 2022).
-- 92.45% of LLM-generated tests fail when there's no existing suite (ACM AST 2024).
-- 19.7% of LLM-recommended packages are fabricated (UTSA / VTech / UOklahoma 2024).
-
-Refactoring is a formal-correctness problem. We use the LLM only in the [`document` command](/cli/reference#document), which generates docstrings and CHANGELOG text on top of an already-verified diff. The worst-case is a wrong sentence — never a broken build.
-
-Full citations on the [Why No LLM](/concepts/why-no-llm) page.
+Because coverage is **Python-only** today. Reaching `SAFE` requires measuring that your tests exercise the changed lines, and Refactron does that with `coverage.py`. A change that touches any TypeScript (or any non-Python) file, or one run without `coverage.py`, passes the gates but returns `UNPROVEN` with the reason "coverage of the changed code could not be determined." The gates still protect you; only the coverage half is Python-only. Refactron never reports an unmeasured change as `SAFE`; that would be a false `SAFE`.
 
 ---
 
-## Can I write my own transform?
+## Is it free?
 
-A public extension API is on the roadmap for v0.3+. For v0.2, the supported path is to fork the repository and add your transform under `src/transform/transforms/<lang>/`, following the existing patterns (and tests under `tests/unit/transform/transforms/`).
+The CLI, the MCP server, and single-repo verification are free and open source (Apache 2.0); that's everything on this docs site today.
 
-If you have a transform you'd want maintained upstream, open an issue with the before/after examples — we triage these case-by-case.
+Paid tiers for **fleet verification across many repos** and **audit history** are on the roadmap, not shipping yet. The line is deliberate: verifying one change is free forever; managing trust across a fleet over time is the paid layer.
+
+---
+
+## Doesn't running my tests in CI already do this?
+
+Running your suite tells you whether _the suite_ is green. Refactron tells you whether _this specific change_ is proven. Three things CI doesn't give you out of the box:
+
+- **Coverage fusion.** A green suite that never touches your changed lines earns `UNPROVEN`, not a false pass.
+- **A reproducible report.** The same repo state and diff produce the same verdict and the same JSON record every time, something you can re-run and audit.
+- **An isolated shadow tree.** The change is tested against a copy, so a broken change never sits in your working tree.
 
 ---
 
 ## Does it work on monorepos?
 
-Yes. The verification gate runs in the package being refactored — Gate 3 detects the local test runner via config-file presence (`vitest.config.*`, `jest.config.*`, `pyproject.toml` / `pytest.ini`), and you can override per-package via `.refactronrc.json` `testCmd`.
-
-The cross-file precondition checks scan the import graph rooted at the file being transformed, which works correctly across package boundaries inside the same repo.
+Yes. The test gate runs in the package being changed; it detects the local runner via config-file presence (`vitest.config.*`, `jest.config.*`, `pyproject.toml` / `pytest.ini`), and you can override with `--test-cmd`. The import-graph checks scan from the changed file, which works across package boundaries inside the same repo.
 
 ---
 
-## What's the perf?
+## Why no Rust / Go / Ruby support?
 
-Refactron tracks performance via the `bench/` infrastructure in the repo. On a 4,465-file, ~100k-LOC project, `analyze` runs in ~20 seconds on an Apple M2 (median of 5 runs). `run --apply` adds the verification gate cost — typically dominated by your own test suite's wall-clock.
+Each language is a full adapter: parser, gate paths, and (for coverage) a coverage tool. Python and TypeScript came first: TypeScript reaches the JavaScript world, Python covers the data / scripting / ML surface, and Python's `coverage.py` is what powers the `SAFE` verdict today. If you'd use Refactron in a Go monorepo, [open an issue](https://github.com/Refactron-ai/Refactron_Lib_TS/issues); concrete demand moves it up the list.
+
+---
+
+## What are the transforms I keep seeing?
+
+[Migration mode](/transforms/index): 20 deterministic AST transforms that both _author_ a mechanical change and _verify_ it through the same gates before an atomic write. They're the demo of the verification engine on real migrations, and they're the published `refactron@0.2.4` CLI on npm (`analyze`, `run`, `document`). The verification surfaces (`verify-diff`, MCP, `preflight`) are a from-source build until the next release.
 
 ---
 
 ## Why Apache 2.0?
 
-Apache 2.0 gives users the same permissive freedoms as MIT (free use, modification, distribution, and sublicensing) plus an **explicit patent grant** from every contributor. That patent grant matters for tools that touch source code — it removes ambiguity about whether using Refactron exposes you to patent claims from anyone who has contributed to it. For enterprise adoption, that's the bar that legal teams ask about. At v0.2 we'd rather close that question once than answer it repeatedly.
+Apache 2.0 gives the same permissive freedoms as MIT plus an **explicit patent grant** from every contributor. For a tool that touches source code, that removes ambiguity about patent exposure: the bar enterprise legal teams ask about. We'd rather answer that once than repeatedly.
 
 ---
 
 ## Why 0.2 and not 1.0?
 
-The engine has only had one round of self-gauntlet validation (Refactron refactoring its own codebase under load). 1.0 will land after we've seen the patterns of bug reports from external usage and addressed them. Show HN feedback informs that timeline.
+The engine has had limited external exercise. 1.0 lands after real-world usage of the verification surfaces has characterized the bug patterns and we've addressed them.
