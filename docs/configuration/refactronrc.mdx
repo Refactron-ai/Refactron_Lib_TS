@@ -12,7 +12,7 @@ Run `refactron init` to scaffold a starter file.
 
 | Field | Type | Default | Description |
 |---|---|---|---|
-| `transforms` | `string[]` | `["all"]` | `["all"]` enables every transform, or list specific [transform IDs](/transforms). |
+| `transforms` | `string[]` | `["all"]` | `["all"]` enables every transform, or list specific [transform IDs](/transforms/index). |
 | `exclude` | `string[]` | `[]` | Gitignore-style globs to skip during analysis (e.g. `["dist", "node_modules"]`). |
 | `testCmd` | `string \| null` | `null` (auto-detect) | Override the test runner Gate 3 invokes. Auto-detection looks for `vitest.config.*`, `jest.config.*`, `pytest.ini`, or a `[tool.pytest.*]` block in `pyproject.toml`. |
 | `confidence` | `"high" \| "medium" \| "low"` | `"high"` | Minimum analyzer confidence to surface findings. Lower = noisier. |

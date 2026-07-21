@@ -55,7 +55,7 @@ Plan + verify + (optionally) apply transforms. Without `--apply`, runs as a dry-
 |---|---|---|---|
 | `--apply` | bool | false | After verification passes, write the changes atomically. |
 | `--dry-run` | bool | true | Show the diff without writing. Mutually exclusive with `--apply`. |
-| `--transforms=<list>` | csv or `all` | `all` | Limit to specific [transform IDs](/transforms). |
+| `--transforms=<list>` | csv or `all` | `all` | Limit to specific [transform IDs](/transforms/index). |
 | `--confidence` | `high \| medium \| low` | `high` | Analyzer confidence threshold (overrides `.refactronrc.json`). |
 | `--test-cmd` | string | auto-detect | Override the test runner used by Gate 3 (overrides `.refactronrc.json`). |
 | `--diff-context=<n>` | int | 30 | Context lines per file in dry-run output. |
