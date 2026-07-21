@@ -1,7 +1,7 @@
 ---
 title: MCP server
 icon: plug
-description: Give your AI agent the deterministic gate it can call before it lands a change: a verify_change tool over MCP that returns a SAFE, UNSAFE, or UNPROVEN verdict.
+description: "Give your AI agent the deterministic gate it can call before it lands a change: a verify_change tool over MCP that returns a SAFE, UNSAFE, or UNPROVEN verdict."
 ---
 
 Refactron ships an [MCP](https://modelcontextprotocol.io) server that exposes one tool: **`verify_change`**. An agent proposes an edit, calls `verify_change`, and gets back a `SAFE` / `UNSAFE` / `UNPROVEN` verdict with a reproducible report, before it writes anything to your repo.

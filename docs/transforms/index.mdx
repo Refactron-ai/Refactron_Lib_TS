@@ -1,7 +1,7 @@
 ---
 title: Migration mode
 icon: wand-magic-sparkles
-description: 20 deterministic transforms that both author a mechanical change and verify it through the same gates: the demo of Refactron's verification engine.
+description: "20 deterministic transforms that both author a mechanical change and verify it through the same gates: the demo of Refactron's verification engine."
 ---
 
 **Migration mode** is where Refactron both _authors_ a change and _verifies_ it. Each of the 20 transforms rewrites a well-known legacy pattern deterministically, then runs the result through the [same gates](/concepts/safety-model) that back [`verify-diff`](/verification/verify-diff) (syntax, imports, tests) and either lands it atomically or skips itself. They're the demonstration that the verification engine works on real, mechanical migrations.
