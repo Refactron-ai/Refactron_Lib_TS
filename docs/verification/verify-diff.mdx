@@ -4,7 +4,7 @@ icon: shield-check
 description: Prove a change preserved behavior. Refactron runs your real tests in an isolated shadow tree and returns SAFE, UNSAFE, or UNPROVEN.
 ---
 
-`verify-diff` takes a change — your AI agent's, a codemod's, or your own — and answers one question: **did it preserve behavior, and can you prove it?**
+`verify-diff` takes a change (your AI agent's, a codemod's, or your own) and answers one question: **did it preserve behavior, and can you prove it?**
 
 Refactron applies the diff in an isolated shadow tree, runs the syntax, imports, and test gates against it, checks whether your tests actually exercise the changed lines, and returns one of three verdicts. Your working tree is never touched.
 
@@ -20,21 +20,21 @@ Refactron applies the diff in an isolated shadow tree, runs the syntax, imports,
 | Verdict    | Meaning                                                                              | Exit |
 | ---------- | ------------------------------------------------------------------------------------ | ---- |
 | `SAFE`     | Every gate passed **and** your tests exercise the changed lines.                     | `0`  |
-| `UNSAFE`   | A gate failed — the change broke something.                                          | `1`  |
+| `UNSAFE`   | A gate failed: the change broke something.                                           | `1`  |
 | `UNPROVEN` | Tests pass, but the changed code isn't exercised (or coverage couldn't be assessed). | `0`  |
 
-`UNPROVEN` is the honest verdict. "Tests pass" is not the same as "this change is proven safe" — if nothing runs the lines you changed, a green suite proves nothing about them. Refactron says so out loud and tells you which test to add. See [Verdicts](/verification/verdicts) for the full model.
+`UNPROVEN` is the honest verdict. "Tests pass" is not the same as "this change is proven safe": if nothing runs the lines you changed, a green suite proves nothing about them. Refactron says so out loud and tells you which test to add. See [Verdicts](/verification/verdicts) for the full model.
 
 <Warning>
   Coverage is **Python-only** (via `coverage.py`). A TypeScript or mixed-language diff can never
-  earn `SAFE` today — it returns `UNPROVEN` with the reason "coverage of the changed code could not
+  earn `SAFE` today; it returns `UNPROVEN` with the reason "coverage of the changed code could not
   be determined." The gates still run; only the coverage half is Python-only.
 </Warning>
 
 ## Install (from source)
 
 <Note>
-  `verify-diff` and the MCP server are unreleased — they are **not** in `refactron@0.2.4` on npm.
+  `verify-diff` and the MCP server are unreleased; they are **not** in `refactron@0.2.4` on npm.
   Install from source until the next release, which ships the `refactron` and `refactron-mcp` bins.
 </Note>
 
@@ -74,7 +74,7 @@ node dist/cli/index.js verify-diff [repoRoot] --diff <file> [flags]
 node dist/cli/index.js verify-diff . --diff change.diff
 ```
 
-Output is the verdict, its reason, and — for `UNPROVEN` by lack of coverage — the uncovered lines:
+Output is the verdict, its reason, and (for `UNPROVEN` by lack of coverage) the uncovered lines:
 
 ```text
 [UNPROVEN] Tests pass, but the changed code is not exercised by any test.
@@ -85,22 +85,22 @@ Output is the verdict, its reason, and — for `UNPROVEN` by lack of coverage �
 
 | Flag               | Type   | Default     | Description                                                                                                |
 | ------------------ | ------ | ----------- | ---------------------------------------------------------------------------------------------------------- |
-| `--diff <file>`    | path   | —           | Required. The unified diff to verify.                                                                      |
+| `--diff <file>`    | path   | none        | Required. The unified diff to verify.                                                                      |
 | `--test-cmd <cmd>` | string | auto-detect | Override the test command (e.g. `"python3 -m pytest -q"`). Drives both the test gate and the coverage run. |
 | `--json`           | bool   | false       | Emit the full report as JSON instead of the one-line verdict.                                              |
 
 ### Exit codes
 
-| Code | Meaning                                                                                                                    |
-| ---- | -------------------------------------------------------------------------------------------------------------------------- |
-| `0`  | `SAFE` or `UNPROVEN`.                                                                                                      |
-| `1`  | `UNSAFE` — a gate failed. The failing test output is printed.                                                              |
-| `2`  | Bad input — unknown flag, missing `--diff`, or the diff didn't apply (e.g. `diff did not apply to calc.py (stale base?)`). |
-| `7`  | Not authenticated.                                                                                                         |
+| Code | Meaning                                                                                                                   |
+| ---- | ------------------------------------------------------------------------------------------------------------------------- |
+| `0`  | `SAFE` or `UNPROVEN`.                                                                                                     |
+| `1`  | `UNSAFE`: a gate failed. The failing test output is printed.                                                              |
+| `2`  | Bad input: unknown flag, missing `--diff`, or the diff didn't apply (e.g. `diff did not apply to calc.py (stale base?)`). |
+| `7`  | Not authenticated.                                                                                                        |
 
 ## The JSON report
 
-`--json` emits a reproducible record of the verdict — the same structure the [MCP tool](/verification/mcp-server) returns:
+`--json` emits a reproducible record of the verdict: the same structure the [MCP tool](/verification/mcp-server) returns:
 
 ```json
 {
@@ -121,9 +121,9 @@ Output is the verdict, its reason, and — for `UNPROVEN` by lack of coverage �
 }
 ```
 
-- `gates` — each gate's `passed` flag and wall-clock. A failed gate also carries a `blockingReason`.
-- `coverage.tool` — `coverage.py` when coverage was assessed, `none` when it couldn't be (non-Python diff, or no `coverage.py` installed).
-- `missingTests` — present on `UNPROVEN`-by-coverage: a concrete hint per uncovered line.
+- `gates`: each gate's `passed` flag and wall-clock. A failed gate also carries a `blockingReason`.
+- `coverage.tool`: `coverage.py` when coverage was assessed, `none` when it couldn't be (non-Python diff, or no `coverage.py` installed).
+- `missingTests`: present on `UNPROVEN`-by-coverage, a concrete hint per uncovered line.
 
 ## Verify in CI
 
@@ -141,7 +141,7 @@ git diff origin/main...HEAD > pr.diff
 node dist/cli/index.js verify-diff . --diff pr.diff --test-cmd "python3 -m pytest -q"
 ```
 
-To treat `UNPROVEN` as a hard failure, inspect the JSON verdict yourself — the process exits `0` for `UNPROVEN` by design, so a green suite on untested lines never silently blocks a merge unless you choose to.
+To treat `UNPROVEN` as a hard failure, inspect the JSON verdict yourself; the process exits `0` for `UNPROVEN` by design, so a green suite on untested lines never silently blocks a merge unless you choose to.
 
 ## Next
 

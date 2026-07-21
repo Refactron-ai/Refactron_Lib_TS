@@ -1,12 +1,12 @@
 ---
 title: Migration mode
 icon: wand-magic-sparkles
-description: 20 deterministic transforms that both author a mechanical change and verify it through the same gates — the demo of Refactron's verification engine.
+description: 20 deterministic transforms that both author a mechanical change and verify it through the same gates: the demo of Refactron's verification engine.
 ---
 
-**Migration mode** is where Refactron both _authors_ a change and _verifies_ it. Each of the 20 transforms rewrites a well-known legacy pattern deterministically, then runs the result through the [same gates](/concepts/safety-model) that back [`verify-diff`](/verification/verify-diff) — syntax, imports, tests — and either lands it atomically or skips itself. They're the demonstration that the verification engine works on real, mechanical migrations.
+**Migration mode** is where Refactron both _authors_ a change and _verifies_ it. Each of the 20 transforms rewrites a well-known legacy pattern deterministically, then runs the result through the [same gates](/concepts/safety-model) that back [`verify-diff`](/verification/verify-diff) (syntax, imports, tests) and either lands it atomically or skips itself. They're the demonstration that the verification engine works on real, mechanical migrations.
 
-This is the CLI published as `refactron@0.2.4` on npm (`analyze`, `run`, `document`). The verification surfaces — `verify-diff`, the MCP server, and `preflight` — are a [from-source build](/quickstart#build-from-source) until the next release.
+This is the CLI published as `refactron@0.2.4` on npm (`analyze`, `run`, `document`). The verification surfaces (`verify-diff`, the MCP server, and `preflight`) are a [from-source build](/quickstart#build-from-source) until the next release.
 
 You select transforms via the `--transforms` flag (`run --transforms=var_to_const_let,implicit_any`) or the `transforms` array in [`.refactronrc.json`](/configuration/refactronrc). The default is `['all']`.
 
@@ -122,6 +122,6 @@ You select transforms via the `--transforms` flag (`run --transforms=var_to_cons
 
 <Note>
   Every transform's "after" output passes [Gate 1 (syntax)](/concepts/safety-model#gate-1-syntax) by
-  construction — the refactorer rebuilds the source from a parsed CST/AST. Gates 2 and 3 (imports +
+  construction: the refactorer rebuilds the source from a parsed CST/AST. Gates 2 and 3 (imports +
   tests) are what catch regressions the local rewrite couldn't predict.
 </Note>

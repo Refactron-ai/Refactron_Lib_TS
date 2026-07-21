@@ -1,14 +1,14 @@
 <p align="center">
-  <img src="https://raw.githubusercontent.com/Refactron-ai/Refactron_Lib_TS/main/docs/assets/og-image.png" alt="Refactron — the verification layer for AI code change: a diff from an agent, a codemod, or a human runs through the syntax, imports, and test gates in an isolated shadow tree and comes out SAFE, UNSAFE, or UNPROVEN" width="100%">
+  <img src="https://raw.githubusercontent.com/Refactron-ai/Refactron_Lib_TS/main/docs/assets/og-image.png" alt="Refactron, the verification layer for AI code change: a diff from an agent, a codemod, or a human runs through the syntax, imports, and test gates in an isolated shadow tree and comes out SAFE, UNSAFE, or UNPROVEN" width="100%">
 </p>
 
 # Refactron
 
 [![CI](https://github.com/Refactron-ai/Refactron_Lib_TS/actions/workflows/ci.yml/badge.svg)](https://github.com/Refactron-ai/Refactron_Lib_TS/actions/workflows/ci.yml)
 
-**The verification layer for AI code change.** Prove that any change — your AI agent's, a codemod's, or your own — preserved behavior. Refactron applies the change in an isolated shadow tree, runs your real test suite, and returns a three-way verdict: `SAFE`, `UNSAFE`, or `UNPROVEN`. Your working tree is never touched.
+**The verification layer for AI code change.** Prove that any change, your AI agent's, a codemod's, or your own, preserved behavior. Refactron applies the change in an isolated shadow tree, runs your real test suite, and returns a three-way verdict: `SAFE`, `UNSAFE`, or `UNPROVEN`. Your working tree is never touched.
 
-It plugs in where change happens: a `verify-diff` CLI (and CI gate), and an MCP server your AI agent calls before it lands a change. No model decides whether your code is safe — the verdict is deterministic and reproducible.
+It plugs in where change happens: a `verify-diff` CLI (and CI gate), and an MCP server your AI agent calls before it lands a change. No model decides whether your code is safe; the verdict is deterministic and reproducible.
 
 **Jump to:** [Quickstart](#quickstart) · [The verdict](#the-verdict) · [MCP](#verify-from-your-agent-mcp) · [Migration mode](#migration-mode) · [Architecture](#architecture) · [Docs](#docs)
 
@@ -16,7 +16,7 @@ It plugs in where change happens: a `verify-diff` CLI (and CI gate), and an MCP 
 
 ## Quickstart
 
-> `verify-diff`, the MCP server, and `preflight` are unreleased — they are **not** in `refactron@0.2.4` on npm yet. Build from source until the next release, which ships the `refactron` and `refactron-mcp` bins. The published npm package is the [migration-mode transform CLI](#migration-mode).
+> `verify-diff`, the MCP server, and `preflight` are unreleased; they are **not** in `refactron@0.2.4` on npm yet. Build from source until the next release, which ships the `refactron` and `refactron-mcp` bins. The published npm package is the [migration-mode transform CLI](#migration-mode).
 
 Requires Node.js ≥ 18, and Python 3.8+ with `coverage.py` for Python coverage.
 
@@ -27,7 +27,7 @@ npm install
 npm run build
 ```
 
-Authenticate once (`node dist/cli/index.js login`, or `REFACTRON_TOKEN` in CI — unauthenticated exits `7`), then verify a diff:
+Authenticate once (`node dist/cli/index.js login`, or `REFACTRON_TOKEN` in CI; unauthenticated exits `7`), then verify a diff:
 
 ```bash
 git diff > change.diff        # or: your agent wrote change.diff
@@ -48,12 +48,12 @@ Refactron copies the repo into an isolated shadow tree, applies the diff there, 
 | Verdict    | Meaning                                                                              | Exit |
 | ---------- | ------------------------------------------------------------------------------------ | ---- |
 | `SAFE`     | Every gate passed **and** your tests exercise the changed lines.                     | `0`  |
-| `UNSAFE`   | A gate failed — the change broke something.                                          | `1`  |
+| `UNSAFE`   | A gate failed: the change broke something.                                           | `1`  |
 | `UNPROVEN` | Tests pass, but the changed code isn't exercised (or coverage couldn't be assessed). | `0`  |
 
-`UNPROVEN` is the honest verdict. "Tests pass" is not "proven safe" — if nothing runs the lines you changed, a green suite proves nothing about them. Refactron says so, and (for Python) names the line to add a test for.
+`UNPROVEN` is the honest verdict. "Tests pass" is not "proven safe": if nothing runs the lines you changed, a green suite proves nothing about them. Refactron says so, and (for Python) names the line to add a test for.
 
-Coverage is **Python-only** (via `coverage.py`), so a TypeScript or mixed-language diff can never earn `SAFE` today — it returns `UNPROVEN` ("coverage of the changed code could not be determined"). The gates still run; only the coverage half is Python-only.
+Coverage is **Python-only** (via `coverage.py`), so a TypeScript or mixed-language diff can never earn `SAFE` today; it returns `UNPROVEN` ("coverage of the changed code could not be determined"). The gates still run; only the coverage half is Python-only.
 
 ---
 
@@ -65,7 +65,7 @@ Refactron ships a stdio [MCP](https://modelcontextprotocol.io) server exposing o
 claude mcp add refactron -- node /absolute/path/to/Refactron_Lib_TS/dist/mcp/server.js
 ```
 
-The agent proposes an edit (full-file `edits` or a `unifiedDiff`), calls `verify_change`, and gets back the same `SAFE` / `UNSAFE` / `UNPROVEN` JSON report — then decides whether to land it. The tool runs entirely local and never mutates your repo.
+The agent proposes an edit (full-file `edits` or a `unifiedDiff`), calls `verify_change`, and gets back the same `SAFE` / `UNSAFE` / `UNPROVEN` JSON report, then decides whether to land it. The tool runs entirely local and never mutates your repo.
 
 ---
 
@@ -81,7 +81,7 @@ refactron run --dry-run        # preview the diff (no writes)
 refactron run --apply          # gates, then atomic write
 ```
 
-`refactron@0.2.4` on npm is the transform CLI only — it does **not** include `verify-diff`, the MCP server, or `preflight`. Full catalog and reference: [`docs/transforms/`](docs/transforms/) · [docs.refactron.dev](https://docs.refactron.dev).
+`refactron@0.2.4` on npm is the transform CLI only; it does **not** include `verify-diff`, the MCP server, or `preflight`. Full catalog and reference: [`docs/transforms/`](docs/transforms/) · [docs.refactron.dev](https://docs.refactron.dev).
 
 ---
 
@@ -96,13 +96,13 @@ The verification engine is the shared core: an isolated shadow tree, three gates
 | **Analyzer**      | Tree-sitter / ts-morph detectors (migration mode). Reports findings with blast radius and tier (debt / modernization / style).                                                            |
 | **Refactorer**    | LibCST sidecars (Python) and ts-morph transforms (TypeScript), composed per file (migration mode). Emits a `RefactorPlan` plus a `precondition` for every refusal.                        |
 
-All of it composes around the locked adapter interface in `src/adapters/interface.ts` — adding a language is "implement `ILanguageAdapter`," not "fork the engine."
+All of it composes around the locked adapter interface in `src/adapters/interface.ts`: adding a language is "implement `ILanguageAdapter`," not "fork the engine."
 
 ---
 
 ## Architecture
 
-The pipeline a migration-mode change flows through (`verify-diff` reuses the Verifier and stops at the verdict — no write):
+The pipeline a migration-mode change flows through (`verify-diff` reuses the Verifier and stops at the verdict, no write):
 
 ```mermaid
 flowchart LR
@@ -149,7 +149,7 @@ Full design: [`ARCHITECTURE.md`](./ARCHITECTURE.md). Vocabulary: [`GLOSSARY.md`]
 | `confidence`    | `low`    | Minimum finding confidence (`low` / `medium` / `high`)          |
 | `pythonVersion` | `"3.11"` | Drives PEP version-gated transforms (585, 604, etc.)            |
 | `testCmd`       | auto     | Override the test command (auto-detects pytest / vitest / jest) |
-| `exclude`       | —        | Globs to ignore beyond `.gitignore`                             |
+| `exclude`       | none     | Globs to ignore beyond `.gitignore`                             |
 
 Full schema in `src/core/config.ts`.
 
@@ -164,9 +164,9 @@ Full schema in `src/core/config.ts`.
 **Deliberately not built:**
 
 - **No model in the verification path.** The verdict is deterministic and reproducible. The only LLM consumer is the migration-mode documenter, on already-verified, already-written code.
-- **No network calls** from the verification engine — it runs entirely local.
+- **No network calls** from the verification engine: it runs entirely local.
 - **Coverage is Python-only** (via `coverage.py`), so a non-Python or mixed diff returns `UNPROVEN`, never a false `SAFE`.
-- **No Ruby / Go / Rust adapters yet** — adapter interface is locked; adding one is a follow-on.
+- **No Ruby / Go / Rust adapters yet**: adapter interface is locked; adding one is a follow-on.
 
 **Roadmap:** next npm release ships the verification bins. Beyond that, fleet verification across many repos and audit history are the paid tier; v1.0 lands once external usage has characterized the real bug surface.
 
@@ -174,12 +174,12 @@ Full schema in `src/core/config.ts`.
 
 ## Docs
 
-- [`ARCHITECTURE.md`](./ARCHITECTURE.md) — engines, locked surfaces, pipeline, invariants
-- [`GLOSSARY.md`](./GLOSSARY.md) — blast radius, tier, sidecar, precondition, gate
-- [`RUNBOOK.md`](./RUNBOOK.md) — release, rollback, CVE response
-- [`CLAUDE.md`](./CLAUDE.md) — agent working rules + ops scaffolding
-- [`CONTRIBUTING.md`](./CONTRIBUTING.md) — development workflow
-- [`docs/`](./docs/) — full user docs (also at [docs.refactron.dev](https://docs.refactron.dev))
+- [`ARCHITECTURE.md`](./ARCHITECTURE.md): engines, locked surfaces, pipeline, invariants
+- [`GLOSSARY.md`](./GLOSSARY.md): blast radius, tier, sidecar, precondition, gate
+- [`RUNBOOK.md`](./RUNBOOK.md): release, rollback, CVE response
+- [`CLAUDE.md`](./CLAUDE.md): agent working rules + ops scaffolding
+- [`CONTRIBUTING.md`](./CONTRIBUTING.md): development workflow
+- [`docs/`](./docs/): full user docs (also at [docs.refactron.dev](https://docs.refactron.dev))
 
 Security findings: do not open a public issue. Email `security@refactron.dev`.
 

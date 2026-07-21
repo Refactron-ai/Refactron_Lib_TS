@@ -3,12 +3,12 @@ title: Performance
 description: Wall-clock numbers, methodology, and how to reproduce.
 ---
 
-Refactron is built to stay fast on real codebases — not just toy fixtures. The numbers below are reproducible benchmarks against synthetic trees that mix Python and TypeScript files sprinkled with every shipped transform pattern.
+Refactron is built to stay fast on real codebases, not just toy fixtures. The numbers below are reproducible benchmarks against synthetic trees that mix Python and TypeScript files sprinkled with every shipped transform pattern.
 
 <Note>
   These figures cover the [migration-mode](/transforms) commands (`analyze`, `run`). The
-  verification surfaces — [`verify-diff`](/verification/verify-diff) and the MCP `verify_change`
-  tool — run your test suite in a shadow tree, so their wall-clock is dominated by your own suite's
+  verification surfaces ([`verify-diff`](/verification/verify-diff) and the MCP `verify_change`
+  tool) run your test suite in a shadow tree, so their wall-clock is dominated by your own suite's
   runtime, the same as the test gate below.
 </Note>
 
@@ -21,7 +21,7 @@ Refactron is built to stay fast on real codebases — not just toy fixtures. The
 | 10k LOC   | 448   | **1.21s**  | 1.19s  | 1.31s  |
 | 100k LOC  | 4,465 | **11.13s** | 10.56s | 13.14s |
 
-Validated end-to-end on Ansible (`playground/ansible`, ~100k LOC, 4,465 files) — every shipped transform runs through `analyze` → `run --dry-run` → `run --apply` without timing out or running out of memory.
+Validated end-to-end on Ansible (`playground/ansible`, ~100k LOC, 4,465 files); every shipped transform runs through `analyze` → `run --dry-run` → `run --apply` without timing out or running out of memory.
 
 ## Full pipeline (analyze → plan → apply with verification)
 
@@ -33,7 +33,7 @@ Against `fixtures/python-legacy-mini` (9 files, 189 LOC, real pytest suite):
 | `run --dry-run`                        | **1.70s** | 1.66s | 1.87s |
 | `run --apply` (3 gates + atomic write) | **3.38s** | 3.27s | 3.72s |
 
-The `--apply` cost is dominated by the **test gate** — Refactron runs your full project test suite inside a shadow tree. On larger projects that figure scales with your suite's runtime, not Refactron's.
+The `--apply` cost is dominated by the **test gate**: Refactron runs your full project test suite inside a shadow tree. On larger projects that figure scales with your suite's runtime, not Refactron's.
 
 ## Methodology
 
@@ -79,10 +79,10 @@ The 500k-LOC tree generation requires ~25 MB of disk and ~30s wall-clock; skippe
 
 The dominant costs, in order:
 
-1. **Python sidecar spawn** — `child_process.spawn('python3', [sidecar, file])` for every Python file × every Python transform. Spawn cost is ~30ms per invocation. Mitigated by per-file transform composition (one spawn covers all transforms for a file).
-2. **Tree-sitter / ts-morph parsing** — re-parsing the same file for each detector. The detector layer caches the tree per file per command.
-3. **ts-morph project initialization** — building a `Project` over a large TS codebase is expensive; built once per command, reused across transforms.
-4. **Atomic batch writes** — fsync per file. Amortizes well on batches > 100 files.
+1. **Python sidecar spawn**: `child_process.spawn('python3', [sidecar, file])` for every Python file × every Python transform. Spawn cost is ~30ms per invocation. Mitigated by per-file transform composition (one spawn covers all transforms for a file).
+2. **Tree-sitter / ts-morph parsing**: re-parsing the same file for each detector. The detector layer caches the tree per file per command.
+3. **ts-morph project initialization**: building a `Project` over a large TS codebase is expensive; built once per command, reused across transforms.
+4. **Atomic batch writes**: fsync per file. Amortizes well on batches > 100 files.
 
 If you observe a regression against these numbers, file an issue with the output of `bash bench/run-bench.sh` and your hardware.
 
@@ -90,4 +90,4 @@ If you observe a regression against these numbers, file an issue with the output
 
 `refactron analyze` and `run --dry-run` are CPU-bound on the parser; the engine fan-outs at the per-file boundary up to `min(16, cpu_cores - 2)` concurrent workers. Set `REFACTRON_CONCURRENCY=<n>` to override.
 
-`run --apply` runs the verifier sequentially per gate — syntax and imports concurrently within their gates, tests serially (your suite owns its own parallelism).
+`run --apply` runs the verifier sequentially per gate: syntax and imports concurrently within their gates, tests serially (your suite owns its own parallelism).

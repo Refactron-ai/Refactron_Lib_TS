@@ -9,15 +9,15 @@ Refactron is built on decades of academic and open-source work. This page acknow
 
 ### Behavior-preserving refactoring
 
-**Opdyke, W. F. (1992)** — _Refactoring Object-Oriented Frameworks_. PhD thesis, University of Illinois at Urbana-Champaign.
+**Opdyke, W. F. (1992)**. _Refactoring Object-Oriented Frameworks_. PhD thesis, University of Illinois at Urbana-Champaign.
 
-The foundational thesis defining refactoring as a discipline of behavior-preserving transformation. Opdyke's "preconditions" — properties that must hold before a transformation is safe — are the conceptual ancestor of Refactron's `precondition` records: every refusal carries an explicit reason rather than a silent skip.
+The foundational thesis defining refactoring as a discipline of behavior-preserving transformation. Opdyke's "preconditions" (properties that must hold before a transformation is safe) are the conceptual ancestor of Refactron's `precondition` records: every refusal carries an explicit reason rather than a silent skip.
 
 [PDF (UIUC IDEALS archive)](https://www.ideals.illinois.edu/items/26201)
 
 ### Tree-based program analysis
 
-**Brunsfeld, M. (2018)** — _Tree-sitter: a new parsing system for programming tools_. Strange Loop 2018.
+**Brunsfeld, M. (2018)**. _Tree-sitter: a new parsing system for programming tools_. Strange Loop 2018.
 
 The error-tolerant, incremental parser library Refactron uses for its detector layer. Tree-sitter is what makes "fast enough on a 100k-LOC codebase" attainable for the analyze step.
 
@@ -25,17 +25,17 @@ The error-tolerant, incremental parser library Refactron uses for its detector l
 
 ### Refactoring-aware test selection
 
-**Wang, K., Buse, R. P. L., & Weimer, W. (2018)** — _Towards Refactoring-Aware Regression Test Selection_. ICSE 2018.
+**Wang, K., Buse, R. P. L., & Weimer, W. (2018)**. _Towards Refactoring-Aware Regression Test Selection_. ICSE 2018.
 
-The insight that **coverage of the changed surface** — not just any-test-touched-this-file — is the right signal for which tests to re-run after a refactor. Influences Refactron's blast-radius scoring: `affectedTestFiles` contributes 20% to the score and drives whether the test gate runs at all.
+The insight that **coverage of the changed surface** (not just any-test-touched-this-file) is the right signal for which tests to re-run after a refactor. Influences Refactron's blast-radius scoring: `affectedTestFiles` contributes 20% to the score and drives whether the test gate runs at all.
 
 [ACM DL](https://dl.acm.org/doi/10.1145/3180155.3180163)
 
 ### LLM code-quality baseline
 
-**Pearce, H. et al. (NYU, 2022)** — _Asleep at the Keyboard? Assessing the Security of GitHub Copilot's Code Contributions_.
+**Pearce, H. et al. (NYU, 2022)**. _Asleep at the Keyboard? Assessing the Security of GitHub Copilot's Code Contributions_.
 
-The 89-scenario study of MITRE Top-25 CWEs that found ~40% of Copilot's top suggestions contained an exploitable vulnerability — part of why Refactron pairs a probabilistic proposer with a deterministic verifier rather than trusting a model's own judgment about whether a change is safe. See [Deterministic by design](../concepts/why-no-llm).
+The 89-scenario study of MITRE Top-25 CWEs that found ~40% of Copilot's top suggestions contained an exploitable vulnerability, part of why Refactron pairs a probabilistic proposer with a deterministic verifier rather than trusting a model's own judgment about whether a change is safe. See [Deterministic by design](../concepts/why-no-llm).
 
 [arXiv:2108.09293](https://arxiv.org/abs/2108.09293)
 
@@ -45,7 +45,7 @@ The 89-scenario study of MITRE Top-25 CWEs that found ~40% of Copilot's top sugg
 
 ### LibCST (Instagram Engineering)
 
-The concrete syntax tree library that backs every Python transform sidecar. LibCST preserves whitespace, comments, and formatting exactly — which is why Refactron can rewrite a docstring without disturbing the rest of the file.
+The concrete syntax tree library that backs every Python transform sidecar. LibCST preserves whitespace, comments, and formatting exactly, which is why Refactron can rewrite a docstring without disturbing the rest of the file.
 
 - [Project](https://github.com/Instagram/LibCST)
 - License: MIT

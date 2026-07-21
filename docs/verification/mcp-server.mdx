@@ -1,10 +1,10 @@
 ---
 title: MCP server
 icon: plug
-description: Give your AI agent the deterministic gate it can call before it lands a change — a verify_change tool over MCP that returns a SAFE, UNSAFE, or UNPROVEN verdict.
+description: Give your AI agent the deterministic gate it can call before it lands a change: a verify_change tool over MCP that returns a SAFE, UNSAFE, or UNPROVEN verdict.
 ---
 
-Refactron ships an [MCP](https://modelcontextprotocol.io) server that exposes one tool: **`verify_change`**. An agent proposes an edit, calls `verify_change`, and gets back a `SAFE` / `UNSAFE` / `UNPROVEN` verdict with a reproducible report — before it writes anything to your repo.
+Refactron ships an [MCP](https://modelcontextprotocol.io) server that exposes one tool: **`verify_change`**. An agent proposes an edit, calls `verify_change`, and gets back a `SAFE` / `UNSAFE` / `UNPROVEN` verdict with a reproducible report, before it writes anything to your repo.
 
 This is how Refactron fits an agentic workflow: it isn't a competing code generator, it's the deterministic gate the generator calls to check its own work.
 
@@ -18,7 +18,7 @@ This is how Refactron fits an agentic workflow: it isn't a competing code genera
 ## Install (from source)
 
 <Note>
-  The MCP server is unreleased — it is **not** in `refactron@0.2.4` on npm. Build from source until
+  The MCP server is unreleased; it is **not** in `refactron@0.2.4` on npm. Build from source until
   the next release, which ships a `refactron-mcp` bin.
 </Note>
 
@@ -39,11 +39,11 @@ For Claude Code:
 claude mcp add refactron -- node /absolute/path/to/Refactron_Lib_TS/dist/mcp/server.js
 ```
 
-Any MCP client works the same way — point it at `node <repo>/dist/mcp/server.js` as a stdio server. Use an absolute path; the server resolves your repo from the tool arguments, not its own working directory.
+Any MCP client works the same way: point it at `node <repo>/dist/mcp/server.js` as a stdio server. Use an absolute path; the server resolves your repo from the tool arguments, not its own working directory.
 
 ## The `verify_change` tool
 
-Verify a proposed change and get the verdict. The change is supplied as **either** full-file contents **or** a unified diff — one of the two is required.
+Verify a proposed change and get the verdict. The change is supplied as **either** full-file contents **or** a unified diff; one of the two is required.
 
 | Argument      | Type                     | Required     | Description                                               |
 | ------------- | ------------------------ | ------------ | --------------------------------------------------------- |
@@ -52,7 +52,7 @@ Verify a proposed change and get the verdict. The change is supplied as **either
 | `unifiedDiff` | string                   | one of these | A unified/git diff to apply and verify.                   |
 | `testCmd`     | string                   | no           | Override the test command (e.g. `python3 -m pytest -q`).  |
 
-The tool returns the [verification report](/verification/verify-diff#the-json-report) as JSON text content — the same structure `verify-diff --json` prints:
+The tool returns the [verification report](/verification/verify-diff#the-json-report) as JSON text content: the same structure `verify-diff --json` prints:
 
 ```json
 {

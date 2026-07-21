@@ -1,10 +1,10 @@
 ---
 title: Verdicts
 icon: scale-balanced
-description: SAFE, UNSAFE, and UNPROVEN — the three-way verdict at the center of Refactron, how coverage fuses with the gates, and why UNPROVEN is the honest answer.
+description: SAFE, UNSAFE, and UNPROVEN: the three-way verdict at the center of Refactron, how coverage fuses with the gates, and why UNPROVEN is the honest answer.
 ---
 
-Every verification returns exactly one of three verdicts. Two of them exist in most tools. The third — `UNPROVEN` — is the one that makes Refactron trustworthy.
+Every verification returns exactly one of three verdicts. Two of them exist in most tools. The third, `UNPROVEN`, is the one that makes Refactron trustworthy.
 
 <CardGroup cols={3}>
   <Card title="SAFE">
@@ -25,14 +25,14 @@ Every verification returns exactly one of three verdicts. Two of them exist in m
 
 Refactron runs two independent checks and fuses them:
 
-1. **The gates** — syntax, then imports, then your test suite, all against the change applied in an isolated [shadow tree](/concepts/safety-model). A gate either passes or fails.
-2. **Changed-line coverage** — did your tests actually execute the lines the change touched? Assessed only when the gates pass.
+1. **The gates**: syntax, then imports, then your test suite, all against the change applied in an isolated [shadow tree](/concepts/safety-model). A gate either passes or fails.
+2. **Changed-line coverage**: did your tests actually execute the lines the change touched? Assessed only when the gates pass.
 
 The fusion rule:
 
 | Gates         | Changed lines covered? | Verdict    | Reason                                                                  |
 | ------------- | ---------------------- | ---------- | ----------------------------------------------------------------------- |
-| A gate failed | —                      | `UNSAFE`   | The failing gate's blocking reason.                                     |
+| A gate failed | n/a                    | `UNSAFE`   | The failing gate's blocking reason.                                     |
 | All passed    | yes                    | `SAFE`     | "Tests pass and the changed code is covered."                           |
 | All passed    | no                     | `UNPROVEN` | "Tests pass, but the changed code is not exercised by any test."        |
 | All passed    | couldn't tell          | `UNPROVEN` | "Tests pass, but coverage of the changed code could not be determined." |
@@ -47,22 +47,22 @@ Every gate passed, and at least one changed line in every changed file was execu
 
 A gate rejected the change:
 
-- **Syntax** — the changed file no longer parses.
-- **Imports** — an import in the changed content doesn't resolve, or a previously-resolving import now fails.
-- **Tests** — your suite went red on the change.
+- **Syntax**: the changed file no longer parses.
+- **Imports**: an import in the changed content doesn't resolve, or a previously-resolving import now fails.
+- **Tests**: your suite went red on the change.
 
 `UNSAFE` exits `1`, and a failing test gate prints the test output so you can see what broke. This is a real signal that the change is wrong, not merely unproven.
 
 <Note>
   One case looks like a test failure but isn't a real one: if your suite is **already red before**
-  the change, or **no test runner** is detected, Refactron can't blame the change for anything — so
+  the change, or **no test runner** is detected, Refactron can't blame the change for anything, so
   it returns `UNPROVEN`, not `UNSAFE`. A broken baseline is a "can't prove it" situation, not
   evidence the diff broke something.
 </Note>
 
 ## UNPROVEN
 
-The gates passed, but Refactron won't claim the change is safe — because the evidence isn't there. This is the verdict no other gate gives you honestly.
+The gates passed, but Refactron won't claim the change is safe, because the evidence isn't there. This is the verdict no other gate gives you honestly.
 
 There are two ways to land here:
 
@@ -76,7 +76,7 @@ There are two ways to land here:
 
 - **Coverage couldn't be assessed.** The change isn't entirely Python, or `coverage.py` isn't installed. Refactron can't measure whether the changed lines ran, so it declines to certify `SAFE`. The reason reads "coverage of the changed code could not be determined."
 
-`UNPROVEN` exits `0`. It is a warning, not a rejection: nothing is known to be broken, but nothing is proven either. The right response is to add the missing test — then re-run and earn `SAFE`.
+`UNPROVEN` exits `0`. It is a warning, not a rejection: nothing is known to be broken, but nothing is proven either. The right response is to add the missing test, then re-run and earn `SAFE`.
 
 <Tip>
   `UNPROVEN` turns your test suite's blind spots into a to-do list. Every uncovered changed line is
@@ -87,10 +87,10 @@ There are two ways to land here:
 
 Coverage fusion depends on `coverage.py`, so it is **Python-only** today:
 
-- A diff where **every** changed file is `.py`, with `coverage.py` available, can be assessed — and can reach `SAFE`.
+- A diff where **every** changed file is `.py`, with `coverage.py` available, can be assessed, and can reach `SAFE`.
 - A diff touching **any** TypeScript (or any non-Python) file, or run without `coverage.py`, returns `UNPROVEN` with `coverage.tool: "none"`. The gates still run; only the coverage half is unavailable.
 
-Refactron never guesses here. Reporting a non-Python change as "covered" would let an unverified change through as `SAFE` — a false `SAFE`, which the engine forbids. When it can't measure, it says `UNPROVEN`.
+Refactron never guesses here. Reporting a non-Python change as "covered" would let an unverified change through as `SAFE`: a false `SAFE`, which the engine forbids. When it can't measure, it says `UNPROVEN`.
 
 ## Exit codes
 

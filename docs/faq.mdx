@@ -1,32 +1,32 @@
 ---
 title: FAQ
 icon: circle-question
-description: Frequently-asked questions about Refactron — the verification layer for AI code change.
+description: Frequently-asked questions about Refactron: the verification layer for AI code change.
 ---
 
 ## What does Refactron actually do?
 
-It verifies a change. You give it a diff — from your AI agent, a codemod, or your own editor — and it proves whether the change preserved behavior. It applies the change in an isolated [shadow tree](/concepts/safety-model), runs the syntax, imports, and test gates, checks whether your tests exercise the changed lines, and returns one of three [verdicts](/verification/verdicts): `SAFE`, `UNSAFE`, or `UNPROVEN`. Your working tree is never touched.
+It verifies a change. You give it a diff (from your AI agent, a codemod, or your own editor) and it proves whether the change preserved behavior. It applies the change in an isolated [shadow tree](/concepts/safety-model), runs the syntax, imports, and test gates, checks whether your tests exercise the changed lines, and returns one of three [verdicts](/verification/verdicts): `SAFE`, `UNSAFE`, or `UNPROVEN`. Your working tree is never touched.
 
 ---
 
 ## What is UNPROVEN?
 
-It's the honest verdict, and the reason to trust the other two. `UNPROVEN` means the gates passed — nothing is known to be broken — but the change isn't _proven_ safe, either because no test exercises the changed lines, or because coverage couldn't be measured.
+It's the honest verdict, and the reason to trust the other two. `UNPROVEN` means the gates passed (nothing is known to be broken), but the change isn't _proven_ safe, either because no test exercises the changed lines, or because coverage couldn't be measured.
 
-"Tests pass" is not the same as "this change is proven safe." If nothing runs the lines you changed, a green suite tells you nothing about them. Most tools quietly treat green as good enough. Refactron says `UNPROVEN` and, when it can, names the exact line to add a test for. `UNPROVEN` exits `0` — it's a warning, not a rejection. See [Verdicts](/verification/verdicts).
+"Tests pass" is not the same as "this change is proven safe." If nothing runs the lines you changed, a green suite tells you nothing about them. Most tools quietly treat green as good enough. Refactron says `UNPROVEN` and, when it can, names the exact line to add a test for. `UNPROVEN` exits `0`; it's a warning, not a rejection. See [Verdicts](/verification/verdicts).
 
 ---
 
 ## Does it work with my AI agent?
 
-Yes — that's the point. Refactron ships an [MCP server](/verification/mcp-server) with a `verify_change` tool. Your agent proposes an edit, calls `verify_change`, and gets back the `SAFE` / `UNSAFE` / `UNPROVEN` report before it lands anything. Refactron doesn't replace Cursor, Claude Code, Copilot, or Codex — it's the deterministic gate they call to check their own work.
+Yes, that's the point. Refactron ships an [MCP server](/verification/mcp-server) with a `verify_change` tool. Your agent proposes an edit, calls `verify_change`, and gets back the `SAFE` / `UNSAFE` / `UNPROVEN` report before it lands anything. Refactron doesn't replace Cursor, Claude Code, Copilot, or Codex; it's the deterministic gate they call to check their own work.
 
 ---
 
 ## Does Refactron modify my repo?
 
-`verify-diff` and the MCP `verify_change` tool are **read-only**. They copy your project into a shadow tree, apply the change _there_, run the tests, and clean up. Your working tree is never mutated — landing the change is your (or your agent's) decision.
+`verify-diff` and the MCP `verify_change` tool are **read-only**. They copy your project into a shadow tree, apply the change _there_, run the tests, and clean up. Your working tree is never mutated; landing the change is your (or your agent's) decision.
 
 [Migration mode](/transforms) is the one path that writes, and it writes only on green, atomically: either every file in the change lands or none does. See the [safety model](/concepts/safety-model#atomic-batch-write-landing).
 
@@ -34,13 +34,13 @@ Yes — that's the point. Refactron ships an [MCP server](/verification/mcp-serv
 
 ## Why does my TypeScript change never come back SAFE?
 
-Because coverage is **Python-only** today. Reaching `SAFE` requires measuring that your tests exercise the changed lines, and Refactron does that with `coverage.py`. A change that touches any TypeScript (or any non-Python) file, or one run without `coverage.py`, passes the gates but returns `UNPROVEN` with the reason "coverage of the changed code could not be determined." The gates still protect you; only the coverage half is Python-only. Refactron never reports an unmeasured change as `SAFE` — that would be a false `SAFE`.
+Because coverage is **Python-only** today. Reaching `SAFE` requires measuring that your tests exercise the changed lines, and Refactron does that with `coverage.py`. A change that touches any TypeScript (or any non-Python) file, or one run without `coverage.py`, passes the gates but returns `UNPROVEN` with the reason "coverage of the changed code could not be determined." The gates still protect you; only the coverage half is Python-only. Refactron never reports an unmeasured change as `SAFE`; that would be a false `SAFE`.
 
 ---
 
 ## Is it free?
 
-The CLI, the MCP server, and single-repo verification are free and open source (Apache 2.0) — that's everything on this docs site today.
+The CLI, the MCP server, and single-repo verification are free and open source (Apache 2.0); that's everything on this docs site today.
 
 Paid tiers for **fleet verification across many repos** and **audit history** are on the roadmap, not shipping yet. The line is deliberate: verifying one change is free forever; managing trust across a fleet over time is the paid layer.
 
@@ -48,35 +48,35 @@ Paid tiers for **fleet verification across many repos** and **audit history** ar
 
 ## Doesn't running my tests in CI already do this?
 
-Running your suite tells you whether _the suite_ is green. Refactron tells you whether _this specific change_ is proven — three things CI doesn't give you out of the box:
+Running your suite tells you whether _the suite_ is green. Refactron tells you whether _this specific change_ is proven. Three things CI doesn't give you out of the box:
 
 - **Coverage fusion.** A green suite that never touches your changed lines earns `UNPROVEN`, not a false pass.
-- **A reproducible report.** The same repo state and diff produce the same verdict and the same JSON record every time — something you can re-run and audit.
+- **A reproducible report.** The same repo state and diff produce the same verdict and the same JSON record every time, something you can re-run and audit.
 - **An isolated shadow tree.** The change is tested against a copy, so a broken change never sits in your working tree.
 
 ---
 
 ## Does it work on monorepos?
 
-Yes. The test gate runs in the package being changed — it detects the local runner via config-file presence (`vitest.config.*`, `jest.config.*`, `pyproject.toml` / `pytest.ini`), and you can override with `--test-cmd`. The import-graph checks scan from the changed file, which works across package boundaries inside the same repo.
+Yes. The test gate runs in the package being changed; it detects the local runner via config-file presence (`vitest.config.*`, `jest.config.*`, `pyproject.toml` / `pytest.ini`), and you can override with `--test-cmd`. The import-graph checks scan from the changed file, which works across package boundaries inside the same repo.
 
 ---
 
 ## Why no Rust / Go / Ruby support?
 
-Each language is a full adapter — parser, gate paths, and (for coverage) a coverage tool. Python and TypeScript came first: TypeScript reaches the JavaScript world, Python covers the data / scripting / ML surface, and Python's `coverage.py` is what powers the `SAFE` verdict today. If you'd use Refactron in a Go monorepo, [open an issue](https://github.com/Refactron-ai/Refactron_Lib_TS/issues) — concrete demand moves it up the list.
+Each language is a full adapter: parser, gate paths, and (for coverage) a coverage tool. Python and TypeScript came first: TypeScript reaches the JavaScript world, Python covers the data / scripting / ML surface, and Python's `coverage.py` is what powers the `SAFE` verdict today. If you'd use Refactron in a Go monorepo, [open an issue](https://github.com/Refactron-ai/Refactron_Lib_TS/issues); concrete demand moves it up the list.
 
 ---
 
 ## What are the transforms I keep seeing?
 
-[Migration mode](/transforms): 20 deterministic AST transforms that both _author_ a mechanical change and _verify_ it through the same gates before an atomic write. They're the demo of the verification engine on real migrations — and they're the published `refactron@0.2.4` CLI on npm (`analyze`, `run`, `document`). The verification surfaces (`verify-diff`, MCP, `preflight`) are a from-source build until the next release.
+[Migration mode](/transforms): 20 deterministic AST transforms that both _author_ a mechanical change and _verify_ it through the same gates before an atomic write. They're the demo of the verification engine on real migrations, and they're the published `refactron@0.2.4` CLI on npm (`analyze`, `run`, `document`). The verification surfaces (`verify-diff`, MCP, `preflight`) are a from-source build until the next release.
 
 ---
 
 ## Why Apache 2.0?
 
-Apache 2.0 gives the same permissive freedoms as MIT plus an **explicit patent grant** from every contributor. For a tool that touches source code, that removes ambiguity about patent exposure — the bar enterprise legal teams ask about. We'd rather answer that once than repeatedly.
+Apache 2.0 gives the same permissive freedoms as MIT plus an **explicit patent grant** from every contributor. For a tool that touches source code, that removes ambiguity about patent exposure: the bar enterprise legal teams ask about. We'd rather answer that once than repeatedly.
 
 ---
 

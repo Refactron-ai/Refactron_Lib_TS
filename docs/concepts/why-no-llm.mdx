@@ -17,33 +17,33 @@ Refactron is **the deterministic gate LLM agents call before they land a change.
 
 Writing code and _certifying that a change is safe_ are different problems, and they want different tools.
 
-- **Generating a change is a good fit for a probabilistic model.** An LLM explores a huge space of plausible edits and usually lands on a reasonable one. Different runs can produce different code, and that's fine — you're going to check it.
-- **Deciding whether that change preserved behavior is a formal problem.** The answer must be reproducible: the same repo state and the same diff have to yield the same verdict, every time. A judgment you can't reproduce isn't proof — it's another opinion.
+- **Generating a change is a good fit for a probabilistic model.** An LLM explores a huge space of plausible edits and usually lands on a reasonable one. Different runs can produce different code, and that's fine; you're going to check it.
+- **Deciding whether that change preserved behavior is a formal problem.** The answer must be reproducible: the same repo state and the same diff have to yield the same verdict, every time. A judgment you can't reproduce isn't proof; it's another opinion.
 
 Put a probabilistic proposer behind a deterministic verifier and you get the best of both: fast generation, and an answer you can stand behind.
 
 ## What "deterministic" buys you
 
-Refactron's verification engine — the [shadow tree, the three gates, and the coverage check](/concepts/safety-model) — contains no model, no temperature, no sampling. Run a [verify](/verification/verify-diff) twice on the same inputs and you get the identical [verdict](/verification/verdicts) and the identical report.
+Refactron's verification engine (the [shadow tree, the three gates, and the coverage check](/concepts/safety-model)) contains no model, no temperature, no sampling. Run a [verify](/verification/verify-diff) twice on the same inputs and you get the identical [verdict](/verification/verdicts) and the identical report.
 
 That reproducibility is what makes the verdict _usable_:
 
-- **An agent can act on it.** A `SAFE` / `UNSAFE` / `UNPROVEN` answer that flips between runs is worthless as a gate. A stable one is a decision an agent — or a CI job — can branch on.
+- **An agent can act on it.** A `SAFE` / `UNSAFE` / `UNPROVEN` answer that flips between runs is worthless as a gate. A stable one is a decision an agent, or a CI job, can branch on.
 - **A human can audit it.** "The tests passed and these exact lines ran" is a claim you can re-check. "The model thought it looked fine" is not.
 - **It stays honest.** When the evidence isn't there, a deterministic gate returns [`UNPROVEN`](/verification/verdicts) instead of guessing. It never rounds "I'm not sure" up to "looks good."
 
 ## Where a model does fit
 
-The verdict is never a model's call. The one place an LLM appears in Refactron is the optional [`document` command](/cli/reference#document) in [migration mode](/transforms): after a change has already been verified and written, it generates docstrings, inline comments, and changelog prose on top of the verified diff. The worst case is a clumsy sentence — never a wrong verdict, never broken code.
+The verdict is never a model's call. The one place an LLM appears in Refactron is the optional [`document` command](/cli/reference#document) in [migration mode](/transforms): after a change has already been verified and written, it generates docstrings, inline comments, and changelog prose on top of the verified diff. The worst case is a clumsy sentence: never a wrong verdict, never broken code.
 
 That's the rule the whole product follows: models are welcome where fluent language is the goal, and kept out of the path that decides whether your change is safe.
 
 ## The takeaway
 
-You don't have to trust Refactron the way you trust a model. You can re-run it and get the same answer, read exactly which gates passed and which lines your tests exercised, and see the reasoning behind every verdict. Determinism isn't a limitation here — it's the feature that lets an agent hand off the one job it's worst at.
+You don't have to trust Refactron the way you trust a model. You can re-run it and get the same answer, read exactly which gates passed and which lines your tests exercised, and see the reasoning behind every verdict. Determinism isn't a limitation here; it's the feature that lets an agent hand off the one job it's worst at.
 
 ## Citations
 
-The idea that a transformation is only safe once explicit preconditions hold — the conceptual root of a deterministic gate — comes from Bill Opdyke's 1992 thesis.
+The idea that a transformation is only safe once explicit preconditions hold (the conceptual root of a deterministic gate) comes from Bill Opdyke's 1992 thesis.
 
 - Opdyke, William F. _Refactoring Object-Oriented Frameworks._ PhD thesis, UIUC, 1992. [PDF](https://www.cs.umd.edu/users/atif/Refactoring.pdf)

@@ -1,23 +1,23 @@
 ---
 title: Preflight
 icon: clipboard-check
-description: A coverage-aware safety report for the SQLAlchemy 1.x to 2.0 migration — which call sites are safe to automate, which are unproven, and which need a human.
+description: A coverage-aware safety report for the SQLAlchemy 1.x to 2.0 migration: which call sites are safe to automate, which are unproven, and which need a human.
 ---
 
-`preflight` answers the question you should ask **before** letting anything — an agent, a codemod, or Refactron itself — migrate your code: **which changes can be proven safe, and which can't?**
+`preflight` answers the question you should ask **before** letting anything (an agent, a codemod, or Refactron itself) migrate your code: **which changes can be proven safe, and which can't?**
 
 It scans a codebase for the SQLAlchemy 1.x `Model.query` pattern (the 1.x→2.0 `select()` migration), checks how well your tests cover each site, and returns a per-site verdict: safe to automate, unproven, or needs review. It reports; it does not rewrite.
 
 <Note>
-  Preflight is coverage-aware by design. High-stakes migrations fail silently — wrong behavior in
-  production, not a compile error — so "can we even prove this?" is the first question. Preflight is
+  Preflight is coverage-aware by design. High-stakes migrations fail silently (wrong behavior in
+  production, not a compile error), so "can we even prove this?" is the first question. Preflight is
   that question, answered before any change is made.
 </Note>
 
 ## Install (from source)
 
 <Note>
-  `preflight` is unreleased — it is **not** in `refactron@0.2.4` on npm. Build from source until the
+  `preflight` is unreleased; it is **not** in `refactron@0.2.4` on npm. Build from source until the
   next release, which ships the `refactron` bin.
 </Note>
 
@@ -34,7 +34,7 @@ npm run build
 node dist/cli/index.js preflight [target] [flags]
 ```
 
-`target` defaults to `.`. Preflight is auth-gated — run `node dist/cli/index.js login`, or set `REFACTRON_TOKEN` in CI. An unauthenticated run exits `7`.
+`target` defaults to `.`. Preflight is auth-gated: run `node dist/cli/index.js login`, or set `REFACTRON_TOKEN` in CI. An unauthenticated run exits `7`.
 
 ```bash
 node dist/cli/index.js preflight ./my-sqlalchemy-app
@@ -45,7 +45,7 @@ node dist/cli/index.js preflight ./my-sqlalchemy-app
 | Flag                 | Type | Default | Description                                                     |
 | -------------------- | ---- | ------- | --------------------------------------------------------------- |
 | `--json`             | bool | false   | Emit the safety report as JSON instead of the formatted report. |
-| `--fail-on-unproven` | bool | false   | Exit `1` if any site is unproven — useful as a CI guardrail.    |
+| `--fail-on-unproven` | bool | false   | Exit `1` if any site is unproven, useful as a CI guardrail.     |
 
 ### Exit codes
 
@@ -60,18 +60,18 @@ node dist/cli/index.js preflight ./my-sqlalchemy-app
 
 Every detected `Model.query` site is bucketed by how confidently it could be migrated:
 
-- **Safe to automate** — the site is covered by your tests, so a migration here can be verified end to end.
-- **Unproven** — the pattern is present, but your tests don't exercise it. A migration would be an [`UNPROVEN`](/verification/verdicts) change: possibly fine, but unproven. Add a test first.
-- **Needs review** — the site has a shape the automated path won't handle safely; a human should migrate it.
+- **Safe to automate**: the site is covered by your tests, so a migration here can be verified end to end.
+- **Unproven**: the pattern is present, but your tests don't exercise it. A migration would be an [`UNPROVEN`](/verification/verdicts) change: possibly fine, but unproven. Add a test first.
+- **Needs review**: the site has a shape the automated path won't handle safely; a human should migrate it.
 
 <Warning>
   Coverage is measured with `coverage.py`, so preflight's coverage signal is **Python-only**. That
-  matches its scope — SQLAlchemy is a Python library.
+  matches its scope: SQLAlchemy is a Python library.
 </Warning>
 
 ## Why report-only
 
-Refactron ships **no** SQLAlchemy auto-rewriter. A pre-build safety gate on the migration returned a stop signal on the auto-rewrite premise: on the target corpora, too many `Model.query` sites lacked the coverage needed to verify a rewrite. Automating a change you can't prove is exactly the failure this project exists to prevent — so preflight tells the truth about what's verifiable instead of rewriting on faith.
+Refactron ships **no** SQLAlchemy auto-rewriter. A pre-build safety gate on the migration returned a stop signal on the auto-rewrite premise: on the target corpora, too many `Model.query` sites lacked the coverage needed to verify a rewrite. Automating a change you can't prove is exactly the failure this project exists to prevent, so preflight tells the truth about what's verifiable instead of rewriting on faith.
 
 That makes preflight the honest front end of a migration: it draws the line between the sites an agent can safely take and the sites that need a person, before a single line is changed.
 

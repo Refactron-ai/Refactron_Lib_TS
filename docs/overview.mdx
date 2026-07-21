@@ -1,16 +1,16 @@
 ---
 title: Overview
 icon: house
-description: Prove that any change — your AI agent's, a codemod's, or your own — preserved behavior. Refactron runs your real tests in an isolated shadow tree and lands only on green, with a reproducible record of why it's safe.
+description: Prove that any change, your AI agent's, a codemod's, or your own, preserved behavior. Refactron runs your real tests in an isolated shadow tree and lands only on green, with a reproducible record of why it's safe.
 ---
 
 ## What is Refactron?
 
-Refactron is the **verification layer for AI code change**. As agents write more of your code, the bottleneck moves from _generating_ changes to _trusting_ them. Refactron is the deterministic gate that answers one question about any diff — your AI agent's, a codemod's, or your own:
+Refactron is the **verification layer for AI code change**. As agents write more of your code, the bottleneck moves from _generating_ changes to _trusting_ them. Refactron is the deterministic gate that answers one question about any diff (your AI agent's, a codemod's, or your own):
 
 > **Did this change preserve behavior, and can you prove it?**
 
-It applies the change in an isolated **shadow tree**, runs three gates against it — syntax, then imports, then your real test suite — and checks whether your tests actually exercise the lines that changed. It returns one of three verdicts. Your working tree is never touched.
+It applies the change in an isolated **shadow tree**, runs three gates against it (syntax, then imports, then your real test suite) and checks whether your tests actually exercise the lines that changed. It returns one of three verdicts. Your working tree is never touched.
 
 <Frame caption="A diff enters, the gates run in an isolated shadow tree, and one of three verdicts comes out.">
   <img
@@ -26,18 +26,18 @@ It applies the change in an isolated **shadow tree**, runs three gates against i
     Every gate passed **and** your tests exercise the changed lines. Proven safe.
   </Card>
   <Card title="UNSAFE" icon="circle-xmark">
-    A gate failed — the change broke something. Exit `1`.
+    A gate failed: the change broke something. Exit `1`.
   </Card>
   <Card title="UNPROVEN" icon="circle-question">
-    Tests pass, but the changed code isn't exercised — so it isn't *proven*.
+    Tests pass, but the changed code isn't exercised, so it isn't *proven*.
   </Card>
 </CardGroup>
 
-`UNPROVEN` is the verdict that makes the other two trustworthy. "Tests pass" is not the same as "this change is proven safe" — if nothing runs the lines you changed, a green suite proves nothing about them. Most tools hand-wave this. Refactron says it out loud and tells you which test to add. See [Verdicts](/verification/verdicts) for the full model.
+`UNPROVEN` is the verdict that makes the other two trustworthy. "Tests pass" is not the same as "this change is proven safe": if nothing runs the lines you changed, a green suite proves nothing about them. Most tools hand-wave this. Refactron says it out loud and tells you which test to add. See [Verdicts](/verification/verdicts) for the full model.
 
 ## Verify your first change
 
-The verification surfaces are unreleased on npm today — build from source (see the [quickstart](/quickstart)):
+The verification surfaces are unreleased on npm today; build from source (see the [quickstart](/quickstart)):
 
 ```bash
 node dist/cli/index.js verify-diff . --diff change.diff
@@ -58,7 +58,7 @@ node dist/cli/index.js verify-diff . --diff change.diff
     A `verify_change` tool your AI agent calls before it lands a change.
   </Card>
   <Card title="Verdicts" icon="scale-balanced" href="/verification/verdicts">
-    SAFE, UNSAFE, UNPROVEN — coverage fusion and the Python-only limitation, in depth.
+    SAFE, UNSAFE, UNPROVEN: coverage fusion and the Python-only limitation, in depth.
   </Card>
   <Card title="Preflight" icon="clipboard-check" href="/verification/preflight">
     A coverage-aware safety report for the SQLAlchemy 1.x to 2.0 migration.
@@ -67,17 +67,17 @@ node dist/cli/index.js verify-diff . --diff change.diff
 
 <Warning>
   Coverage is **Python-only** (via `coverage.py`). A TypeScript or mixed-language diff can never
-  earn `SAFE` today — it returns `UNPROVEN` ("coverage of the changed code could not be
-  determined"). The gates still run; only the coverage half is Python-only.
+  earn `SAFE` today; it returns `UNPROVEN` ("coverage of the changed code could not be determined").
+  The gates still run; only the coverage half is Python-only.
 </Warning>
 
 ## Deterministic, on purpose
 
-The verification engine is 100% deterministic — no model, no temperature, no statistical inference decides whether your change is safe. Read the same repo state and the same diff twice, get the same verdict. That determinism is exactly what makes Refactron the gate an LLM agent can _call_: the agent proposes, Refactron proves. See [Deterministic by design](/concepts/why-no-llm).
+The verification engine is 100% deterministic: no model, no temperature, no statistical inference decides whether your change is safe. Read the same repo state and the same diff twice, get the same verdict. That determinism is exactly what makes Refactron the gate an LLM agent can _call_: the agent proposes, Refactron proves. See [Deterministic by design](/concepts/why-no-llm).
 
 ## Migration mode
 
-Refactron also ships deterministic transforms — 20 AST rewrites for Python and TypeScript — that both _author_ a change and _verify_ it through the same gates before an atomic write. They are the demo of the gate on real, mechanical migrations, and remain fully supported.
+Refactron also ships deterministic transforms (20 AST rewrites for Python and TypeScript) that both _author_ a change and _verify_ it through the same gates before an atomic write. They are the demo of the gate on real, mechanical migrations, and remain fully supported.
 
 The published `refactron@0.2.4` on npm is this transform CLI (`analyze`, `run`, `document`). See [Migration mode](/transforms) for the catalog.
 
