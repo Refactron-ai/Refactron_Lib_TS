@@ -35,7 +35,8 @@ export async function collectPythonUnresolved(
     throw new Error(`imports_check.py failed (exit ${exitCode ?? 'null'}): ${stderr.trim()}`);
   }
 
-  for (const line of stdout.split('\n')) {
+  // Windows Python prints \r\n; a bare \n split leaves \r on the module name.
+  for (const line of stdout.split(/\r?\n/)) {
     if (!line.startsWith('UNRESOLVED\t')) continue;
     const parts = line.split('\t');
     if (parts.length < 3) continue;
