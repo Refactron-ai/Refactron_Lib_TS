@@ -5,6 +5,13 @@ description: Wall-clock numbers, methodology, and how to reproduce.
 
 Refactron is built to stay fast on real codebases — not just toy fixtures. The numbers below are reproducible benchmarks against synthetic trees that mix Python and TypeScript files sprinkled with every shipped transform pattern.
 
+<Note>
+  These figures cover the [migration-mode](/transforms) commands (`analyze`, `run`). The
+  verification surfaces — [`verify-diff`](/verification/verify-diff) and the MCP `verify_change`
+  tool — run your test suite in a shadow tree, so their wall-clock is dominated by your own suite's
+  runtime, the same as the test gate below.
+</Note>
+
 ## Headline numbers
 
 `analyze` on an Apple M2 (8 cores, 8 GB RAM, Node 24, Refactron 0.2.x):

@@ -1,37 +1,39 @@
 ---
-title: Transforms
+title: Migration mode
 icon: wand-magic-sparkles
-description: The twenty verified transforms shipped in Refactron 0.2 — eleven for Python, nine for TypeScript.
+description: 20 deterministic transforms that both author a mechanical change and verify it through the same gates — the demo of Refactron's verification engine.
 ---
 
-Refactron ships a hand-curated catalog of twenty transforms — eleven for Python, nine for TypeScript. Every transform has been hardened against precondition edge cases, runs through the [three verification gates](/concepts/safety-model), and either commits atomically or skips itself.
+**Migration mode** is where Refactron both _authors_ a change and _verifies_ it. Each of the 20 transforms rewrites a well-known legacy pattern deterministically, then runs the result through the [same gates](/concepts/safety-model) that back [`verify-diff`](/verification/verify-diff) — syntax, imports, tests — and either lands it atomically or skips itself. They're the demonstration that the verification engine works on real, mechanical migrations.
+
+This is the CLI published as `refactron@0.2.4` on npm (`analyze`, `run`, `document`). The verification surfaces — `verify-diff`, the MCP server, and `preflight` — are a [from-source build](/quickstart#build-from-source) until the next release.
 
 You select transforms via the `--transforms` flag (`run --transforms=var_to_const_let,implicit_any`) or the `transforms` array in [`.refactronrc.json`](/configuration/refactronrc). The default is `['all']`.
 
 ## Catalog
 
-| Transform ID | Language | What it does |
-|---|---|---|
-| `callback_to_async_await` | Python | Trailing-callback function → `async def` returning the result |
-| `format_to_fstring` | Python | `%`-format and `.format()` calls → f-strings |
-| `manual_typecheck_to_hints` | Python | `isinstance` chain dispatching one parameter → `Union[...]` annotation |
-| `deprecated_api_requests_to_httpx` | Python | `requests` imports / calls → `httpx` |
-| `class_to_dataclass` | Python | Pure `__init__`-assignment classes → `@dataclass` |
-| `super_no_args` | Python | `super(Class, self).method()` → `super().method()` |
-| `lru_cache_to_cache` | Python | `@lru_cache(maxsize=None)` → `@functools.cache` (≥ 3.9) |
-| `pep585_generics` | Python | `typing.List/Dict/Tuple/...` → built-in `list`/`dict`/`tuple` (≥ 3.9) |
-| `pep604_optional_union` | Python | `Optional[X]` → `X \| None`; `Union[A, B]` → `A \| B` (≥ 3.10) |
-| `datetime_utc_alias` | Python | `datetime.timezone.utc` → `datetime.UTC` (≥ 3.11) |
-| `yield_from_for_loop` | Python | `for x in y: yield x` → `yield from y` |
-| `var_to_const_let` | TypeScript | `var` → `const` (or `let` if reassigned) per binding |
-| `promise_chains_to_async` | TypeScript | `.then(...).then(...)` chains → `async`/`await` |
-| `implicit_any` | TypeScript | Add explicit parameter types when all call sites pass the same primitive |
-| `commonjs_to_esm` | TypeScript | `require` / `module.exports` → ES module `import` / `export` |
-| `promise_constructor_to_async` | TypeScript | `new Promise((resolve) => resolve(x))` → `async` returning `x` |
-| `indexof_to_includes` | TypeScript | `arr.indexOf(x) !== -1` → `arr.includes(x)` (ES2016+) |
-| `object_assign_to_spread` | TypeScript | `Object.assign({}, a, b)` → `{ ...a, ...b }` (ES2018+) |
-| `string_concat_to_template_literal` | TypeScript | `"a " + name + "!"` → `` `a ${name}!` `` (ES2015+) |
-| `vue_set_delete_to_assignment` | TypeScript | `Vue.set` / `this.$set` → direct assignment; `Vue.delete` → `delete` |
+| Transform ID                        | Language   | What it does                                                             |
+| ----------------------------------- | ---------- | ------------------------------------------------------------------------ |
+| `callback_to_async_await`           | Python     | Trailing-callback function → `async def` returning the result            |
+| `format_to_fstring`                 | Python     | `%`-format and `.format()` calls → f-strings                             |
+| `manual_typecheck_to_hints`         | Python     | `isinstance` chain dispatching one parameter → `Union[...]` annotation   |
+| `deprecated_api_requests_to_httpx`  | Python     | `requests` imports / calls → `httpx`                                     |
+| `class_to_dataclass`                | Python     | Pure `__init__`-assignment classes → `@dataclass`                        |
+| `super_no_args`                     | Python     | `super(Class, self).method()` → `super().method()`                       |
+| `lru_cache_to_cache`                | Python     | `@lru_cache(maxsize=None)` → `@functools.cache` (≥ 3.9)                  |
+| `pep585_generics`                   | Python     | `typing.List/Dict/Tuple/...` → built-in `list`/`dict`/`tuple` (≥ 3.9)    |
+| `pep604_optional_union`             | Python     | `Optional[X]` → `X \| None`; `Union[A, B]` → `A \| B` (≥ 3.10)           |
+| `datetime_utc_alias`                | Python     | `datetime.timezone.utc` → `datetime.UTC` (≥ 3.11)                        |
+| `yield_from_for_loop`               | Python     | `for x in y: yield x` → `yield from y`                                   |
+| `var_to_const_let`                  | TypeScript | `var` → `const` (or `let` if reassigned) per binding                     |
+| `promise_chains_to_async`           | TypeScript | `.then(...).then(...)` chains → `async`/`await`                          |
+| `implicit_any`                      | TypeScript | Add explicit parameter types when all call sites pass the same primitive |
+| `commonjs_to_esm`                   | TypeScript | `require` / `module.exports` → ES module `import` / `export`             |
+| `promise_constructor_to_async`      | TypeScript | `new Promise((resolve) => resolve(x))` → `async` returning `x`           |
+| `indexof_to_includes`               | TypeScript | `arr.indexOf(x) !== -1` → `arr.includes(x)` (ES2016+)                    |
+| `object_assign_to_spread`           | TypeScript | `Object.assign({}, a, b)` → `{ ...a, ...b }` (ES2018+)                   |
+| `string_concat_to_template_literal` | TypeScript | `"a " + name + "!"` → `` `a ${name}!` `` (ES2015+)                       |
+| `vue_set_delete_to_assignment`      | TypeScript | `Vue.set` / `this.$set` → direct assignment; `Vue.delete` → `delete`     |
 
 ## Browse the catalog
 
@@ -42,10 +44,18 @@ You select transforms via the `--transforms` flag (`run --transforms=var_to_cons
   <Card title="format_to_fstring" icon="python" href="/transforms/format-to-fstring">
     Python · `%` and `.format()` → f-string
   </Card>
-  <Card title="manual_typecheck_to_hints" icon="python" href="/transforms/manual-typecheck-to-hints">
+  <Card
+    title="manual_typecheck_to_hints"
+    icon="python"
+    href="/transforms/manual-typecheck-to-hints"
+  >
     Python · `isinstance` chain → `Union[...]`
   </Card>
-  <Card title="deprecated_api_requests_to_httpx" icon="python" href="/transforms/deprecated-api-requests-to-httpx">
+  <Card
+    title="deprecated_api_requests_to_httpx"
+    icon="python"
+    href="/transforms/deprecated-api-requests-to-httpx"
+  >
     Python · `requests` → `httpx`
   </Card>
   <Card title="class_to_dataclass" icon="python" href="/transforms/class-to-dataclass">
@@ -81,7 +91,11 @@ You select transforms via the `--transforms` flag (`run --transforms=var_to_cons
   <Card title="commonjs_to_esm" icon="js" href="/transforms/commonjs-to-esm">
     TypeScript · `require` / `module.exports` → ESM
   </Card>
-  <Card title="promise_constructor_to_async" icon="js" href="/transforms/promise-constructor-to-async">
+  <Card
+    title="promise_constructor_to_async"
+    icon="js"
+    href="/transforms/promise-constructor-to-async"
+  >
     TypeScript · `new Promise(...)` → `async`
   </Card>
   <Card title="indexof_to_includes" icon="js" href="/transforms/indexof-to-includes">
@@ -90,14 +104,24 @@ You select transforms via the `--transforms` flag (`run --transforms=var_to_cons
   <Card title="object_assign_to_spread" icon="js" href="/transforms/object-assign-to-spread">
     TypeScript · `Object.assign({}, …)` → spread literal (ES2018+)
   </Card>
-  <Card title="string_concat_to_template_literal" icon="js" href="/transforms/string-concat-to-template-literal">
+  <Card
+    title="string_concat_to_template_literal"
+    icon="js"
+    href="/transforms/string-concat-to-template-literal"
+  >
     TypeScript · `"…" + x` → template literal (ES2015+)
   </Card>
-  <Card title="vue_set_delete_to_assignment" icon="js" href="/transforms/vue-set-delete-to-assignment">
+  <Card
+    title="vue_set_delete_to_assignment"
+    icon="js"
+    href="/transforms/vue-set-delete-to-assignment"
+  >
     TypeScript · `Vue.set` / `this.$set` → direct assignment
   </Card>
 </CardGroup>
 
 <Note>
-Every transform's "after" output passes [Gate 1 (syntax)](/concepts/safety-model#gate-1-syntax) by construction — the refactorer rebuilds the source from a parsed CST/AST. Gates 2 and 3 (imports + tests) are what catch regressions the local rewrite couldn't predict.
+  Every transform's "after" output passes [Gate 1 (syntax)](/concepts/safety-model#gate-1-syntax) by
+  construction — the refactorer rebuilds the source from a parsed CST/AST. Gates 2 and 3 (imports +
+  tests) are what catch regressions the local rewrite couldn't predict.
 </Note>

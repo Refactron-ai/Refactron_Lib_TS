@@ -35,7 +35,7 @@ The insight that **coverage of the changed surface** — not just any-test-touch
 
 **Pearce, H. et al. (NYU, 2022)** — _Asleep at the Keyboard? Assessing the Security of GitHub Copilot's Code Contributions_.
 
-The 89-scenario study of MITRE Top-25 CWEs that found ~40% of Copilot's top suggestions contained an exploitable vulnerability. The empirical baseline behind Refactron's "no LLM in the refactor path" decision — see [`why-no-llm`](../concepts/why-no-llm).
+The 89-scenario study of MITRE Top-25 CWEs that found ~40% of Copilot's top suggestions contained an exploitable vulnerability — part of why Refactron pairs a probabilistic proposer with a deterministic verifier rather than trusting a model's own judgment about whether a change is safe. See [Deterministic by design](../concepts/why-no-llm).
 
 [arXiv:2108.09293](https://arxiv.org/abs/2108.09293)
 
@@ -79,7 +79,7 @@ If Refactron contributes to academic work, the suggested citation is:
 
 ```bibtex
 @software{refactron2024,
-  title  = {Refactron: deterministic refactoring with proof-before-write verification},
+  title  = {Refactron: the verification layer for AI code change},
   author = {{Refactron}},
   year   = {2024},
   url    = {https://github.com/Refactron-ai/Refactron_Lib_TS},
