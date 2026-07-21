@@ -17,6 +17,8 @@ It plugs in where change happens: a `verify-diff` CLI (and CI gate), and an MCP 
 ## Quickstart
 
 > `verify-diff`, the MCP server, and `preflight` are unreleased; they are **not** in `refactron@0.2.4` on npm yet. Build from source until the next release, which ships the `refactron` and `refactron-mcp` bins. The published npm package is the [migration-mode transform CLI](#migration-mode).
+>
+> If `refactron verify-diff` reports an unknown command, you have the npm package (migration mode, `0.2.4`) on your `PATH`; `verify-diff` is from-source only until the next release.
 
 Requires Node.js ≥ 18, and Python 3.8+ with `coverage.py` for Python coverage.
 
@@ -45,11 +47,11 @@ Refactron copies the repo into an isolated shadow tree, applies the diff there, 
 
 ## The verdict
 
-| Verdict    | Meaning                                                                              | Exit |
-| ---------- | ------------------------------------------------------------------------------------ | ---- |
-| `SAFE`     | Every gate passed **and** your tests exercise the changed lines.                     | `0`  |
-| `UNSAFE`   | A gate failed: the change broke something.                                           | `1`  |
-| `UNPROVEN` | Tests pass, but the changed code isn't exercised (or coverage couldn't be assessed). | `0`  |
+| Verdict    | Meaning                                                                                              | Exit |
+| ---------- | ---------------------------------------------------------------------------------------------------- | ---- |
+| `SAFE`     | Every gate passed **and** your tests exercise the changed code (at least one changed line per file). | `0`  |
+| `UNSAFE`   | A gate failed: the change broke something.                                                           | `1`  |
+| `UNPROVEN` | Tests pass, but the changed code isn't exercised (or coverage couldn't be assessed).                 | `0`  |
 
 `UNPROVEN` is the honest verdict. "Tests pass" is not "proven safe": if nothing runs the lines you changed, a green suite proves nothing about them. Refactron says so, and (for Python) names the line to add a test for.
 
@@ -133,7 +135,7 @@ flowchart LR
   class NO hold;
 ```
 
-A trivial whitespace edit runs only Gate 1; a critical-blast-radius change runs all three with a 120-second test timeout. Verification depth follows the change's reach.
+Every change runs all three gates in order (syntax, then imports, then your full test suite); no gate is skipped. The test gate's default timeout is 600 seconds (10 minutes). (Refactron's legacy blast-radius engine scaled check selection and timeouts by a change's reach; the `verify-diff` and MCP path applies the flat default.)
 
 Full design: [`ARCHITECTURE.md`](./ARCHITECTURE.md). Vocabulary: [`GLOSSARY.md`](./GLOSSARY.md). ADRs: [`dev-docs/decisions/`](./dev-docs/decisions/).
 

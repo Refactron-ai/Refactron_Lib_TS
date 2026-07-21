@@ -17,11 +17,11 @@ Refactron applies the diff in an isolated shadow tree, runs the syntax, imports,
 
 ## The verdict, in one line
 
-| Verdict    | Meaning                                                                              | Exit |
-| ---------- | ------------------------------------------------------------------------------------ | ---- |
-| `SAFE`     | Every gate passed **and** your tests exercise the changed lines.                     | `0`  |
-| `UNSAFE`   | A gate failed: the change broke something.                                           | `1`  |
-| `UNPROVEN` | Tests pass, but the changed code isn't exercised (or coverage couldn't be assessed). | `0`  |
+| Verdict    | Meaning                                                                                              | Exit |
+| ---------- | ---------------------------------------------------------------------------------------------------- | ---- |
+| `SAFE`     | Every gate passed **and** your tests exercise the changed code (at least one changed line per file). | `0`  |
+| `UNSAFE`   | A gate failed: the change broke something.                                                           | `1`  |
+| `UNPROVEN` | Tests pass, but the changed code isn't exercised (or coverage couldn't be assessed).                 | `0`  |
 
 `UNPROVEN` is the honest verdict. "Tests pass" is not the same as "this change is proven safe": if nothing runs the lines you changed, a green suite proves nothing about them. Refactron says so out loud and tells you which test to add. See [Verdicts](/verification/verdicts) for the full model.
 
@@ -91,12 +91,12 @@ Output is the verdict, its reason, and (for `UNPROVEN` by lack of coverage) the 
 
 ### Exit codes
 
-| Code | Meaning                                                                                                                   |
-| ---- | ------------------------------------------------------------------------------------------------------------------------- |
-| `0`  | `SAFE` or `UNPROVEN`.                                                                                                     |
-| `1`  | `UNSAFE`: a gate failed. The failing test output is printed.                                                              |
-| `2`  | Bad input: unknown flag, missing `--diff`, or the diff didn't apply (e.g. `diff did not apply to calc.py (stale base?)`). |
-| `7`  | Not authenticated.                                                                                                        |
+| Code | Meaning                                                                                                                                                                          |
+| ---- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `0`  | `SAFE` or `UNPROVEN`.                                                                                                                                                            |
+| `1`  | `UNSAFE`: a gate failed. A tests-gate failure prints the failing-test tail; a syntax or imports failure prints that gate's reason (the offending file or the unresolved import). |
+| `2`  | Bad input: unknown flag, missing `--diff`, or the diff didn't apply (e.g. `diff did not apply to calc.py (stale base?)`).                                                        |
+| `7`  | Not authenticated.                                                                                                                                                               |
 
 ## The JSON report
 
@@ -141,7 +141,7 @@ git diff origin/main...HEAD > pr.diff
 node dist/cli/index.js verify-diff . --diff pr.diff --test-cmd "python3 -m pytest -q"
 ```
 
-To treat `UNPROVEN` as a hard failure, inspect the JSON verdict yourself; the process exits `0` for `UNPROVEN` by design, so a green suite on untested lines never silently blocks a merge unless you choose to.
+Unlike `preflight`, `verify-diff` has no `--fail-on-unproven` flag. To fail CI on `UNPROVEN`, read the `verdict` field from `--json` output and set the exit code yourself; the process exits `0` for `UNPROVEN` by design, so a green suite on untested lines never silently blocks a merge unless you choose to.
 
 ## Next
 

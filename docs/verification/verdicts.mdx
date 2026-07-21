@@ -39,7 +39,9 @@ The fusion rule:
 
 ## SAFE
 
-Every gate passed, and at least one changed line in every changed file was executed by your test suite. The change is on a tested path, and that path is green. This is the only verdict that clears a change without a caveat.
+Every gate passed, and at least one changed line in every changed file was executed by your test suite. The change is on a tested path, and that path is green.
+
+`SAFE` is a per-file check, not a per-line one. It means every changed file had at least one changed line run by your suite; it does not mean every changed line ran. A file with some covered and some uncovered changed lines still reads as covered, so `SAFE` can leave individual changed lines unexercised. Full line-level strictness is a planned fast-follow. Until then, read `SAFE` as "the change is on a tested path," not "every changed line is tested."
 
 `SAFE` requires coverage, and [coverage is Python-only](#the-python-only-limitation). A change that isn't entirely Python can't reach `SAFE` today.
 

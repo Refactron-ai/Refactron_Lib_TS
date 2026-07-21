@@ -4,7 +4,7 @@ description: Three gates and a coverage check, run against your change in an iso
 icon: shield-check
 ---
 
-Refactron's value is what happens **before** you trust a change, not how clever any rewrite is. Every change (an arbitrary diff you're [verifying](/verification/verify-diff), or a [migration-mode transform](/transforms) landing atomically) passes through the same engine: an isolated shadow tree, three gates, and a coverage check that fuses into one verdict.
+Refactron's value is what happens **before** you trust a change, not how clever any rewrite is. Every change (an arbitrary diff you're [verifying](/verification/verify-diff), or a [migration-mode transform](/transforms/index) landing atomically) passes through the same engine: an isolated shadow tree, three gates, and a coverage check that fuses into one verdict.
 
 > **Inviolable rule:** verification runs against a copy, never your working tree. When Refactron does write (migration mode), it writes atomically.
 
@@ -61,15 +61,15 @@ This catches the most common breakage: the change is locally valid but quietly o
 
 The most expensive gate, and the only one that runs **your** code.
 
-1. **Detect the test runner** from a config file in the project root:
-   - `vitest.config.{ts,js,mjs}` → `vitest run`
-   - `jest.config.{ts,js,cjs,json}` → `jest`
-   - `pyproject.toml` with `[tool.pytest.*]` or `pytest.ini` → `pytest`
+1. **Detect the test runner** by config-file _presence_ in the project root (no file contents are parsed):
+   - `vitest.config.ts` or `vitest.config.js` → `vitest run`
+   - `jest.config.js` or `jest.config.ts` → `jest`
+   - any of `pyproject.toml`, `pytest.ini`, or `setup.cfg` present → `pytest`
    - Override with `--test-cmd` (CLI / MCP) or `.refactronrc.json` `testCmd`.
 2. **Run the baseline first**: the runner against the _unchanged_ copy. If the baseline already fails, Refactron won't blame the change: the tests gate reports an already-red baseline, and the verdict becomes [`UNPROVEN`](/verification/verdicts), not `UNSAFE`.
 3. **Run the mutated tree**: same runner, with the change in place. A non-zero exit fails the gate.
 
-The test-gate timeout scales with the change's blast radius: 45s for a standard change, 120s for a critical one. Wall-clock is otherwise dominated by your own suite.
+The test-gate timeout defaults to 600 seconds (10 minutes); wall-clock is otherwise dominated by your own suite. (Refactron's legacy blast-radius engine scaled this timeout by a change's reach; the `verify-diff` and MCP path applies the flat default.)
 
 ## Coverage fusion → the verdict
 
