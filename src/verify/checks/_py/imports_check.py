@@ -30,7 +30,14 @@ import sys
 
 
 def _is_type_checking_test(test):
-    """True if `test` is a TYPE_CHECKING guard whose body is dead at runtime."""
+    """True if `test` is a TYPE_CHECKING guard whose body is dead at runtime.
+
+    Name-based heuristic, not binding-checked: a file that locally defines a
+    truthy ``TYPE_CHECKING`` would have its guarded imports skipped. Such code
+    is broken at runtime regardless, so the gate does not defend against it.
+    An aliased guard (``from typing import TYPE_CHECKING as TC``) is NOT
+    matched and stays analyzed, which errs strict, never lenient.
+    """
     # Bare name: `if TYPE_CHECKING:`
     if isinstance(test, ast.Name) and test.id == "TYPE_CHECKING":
         return True
@@ -111,9 +118,13 @@ def main(argv):
             with open(path, "r", encoding="utf-8") as f:
                 tree = ast.parse(f.read(), filename=path)
         except (OSError, SyntaxError):
-            # Unreadable/unparseable file -> no determinable imports. The syntax
-            # gate runs before this one for changed files; a base file that
-            # cannot be parsed simply contributes an empty baseline.
+            # Unreadable/unparseable file -> no determinable imports. SAFETY
+            # COUPLING: for a SHADOW file this empty set could mask introduced
+            # imports, and is only safe because the engine runs syntaxGate
+            # before importsGate and rejects unparseable shadow files first
+            # (src/verify/engine.ts gate order). Do not reorder those gates
+            # without revisiting this branch. A base file that cannot be
+            # parsed simply contributes an empty baseline, which errs strict.
             continue
         for top in _unresolvable(_collect_import_names(tree)):
             out.append("UNRESOLVED\t{}\t{}".format(path, top))

@@ -149,4 +149,37 @@ describe('importsGate', () => {
     expect(r.blockingReason).toMatch(/a\.ts/);
     expect(r.blockingReason).not.toContain(h.path);
   }, 30_000);
+
+  it('never passes when the python sidecar itself fails', async () => {
+    // The delta logic forgives pre-existing failures, so the one regression
+    // that must stay impossible is: collector failure -> empty findings ->
+    // gate passes. Break python3 for real (a crashing shim first on PATH) and
+    // assert the gate fails closed: it must throw or fail, never pass.
+    const shimDir = await fs.mkdtemp(path.join(os.tmpdir(), 'gi-shim-'));
+    await fs.writeFile(path.join(shimDir, 'python3'), '#!/bin/sh\nexit 1\n', { mode: 0o755 });
+    await fs.writeFile(path.join(shimDir, 'python3.bat'), '@exit /b 1\r\n');
+
+    const src = await fs.mkdtemp(path.join(os.tmpdir(), 'gi-crash-'));
+    await fs.writeFile(path.join(src, 'a.py'), 'import os\n');
+    const change: FileChange = {
+      path: path.join(src, 'a.py'),
+      oldHash: 'x',
+      newContent: 'import genuinely_missing_pkg_qq\n',
+      transformId: 'format_to_fstring',
+    };
+    const h = await createShadowTree(src, [change]);
+    const savedPath = process.env.PATH;
+    process.env.PATH = `${shimDir}${path.delimiter}${savedPath}`;
+    let failedClosed = false;
+    try {
+      const r = await importsGate({ shadowRoot: h.path, changes: [change] }, src);
+      failedClosed = r.passed === false;
+    } catch {
+      failedClosed = true;
+    } finally {
+      process.env.PATH = savedPath;
+      await h.cleanup();
+    }
+    expect(failedClosed).toBe(true);
+  }, 30_000);
 });
