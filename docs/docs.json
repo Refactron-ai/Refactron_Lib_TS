@@ -2,11 +2,11 @@
   "$schema": "https://mintlify.com/docs.json",
   "theme": "mint",
   "name": "Refactron",
-  "description": "Safety-first refactoring for Python and TypeScript — deterministic AST transforms verified before any byte is written.",
+  "description": "The verification layer for AI code change. Prove that any change — your AI agent's, a codemod's, or your own — preserved behavior, with a reproducible record of why it's safe.",
   "colors": {
-    "primary": "#1E3A8A",
-    "light": "#3B82F6",
-    "dark": "#1E3A8A"
+    "primary": "#141416",
+    "light": "#EAE7DE",
+    "dark": "#141416"
   },
   "fonts": {
     "body": {
@@ -23,10 +23,13 @@
     "options": ["copy", "view", "chatgpt", "claude", "perplexity", "mcp", "cursor", "vscode"]
   },
   "logo": {
-    "light": "/logo/logo.svg",
-    "dark": "/logo/logo.svg"
+    "light": "/logo/refactron-wordmark-dark.svg",
+    "dark": "/logo/refactron-wordmark-light.svg"
   },
-  "favicon": "/logo/logo.svg",
+  "favicon": {
+    "light": "/logo/refactron-symbol-dark.svg",
+    "dark": "/logo/refactron-symbol-light.svg"
+  },
   "navigation": {
     "groups": [
       {
@@ -34,11 +37,28 @@
         "pages": ["overview", "quickstart"]
       },
       {
+        "group": "Verification",
+        "pages": [
+          "verification/verify-diff",
+          "verification/mcp-server",
+          "verification/verdicts",
+          "verification/preflight"
+        ]
+      },
+      {
         "group": "Concepts",
         "pages": ["concepts/safety-model", "concepts/why-no-llm"]
       },
       {
-        "group": "Transforms",
+        "group": "CLI",
+        "pages": ["cli/reference"]
+      },
+      {
+        "group": "Configuration",
+        "pages": ["configuration", "configuration/refactronrc"]
+      },
+      {
+        "group": "Migration mode",
         "pages": [
           "transforms/index",
           "transforms/callback-to-async-await",
@@ -62,14 +82,6 @@
           "transforms/string-concat-to-template-literal",
           "transforms/vue-set-delete-to-assignment"
         ]
-      },
-      {
-        "group": "CLI",
-        "pages": ["cli/reference"]
-      },
-      {
-        "group": "Configuration",
-        "pages": ["configuration", "configuration/refactronrc"]
       },
       {
         "group": "Reference",
