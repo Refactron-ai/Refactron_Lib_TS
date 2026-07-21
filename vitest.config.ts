@@ -19,5 +19,12 @@ export default defineConfig({
     // was previously `timeout`, which vitest ignores, so tests silently fell
     // back to the 5000ms default and flaked.
     testTimeout: 30000,
+    // Several integration suites (verify-engine, gates, verify-diff, mcp) each
+    // spawn heavy pytest/coverage/vitest subprocesses. Running those FILES in
+    // parallel stampedes CPU and makes the gate's baseline+mutated runs time
+    // out. Each file passes in isolation; the contention is purely process
+    // resource (tests use isolated temp shadow trees — no shared state). Run
+    // files serially so `npm test` is deterministically green.
+    fileParallelism: false,
   },
 });

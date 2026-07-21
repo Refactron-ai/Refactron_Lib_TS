@@ -4,7 +4,8 @@
   "description": "Safety-first refactoring — finds, fixes, and verifies changes are safe before touching the filesystem",
   "author": "Om Sherikar <omsherikar0229@gmail.com>",
   "bin": {
-    "refactron": "./dist/cli/index.js"
+    "refactron": "./dist/cli/index.js",
+    "refactron-mcp": "./dist/mcp/server.js"
   },
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -24,7 +25,7 @@
     "url": "https://github.com/Refactron-ai/Refactron_Lib_TS/issues"
   },
   "scripts": {
-    "build": "tsc --project tsconfig.build.json && chmod +x dist/cli/index.js && npm run build:copy-py",
+    "build": "tsc --project tsconfig.build.json && chmod +x dist/cli/index.js && chmod +x dist/mcp/server.js && npm run build:copy-py",
     "build:copy-py": "mkdir -p dist/verify/checks/_py dist/transform/transforms/python/_py && cp src/verify/checks/_py/*.py dist/verify/checks/_py/ && cp src/transform/transforms/python/_py/*.py dist/transform/transforms/python/_py/ 2>/dev/null || true",
     "build:watch": "tsc --project tsconfig.build.json --watch",
     "typecheck": "tsc --noEmit",
@@ -68,6 +69,7 @@
     "provenance": true
   },
   "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
     "ajv": "^8.20.0",
     "chalk": "^5.0.0",
     "cli-table3": "^0.6.5",
@@ -88,7 +90,8 @@
     "tree-sitter-typescript": "^0.21.0",
     "ts-morph": "^22.0.0",
     "typescript": "^5.4.0",
-    "write-file-atomic": "^5.0.1"
+    "write-file-atomic": "^5.0.1",
+    "zod": "^4.4.3"
   },
   "devDependencies": {
     "@types/diff": "^5.0.0",

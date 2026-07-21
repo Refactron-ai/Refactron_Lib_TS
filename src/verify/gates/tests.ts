@@ -16,6 +16,11 @@ export interface TestsGateOptions {
   skipBaseline?: boolean;
 }
 
+export function baselineFailReason(stdout: string, stderr: string): string {
+  const detail = `${stdout}\n${stderr}`.slice(-TAIL_BYTES);
+  return `baseline tests already fail before refactoring; fix them first.\n${detail}`;
+}
+
 function formatVitestFailureBlock(stdout: string, stderr: string): string {
   const combined = `${stdout}\n${stderr}`;
   const summary = summarizeVitestFailures(combined);
@@ -63,10 +68,7 @@ export async function testsGate(
         return {
           passed: false,
           durationMs: Date.now() - t0,
-          blockingReason:
-            `baseline tests already fail before refactoring; fix them first.\n${baseline.stdout}\n${baseline.stderr}`.slice(
-              -TAIL_BYTES,
-            ),
+          blockingReason: baselineFailReason(baseline.stdout, baseline.stderr),
         };
       }
     } finally {

@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import * as fs from 'node:fs/promises';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import { testsGate } from '../../../src/verify/gates/tests.js';
+import { testsGate, baselineFailReason } from '../../../src/verify/gates/tests.js';
 import { createShadowTree } from '../../../src/verify/shadow-tree.js';
 
 async function fixtureWithPassingTest(): Promise<string> {
@@ -56,4 +56,9 @@ describe('testsGate', () => {
     expect(r.passed).toBe(false);
     expect(r.blockingReason).toMatch(/baseline/i);
   }, 60_000);
+
+  it('preserves the baseline-fail marker even with large output (no tail truncation of prefix)', () => {
+    const reason = baselineFailReason('x'.repeat(10000), 'x'.repeat(10000));
+    expect(reason).toContain('baseline tests already fail');
+  });
 });

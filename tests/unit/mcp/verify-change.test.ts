@@ -1,0 +1,42 @@
+import { describe, it, expect } from 'vitest';
+import { execSync } from 'node:child_process';
+import * as path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { handleVerifyChange } from '../../../src/mcp/tools/verify-change.js';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const FIXTURE = path.resolve(__dirname, '../../fixtures/verify-diff-mini');
+
+function pythonHasCoverage(): boolean {
+  try {
+    execSync('python3 -c "import coverage, pytest"', { stdio: 'ignore' });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+describe('handleVerifyChange', () => {
+  it('returns a structured verdict for a SAFE change', async () => {
+    if (!pythonHasCoverage()) return;
+    const res = await handleVerifyChange({
+      repoRoot: FIXTURE,
+      edits: [
+        {
+          path: 'calc.py',
+          newContent:
+            'def add(a, b):\n    return b + a\n\n\ndef unused_helper(a, b):\n    return a - b\n',
+        },
+      ],
+      testCmd: 'python3 -m pytest -q',
+    });
+    const report = JSON.parse(res.content[0]!.text);
+    expect(report.verdict).toBe('SAFE');
+    expect(res.isError).toBeFalsy();
+  }, 180_000);
+
+  it('reports a diff-apply error as an error result, not a throw', async () => {
+    const res = await handleVerifyChange({ repoRoot: FIXTURE });
+    expect(res.isError).toBe(true);
+  });
+});
