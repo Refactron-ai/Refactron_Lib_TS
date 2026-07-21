@@ -45,17 +45,21 @@ If any file fails to parse, the gate rejects with a `blockingReason` naming the 
 
 ### Gate 2: Imports
 
-Build a dependency graph from the proposed content and resolve every import.
+Resolve every import in the changed files, and reject only the ones the change is actually responsible for.
 
-- **Python:** collect `import X` and `from X import Y`; resolve against `sys.path` plus the project tree.
-- **TypeScript:** ts-morph `getImportDeclarations()` plus `getModuleSpecifierSourceFile()`.
+- **Python:** collect `import X` and `from X import Y` and resolve each top-level module against `sys.path` plus the project tree. Imports guarded by `if TYPE_CHECKING:` are skipped, because they never run at runtime; a type-only dependency that is not installed is not a runtime break. Relative imports are left to the tests gate.
+- **TypeScript:** resolve every import specifier against the project's `tsconfig.json`. Node builtins always count as resolved.
+
+**Delta-aware.** The gate resolves imports in both the base file (your real tree) and the changed file (the shadow tree), then fails only on imports that are unresolvable in the changed file but were fine in the base file. An import that was already broken before your change is the repo's pre-existing state, not something the change introduced, so it never fails the gate. A brand-new file has an empty baseline, so every unresolvable import in it counts.
 
 **Reject conditions:**
 
-- A newly-introduced import doesn't resolve.
-- An import that previously resolved in a changed file now fails (e.g. the change deleted a re-exported symbol).
+- The change adds an import that does not resolve.
+- The change breaks an import that resolved before (for example, it deleted a re-exported symbol a changed file relied on).
 
-This catches the most common breakage: the change is locally valid but quietly orphans a downstream module. Typical wall-clock: ~50ms.
+One accepted limitation: an import you newly add that is guarded by a platform condition (say `import msvcrt`, which exists only on Windows) can still fail when the gate runs on another OS. The gate does not evaluate platform conditions, and stays conservative there.
+
+This catches the most common breakage: the change is locally valid but quietly orphans a downstream module, without blaming your edit for imports the repo could never resolve in the first place. Typical wall-clock: ~50ms.
 
 ### Gate 3: Tests
 
