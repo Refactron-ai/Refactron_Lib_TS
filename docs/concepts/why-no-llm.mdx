@@ -6,6 +6,13 @@ icon: microchip
 
 Refactron is **the deterministic gate LLM agents call before they land a change.** The agent proposes; Refactron proves. That division of labor is the whole design.
 
+<Frame caption="A probabilistic proposer, a deterministic verifier: the same repo state and diff always produce the same verdict.">
+  <img
+    src="/assets/deterministic.svg"
+    alt="A probabilistic model proposing a change, handed to Refactron's deterministic verifier, which returns the same reproducible verdict every time"
+  />
+</Frame>
+
 ## Two different jobs
 
 Writing code and _certifying that a change is safe_ are different problems, and they want different tools.
