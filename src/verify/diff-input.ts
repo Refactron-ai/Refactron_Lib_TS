@@ -23,6 +23,14 @@ function stripPrefix(p: string): string {
   return p.replace(/^[ab]\//, '');
 }
 
+/** Normalize CRLF to LF for line comparison. A CRLF base (Windows autocrlf
+ *  checkout) diffed against an LF-authored edit — or vice versa — must not
+ *  read as every-line-changed: that inflates the changed-line set into
+ *  covered territory, and an uncovered edit can then fuse to a false SAFE. */
+function normalizeEol(s: string): string {
+  return s.replace(/\r\n/g, '\n');
+}
+
 export async function editsFromUnifiedDiff(repoRoot: string, diffStr: string): Promise<FileEdit[]> {
   const patches = parsePatch(diffStr);
   const edits: FileEdit[] = [];
@@ -56,7 +64,7 @@ export async function changedLinesForEdits(
     } catch {
       base = '';
     }
-    const patch = structuredPatch(e.path, e.path, base, e.newContent);
+    const patch = structuredPatch(e.path, e.path, normalizeEol(base), normalizeEol(e.newContent));
     const lines: number[] = [];
     for (const hunk of patch.hunks) {
       let newLineNo = hunk.newStart;

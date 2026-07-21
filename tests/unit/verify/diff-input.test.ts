@@ -72,4 +72,21 @@ describe('changedLinesForEdits', () => {
     const ranges = await changedLinesForEdits(repo, edits);
     expect(ranges).toEqual([{ path: 'y.py', lines: [2] }]);
   });
+
+  it('does not inflate changed lines when the base is CRLF and the edit is LF', async () => {
+    // A CRLF checkout (Windows autocrlf) vs an LF-authored edit must not mark
+    // every line as changed — that widens the changed-line set into covered
+    // territory and can turn an uncovered edit into a false SAFE.
+    const repo = await tmpRepo({ 'w.py': 'a = 1\r\nb = 2\r\nc = 3\r\n' });
+    const edits = [{ path: 'w.py', newContent: 'a = 1\nb = 20\nc = 3\n' }];
+    const ranges = await changedLinesForEdits(repo, edits);
+    expect(ranges).toEqual([{ path: 'w.py', lines: [2] }]);
+  });
+
+  it('does not inflate changed lines when the base is LF and the edit is CRLF', async () => {
+    const repo = await tmpRepo({ 'v.py': 'a = 1\nb = 2\nc = 3\n' });
+    const edits = [{ path: 'v.py', newContent: 'a = 1\r\nb = 20\r\nc = 3\r\n' }];
+    const ranges = await changedLinesForEdits(repo, edits);
+    expect(ranges).toEqual([{ path: 'v.py', lines: [2] }]);
+  });
 });
