@@ -7,6 +7,43 @@ description: Release history for Refactron — newest first.
 Refactron follows [Semantic Versioning](https://semver.org/). The full,
 unabridged log lives in [`CHANGELOG.md`](https://github.com/Refactron-ai/Refactron_Lib_TS/blob/main/CHANGELOG.md).
 
+<Update label="Unreleased" description="on main">
+  The verification layer lands on main: verify any diff — an AI agent's, a
+  codemod's, or your own — for a `SAFE` / `UNSAFE` / `UNPROVEN` verdict, and
+  expose the same gate to agents over MCP. Not yet on npm; build from source
+  until the next release (`refactron@0.2.4` remains the migration-mode
+  transform CLI).
+
+**Added**
+
+- **`verify-diff` command** — verify an arbitrary unified diff end to end and
+  print `[SAFE|UNSAFE|UNPROVEN] <reason>`. Applies the change in an isolated
+  shadow tree, runs the syntax / imports / tests gates, and fuses changed-line
+  coverage into the verdict. Read-only — your working tree is never mutated.
+  (PR #75)
+- **MCP server with the `verify_change` tool** — a stdio server (name
+  `refactron`) an AI agent calls before it lands a change; accepts full-file
+  `edits` or a `unifiedDiff` and returns the same JSON verdict report. (PR #75)
+- **Three-way verdict fusion** — `SAFE` (gates pass and the changed lines are
+  exercised), `UNSAFE` (a gate failed), `UNPROVEN` (tests pass but the change
+  isn't proven, or coverage couldn't be measured). Coverage is Python-only via
+  `coverage.py`; a non-Python or mixed diff returns `UNPROVEN`, never a false
+  `SAFE`. (PR #75)
+- **`preflight` command** — a coverage-aware SQLAlchemy 1.x → 2.0 migration
+  safety report that classifies each `Model.query` site as safe-to-automate,
+  unproven, or needs-review; `--fail-on-unproven` gates CI. (PR #74)
+
+**Fixed**
+
+- **CRLF diffs could produce a false `SAFE`.** Changed-line derivation now
+  normalizes CRLF before the diff, so a change that only differs in line
+  endings no longer mismatches coverage and slips through as covered. (PR #75)
+- **Coverage was unavailable in CI.** `coverage.py` is now installed into the
+  same `python3` the test suite spawns, so the coverage-based verdict is
+  exercised in the CI runner instead of degrading to `UNPROVEN`. (PR #74)
+
+</Update>
+
 <Update label="0.2.4" description="June 17, 2026">
   Reliability and observability release. Five real fixes, one feature (tier
   taxonomy), one license change. No new transforms, no API breakage — every
