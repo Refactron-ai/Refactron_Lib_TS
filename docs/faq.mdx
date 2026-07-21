@@ -28,7 +28,7 @@ Yes, that's the point. Refactron ships an [MCP server](/verification/mcp-server)
 
 `verify-diff` and the MCP `verify_change` tool are **read-only**. They copy your project into a shadow tree, apply the change _there_, run the tests, and clean up. Your working tree is never mutated; landing the change is your (or your agent's) decision.
 
-[Migration mode](/transforms) is the one path that writes, and it writes only on green, atomically: either every file in the change lands or none does. See the [safety model](/concepts/safety-model#atomic-batch-write-landing).
+[Migration mode](/transforms/index) is the one path that writes, and it writes only on green, atomically: either every file in the change lands or none does. See the [safety model](/concepts/safety-model#atomic-batch-write-landing).
 
 ---
 
@@ -70,7 +70,7 @@ Each language is a full adapter: parser, gate paths, and (for coverage) a covera
 
 ## What are the transforms I keep seeing?
 
-[Migration mode](/transforms): 20 deterministic AST transforms that both _author_ a mechanical change and _verify_ it through the same gates before an atomic write. They're the demo of the verification engine on real migrations, and they're the published `refactron@0.2.4` CLI on npm (`analyze`, `run`, `document`). The verification surfaces (`verify-diff`, MCP, `preflight`) are a from-source build until the next release.
+[Migration mode](/transforms/index): 20 deterministic AST transforms that both _author_ a mechanical change and _verify_ it through the same gates before an atomic write. They're the demo of the verification engine on real migrations, and they're the published `refactron@0.2.4` CLI on npm (`analyze`, `run`, `document`). The verification surfaces (`verify-diff`, MCP, `preflight`) are a from-source build until the next release.
 
 ---
 

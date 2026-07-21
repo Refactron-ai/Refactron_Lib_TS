@@ -27,14 +27,14 @@
     "dark": "/logo/refactron-wordmark-light.svg"
   },
   "favicon": {
-    "light": "/logo/refactron-symbol-dark.svg",
-    "dark": "/logo/refactron-symbol-light.svg"
+    "light": "/logo/refactron-symbol-light.svg",
+    "dark": "/logo/refactron-symbol-dark.svg"
   },
   "navigation": {
     "groups": [
       {
         "group": "Getting Started",
-        "pages": ["overview", "quickstart"]
+        "pages": ["overview", "quickstart", "faq"]
       },
       {
         "group": "Verification",
@@ -85,7 +85,7 @@
       },
       {
         "group": "Reference",
-        "pages": ["faq", "changelog", "reference/performance", "reference/citations"]
+        "pages": ["changelog", "reference/performance", "reference/citations"]
       }
     ]
   },
