@@ -9,8 +9,9 @@ dist/
 # Dependencies
 node_modules/
 
-# Test coverage
-coverage/
+# Test coverage (vitest v8 output at repo root only — anchored so it does
+# not collide with src/analyze/coverage/ or other in-tree modules)
+/coverage/
 
 # Session data
 .refactron/
