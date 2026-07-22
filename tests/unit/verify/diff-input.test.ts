@@ -44,6 +44,150 @@ describe('editsFromUnifiedDiff', () => {
   });
 });
 
+// Unsupported operations must be REJECTED loudly, never silently dropped. A
+// silent drop of a deletion inside an otherwise-benign diff verified SAFE while
+// the applied diff ImportError'd the whole package (the B1b regression). v1 is
+// honesty-first: deletions/renames/binary are named and refused (exit 2), not
+// partially verified.
+describe('editsFromUnifiedDiff — unsupported operations are rejected loudly', () => {
+  const DELETE_ONLY =
+    'diff --git a/src/attr/_config.py b/src/attr/_config.py\n' +
+    'deleted file mode 100644\n' +
+    'index 4b25772..0000000\n' +
+    '--- a/src/attr/_config.py\n' +
+    '+++ /dev/null\n' +
+    '@@ -1,2 +0,0 @@\n' +
+    '-_run_validators = True\n' +
+    '-x = 1\n';
+
+  it('deletion-only diff → throws DiffApplyError naming the deleted file', async () => {
+    const repo = await tmpRepo({ 'src/attr/_config.py': '_run_validators = True\nx = 1\n' });
+    await expect(editsFromUnifiedDiff(repo, DELETE_ONLY)).rejects.toBeInstanceOf(DiffApplyError);
+    await expect(editsFromUnifiedDiff(repo, DELETE_ONLY)).rejects.toThrow(
+      /diff deletes src\/attr\/_config\.py; file deletions are not supported yet/,
+    );
+  });
+
+  it('THE REGRESSION: deletion mixed with a benign covered edit → throws, never SAFE', async () => {
+    // A git diff that deletes _config.py AND makes an innocuous edit elsewhere.
+    // Previously the deletion was `continue`-skipped and the edit alone verified
+    // SAFE, while `git apply` of the same diff broke every import of the package.
+    const repo = await tmpRepo({
+      'src/attr/_config.py': '_run_validators = True\nx = 1\n',
+      'src/attr/_make.py': 'a = 1\nb = 2\n',
+    });
+    const mixed =
+      DELETE_ONLY +
+      'diff --git a/src/attr/_make.py b/src/attr/_make.py\n' +
+      'index 6794464..d63752c 100644\n' +
+      '--- a/src/attr/_make.py\n' +
+      '+++ b/src/attr/_make.py\n' +
+      '@@ -1,2 +1,2 @@\n a = 1\n-b = 2\n+b = 3\n';
+    await expect(editsFromUnifiedDiff(repo, mixed)).rejects.toBeInstanceOf(DiffApplyError);
+    await expect(editsFromUnifiedDiff(repo, mixed)).rejects.toThrow(
+      /diff deletes src\/attr\/_config\.py/,
+    );
+  });
+
+  it('rename-with-edit diff → throws naming both the old and new path', async () => {
+    // A rename that also carries content edits: parsePatch models it as old!=new.
+    const repo = await tmpRepo({ 'src/attr/_config.py': 'a = 1\nb = 2\n' });
+    const renameWithEdit =
+      'diff --git a/src/attr/_config.py b/src/attr/_cfg.py\n' +
+      'similarity index 80%\n' +
+      'rename from src/attr/_config.py\n' +
+      'rename to src/attr/_cfg.py\n' +
+      'index 6794464..d63752c 100644\n' +
+      '--- a/src/attr/_config.py\n' +
+      '+++ b/src/attr/_cfg.py\n' +
+      '@@ -1,2 +1,2 @@\n a = 1\n-b = 2\n+b = 3\n';
+    await expect(editsFromUnifiedDiff(repo, renameWithEdit)).rejects.toBeInstanceOf(DiffApplyError);
+    await expect(editsFromUnifiedDiff(repo, renameWithEdit)).rejects.toThrow(
+      /diff renames src\/attr\/_config\.py to src\/attr\/_cfg\.py; renames are not supported yet/,
+    );
+  });
+
+  it('pure 100%-rename diff (parsePatch drops it) → still throws via raw scan', async () => {
+    // A 100%-similarity rename produces no hunks; the `diff` package's parsePatch
+    // drops the entry entirely. The raw-text scan for `rename from`/`rename to`
+    // is the belt-and-braces net that keeps it from vanishing into a false SAFE.
+    const repo = await tmpRepo({ 'src/attr/_config.py': 'a = 1\n' });
+    const pureRename =
+      'diff --git a/src/attr/_config.py b/src/attr/_cfg.py\n' +
+      'similarity index 100%\n' +
+      'rename from src/attr/_config.py\n' +
+      'rename to src/attr/_cfg.py\n';
+    await expect(editsFromUnifiedDiff(repo, pureRename)).rejects.toThrow(
+      /diff renames src\/attr\/_config\.py to src\/attr\/_cfg\.py/,
+    );
+  });
+
+  it('binary-only diff → distinct "nothing verifiable" message', async () => {
+    const repo = await tmpRepo({});
+    const binary =
+      'diff --git a/docs_img.png b/docs_img.png\n' +
+      'new file mode 100644\n' +
+      'index 0000000..3c3603b\n' +
+      'Binary files /dev/null and b/docs_img.png differ\n';
+    await expect(editsFromUnifiedDiff(repo, binary)).rejects.toBeInstanceOf(DiffApplyError);
+    await expect(editsFromUnifiedDiff(repo, binary)).rejects.toThrow(
+      /diff contains only binary changes; nothing verifiable/,
+    );
+  });
+
+  it('quoted-path EMPTY-file deletion + benign edit → still throws (review gap)', async () => {
+    // git quotes header paths containing spaces, and an empty-file deletion has
+    // no hunks and no `+++ /dev/null` line, so BOTH detection nets could miss
+    // it. The `deleted file mode` marker alone must be proof enough to refuse.
+    const repo = await tmpRepo({ 'my pkg/__init__.py': '', 'my pkg/calc.py': 'a = 1\nb = 2\n' });
+    const quotedEmptyDeletion =
+      'diff --git "a/my pkg/__init__.py" "b/my pkg/__init__.py"\n' +
+      'deleted file mode 100644\n' +
+      'index e69de29..0000000\n' +
+      'diff --git "a/my pkg/calc.py" "b/my pkg/calc.py"\n' +
+      'index 6794464..d63752c 100644\n' +
+      '--- "a/my pkg/calc.py"\n' +
+      '+++ "b/my pkg/calc.py"\n' +
+      '@@ -1,2 +1,2 @@\n a = 1\n-b = 2\n+b = 3\n';
+    await expect(editsFromUnifiedDiff(repo, quotedEmptyDeletion)).rejects.toBeInstanceOf(
+      DiffApplyError,
+    );
+    await expect(editsFromUnifiedDiff(repo, quotedEmptyDeletion)).rejects.toThrow(/diff deletes/);
+  });
+
+  it('copy-with-edit diff → throws naming the copy, not a rename', async () => {
+    const repo = await tmpRepo({ 'src/a.py': 'a = 1\nb = 2\n' });
+    const copyWithEdit =
+      'diff --git a/src/a.py b/src/a_copy.py\n' +
+      'similarity index 80%\n' +
+      'copy from src/a.py\n' +
+      'copy to src/a_copy.py\n' +
+      'index 6794464..d63752c 100644\n' +
+      '--- a/src/a.py\n' +
+      '+++ b/src/a_copy.py\n' +
+      '@@ -1,2 +1,2 @@\n a = 1\n-b = 2\n+b = 3\n';
+    await expect(editsFromUnifiedDiff(repo, copyWithEdit)).rejects.toThrow(
+      /diff copies src\/a\.py to src\/a_copy\.py; copies are not supported yet/,
+    );
+  });
+
+  it('binary change alongside a text edit → throws (no partial verdict)', async () => {
+    const repo = await tmpRepo({ 'src/attr/_make.py': 'a = 1\nb = 2\n' });
+    const binaryPlusEdit =
+      'diff --git a/src/attr/_make.py b/src/attr/_make.py\n' +
+      'index 6794464..d63752c 100644\n' +
+      '--- a/src/attr/_make.py\n' +
+      '+++ b/src/attr/_make.py\n' +
+      '@@ -1,2 +1,2 @@\n a = 1\n-b = 2\n+b = 3\n' +
+      'diff --git a/docs_img.png b/docs_img.png\n' +
+      'new file mode 100644\n' +
+      'index 0000000..3c3603b\n' +
+      'Binary files /dev/null and b/docs_img.png differ\n';
+    await expect(editsFromUnifiedDiff(repo, binaryPlusEdit)).rejects.toBeInstanceOf(DiffApplyError);
+    await expect(editsFromUnifiedDiff(repo, binaryPlusEdit)).rejects.toThrow(/binary changes/);
+  });
+});
+
 describe('changedLinesForEdits', () => {
   it('reports the new-file line numbers that changed', async () => {
     const repo = await tmpRepo({ 'a.py': 'a = 1\nb = 2\nc = 3\n' });

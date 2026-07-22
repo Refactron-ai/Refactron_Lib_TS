@@ -70,3 +70,41 @@ describe('fuseVerdict', () => {
     expect(r.verdict).toBe('UNSAFE');
   });
 });
+
+describe('fuseVerdict — testFilesChanged note', () => {
+  // A diff that weakens tests can otherwise ride a green verdict. We surface the
+  // changed test files as a note (not a verdict change) so a reviewer sees it.
+  it('flags changed files matching test conventions across languages', () => {
+    const changed = [
+      'src/attr/_make.py',
+      'tests/test_make.py',
+      'foo.spec.ts',
+      'pkg/bar_test.py',
+      'conftest.py',
+      'ui/widget.test.ts',
+    ];
+    const r = fuseVerdict(result(true), changed, covered);
+    expect(r.testFilesChanged).toEqual([
+      'tests/test_make.py',
+      'foo.spec.ts',
+      'pkg/bar_test.py',
+      'conftest.py',
+      'ui/widget.test.ts',
+    ]);
+  });
+
+  it('is empty when no changed file looks like a test', () => {
+    const r = fuseVerdict(result(true), ['src/attr/_make.py', 'src/attr/_config.py'], covered);
+    expect(r.testFilesChanged).toEqual([]);
+  });
+
+  it('flags tsx, js, and cjs/mjs test variants too', () => {
+    const changed = ['ui/panel.test.tsx', 'lib/util.spec.js', 'lib/util.test.mjs', 'ui/panel.tsx'];
+    const r = fuseVerdict(result(true), changed, covered);
+    expect(r.testFilesChanged).toEqual([
+      'ui/panel.test.tsx',
+      'lib/util.spec.js',
+      'lib/util.test.mjs',
+    ]);
+  });
+});

@@ -59,6 +59,16 @@ const VERDICT_COLOR: Record<string, string> = {
   UNPROVEN: '#d29922', // warning
 };
 
+// One-line advisory when a diff touches test files. Not a verdict change — a
+// heads-up that the diff could be weakening its own safety net. Returns null
+// when nothing test-shaped changed. Previews the first three paths.
+export function formatTestFilesNote(testFilesChanged: string[]): string | null {
+  if (testFilesChanged.length === 0) return null;
+  const preview = testFilesChanged.slice(0, 3).join(', ');
+  const suffix = testFilesChanged.length > 3 ? ', ...' : '';
+  return `note: this diff modifies test files (${testFilesChanged.length}): ${preview}${suffix}`;
+}
+
 export async function runVerifyDiffCommand(argv: string[]): Promise<number> {
   const authResult = await requireAuth('verify-diff');
   if (authResult !== true) return authResult;
@@ -101,6 +111,8 @@ export async function runVerifyDiffCommand(argv: string[]): Promise<number> {
     for (const u of report.coverage.uncovered) {
       process.stdout.write(`  uncovered: ${u.file}:${u.line}\n`);
     }
+    const note = formatTestFilesNote(report.testFilesChanged);
+    if (note) process.stdout.write(note + '\n');
   }
   return report.verdict === 'UNSAFE' ? 1 : 0;
 }

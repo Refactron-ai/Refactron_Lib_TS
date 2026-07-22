@@ -1,5 +1,9 @@
 import { describe, it, expect } from 'vitest';
-import { parseVerifyDiffFlags, VerifyDiffFlagError } from '../../../src/cli/verify-diff-command.js';
+import {
+  parseVerifyDiffFlags,
+  VerifyDiffFlagError,
+  formatTestFilesNote,
+} from '../../../src/cli/verify-diff-command.js';
 
 describe('parseVerifyDiffFlags', () => {
   it('defaults repoRoot to "." with no flags', () => {
@@ -33,5 +37,21 @@ describe('parseVerifyDiffFlags', () => {
   });
   it('throws on a second positional', () => {
     expect(() => parseVerifyDiffFlags(['a', 'b'])).toThrow(VerifyDiffFlagError);
+  });
+});
+
+describe('formatTestFilesNote', () => {
+  it('returns null when no test files changed', () => {
+    expect(formatTestFilesNote([])).toBeNull();
+  });
+  it('names the count and the changed test files', () => {
+    expect(formatTestFilesNote(['tests/test_make.py', 'foo.spec.ts'])).toBe(
+      'note: this diff modifies test files (2): tests/test_make.py, foo.spec.ts',
+    );
+  });
+  it('previews the first few and elides the rest', () => {
+    expect(formatTestFilesNote(['a_test.py', 'b_test.py', 'c_test.py', 'd_test.py'])).toBe(
+      'note: this diff modifies test files (4): a_test.py, b_test.py, c_test.py, ...',
+    );
   });
 });

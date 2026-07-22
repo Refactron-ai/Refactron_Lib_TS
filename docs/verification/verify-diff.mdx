@@ -91,12 +91,37 @@ Output is the verdict, its reason, and (for `UNPROVEN` by lack of coverage) the 
 
 ### Exit codes
 
-| Code | Meaning                                                                                                                                                                          |
-| ---- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `0`  | `SAFE` or `UNPROVEN`.                                                                                                                                                            |
-| `1`  | `UNSAFE`: a gate failed. A tests-gate failure prints the failing-test tail; a syntax or imports failure prints that gate's reason (the offending file or the unresolved import). |
-| `2`  | Bad input: unknown flag, missing `--diff`, or the diff didn't apply (e.g. `diff did not apply to calc.py (stale base?)`).                                                        |
-| `7`  | Not authenticated.                                                                                                                                                               |
+| Code | Meaning                                                                                                                                                                                                                                        |
+| ---- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `0`  | `SAFE` or `UNPROVEN`.                                                                                                                                                                                                                          |
+| `1`  | `UNSAFE`: a gate failed. A tests-gate failure prints the failing-test tail; a syntax or imports failure prints that gate's reason (the offending file or the unresolved import).                                                               |
+| `2`  | Bad input: unknown flag, missing `--diff`, the diff didn't apply (e.g. `diff did not apply to calc.py (stale base?)`), or the diff uses an operation verify-diff does not support yet (see [Unsupported operations](#unsupported-operations)). |
+| `7`  | Not authenticated.                                                                                                                                                                                                                             |
+
+## Unsupported operations
+
+v1 verifies content edits. A diff that deletes, renames, or copies a file, or changes a binary file, is refused with exit `2` rather than partially verified. This is deliberate: a diff that deleted a module while also making one innocuous edit once verified `SAFE`, yet applying it broke every import in the package. A partial verdict on the verifiable half must never read as a verdict on the whole diff.
+
+| Operation        | Message                                                                                  |
+| ---------------- | ---------------------------------------------------------------------------------------- |
+| File deletion    | `diff deletes <path>; file deletions are not supported yet, verify that change manually` |
+| File rename      | `diff renames <old> to <new>; renames are not supported yet`                             |
+| File copy        | `diff copies <old> to <new>; copies are not supported yet`                               |
+| Binary only      | `diff contains only binary changes; nothing verifiable`                                  |
+| Binary plus text | `diff contains binary changes alongside text edits; binary changes cannot be verified`   |
+
+Detection is belt and braces: both the parsed diff and a raw scan of the diff text are checked, so a pure rename or deletion that the diff parser drops entirely is still caught. Full deletion and rename support is planned; until then, verify those changes manually.
+
+## Test files touched
+
+When a diff changes files that look like tests (a `tests/` or `test/` path segment, `test_*.py`, `*_test.py`, `conftest.py`, `*.test.ts`, or `*.spec.ts`), the human output prints one advisory line and the JSON report carries the list under `testFilesChanged`:
+
+```text
+[SAFE] Tests pass and the changed code is covered.
+note: this diff modifies test files (1): tests/test_calc.py
+```
+
+This is a note, not a verdict change. A green verdict on a diff that also weakens its own tests is still green; the note is there so you look before you trust it.
 
 ## The JSON report
 
@@ -111,6 +136,7 @@ Output is the verdict, its reason, and (for `UNPROVEN` by lack of coverage) the 
     "tests": { "passed": true, "durationMs": 3140 }
   },
   "changedFiles": ["calc.py"],
+  "testFilesChanged": [],
   "coverage": {
     "tool": "coverage.py",
     "changedLinesCovered": false,
@@ -122,6 +148,7 @@ Output is the verdict, its reason, and (for `UNPROVEN` by lack of coverage) the 
 ```
 
 - `gates`: each gate's `passed` flag and wall-clock. A failed gate also carries a `blockingReason`.
+- `testFilesChanged`: changed files matching test conventions. A note that the diff touched tests, never a verdict input.
 - `coverage.tool`: `coverage.py` when coverage was assessed, `none` when it couldn't be (non-Python diff, or no `coverage.py` installed).
 - `missingTests`: present on `UNPROVEN`-by-coverage, a concrete hint per uncovered line.
 
