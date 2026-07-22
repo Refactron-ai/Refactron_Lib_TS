@@ -18,3 +18,8 @@ vitest
 Mintlify
 UNPROVEN
 uncovered
+repo
+repos
+repo's
+builtins
+builtin
