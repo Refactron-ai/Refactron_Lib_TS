@@ -44,4 +44,21 @@ describe('python-line-coverage reporter', () => {
     expect(result.coverageToolFound).toBe(false);
     expect(result.coveredLines.size).toBe(0);
   });
+
+  it('still reports real files when the suite executes phantom-filename code', async () => {
+    // A suite that runs exec(compile(src, "string", "exec")) makes coverage.py
+    // record a measured "file" named `string` with no source on disk. Without
+    // --ignore-errors, `coverage json` exits non-zero and writes nothing, and
+    // the reporter silently degrades to zero covered lines: every SAFE verdict
+    // on such a project (e.g. Textualize/rich) falsely reads UNPROVEN.
+    if (!pythonHasCoverage()) {
+      // eslint-disable-next-line no-console
+      console.warn('skipping: coverage.py not installed');
+      return;
+    }
+    const phantom = path.resolve(__dirname, '../fixtures/coverage-phantom');
+    const result = await reportCoverage({ projectRoot: phantom, testCmd: 'pytest -q' });
+    expect(result.coverageToolFound).toBe(true);
+    expect(result.coveredLines.has('svc.py:2')).toBe(true); // covered_function return
+  });
 });

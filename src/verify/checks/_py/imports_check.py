@@ -127,7 +127,7 @@ def main(argv):
             # parsed simply contributes an empty baseline, which errs strict.
             continue
         for top in _unresolvable(_collect_import_names(tree)):
-            out.append("UNRESOLVED\t{}\t{}".format(path, top))
+            out.append(f"UNRESOLVED\t{path}\t{top}")
 
     if out:
         sys.stdout.write("\n".join(out) + "\n")

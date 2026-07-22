@@ -76,10 +76,14 @@ export async function reportCoverage(input: CoverageReportInput): Promise<Covera
     const runArgs = ['-m', 'coverage', 'run', '--data-file', dataFile, '-m', ...testCmd.split(' ')];
     await runCmd(pythonBin, runArgs, input.projectRoot, env);
 
-    // 2) Emit JSON.
+    // 2) Emit JSON. --ignore-errors: a suite that runs exec(compile(src,
+    // "string", "exec")) leaves a measured "file" with no source on disk, and
+    // without the flag `coverage json` exits non-zero and writes NOTHING,
+    // silently zeroing coverage for every real file. Phantom entries are
+    // dropped; real files keep their data.
     await runCmd(
       pythonBin,
-      ['-m', 'coverage', 'json', '--data-file', dataFile, '-o', jsonFile],
+      ['-m', 'coverage', 'json', '--ignore-errors', '--data-file', dataFile, '-o', jsonFile],
       input.projectRoot,
       env,
     );
