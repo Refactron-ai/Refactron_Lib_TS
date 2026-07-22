@@ -15,9 +15,28 @@ export interface VerdictReport {
   verdict: Verdict;
   gates: { syntax: GateResult; imports: GateResult; tests: GateResult };
   changedFiles: string[];
+  // Subset of changedFiles matching test conventions. A note, not a verdict
+  // input: an agent that weakens tests can otherwise ride a green verdict, so we
+  // surface which test files the diff touched without changing the verdict.
+  testFilesChanged: string[];
   coverage: CoverageAssessment;
   reason: string;
   missingTests?: Array<{ file: string; hint: string }>;
+}
+
+// Changed-file paths (repo-relative, posix) that look like tests: a `tests/` or
+// `test/` path segment, or a filename matching Python/TS test conventions.
+function isTestFile(p: string): boolean {
+  const parts = p.replace(/\\/g, '/').split('/');
+  if (parts.includes('tests') || parts.includes('test')) return true;
+  const base = parts[parts.length - 1] ?? '';
+  return (
+    base === 'conftest.py' ||
+    /^test_.+\.py$/.test(base) ||
+    /_test\.py$/.test(base) ||
+    /\.test\.ts$/.test(base) ||
+    /\.spec\.ts$/.test(base)
+  );
 }
 
 // Stable substrings emitted by the tests gate (src/verify/gates/tests.ts) for
@@ -32,7 +51,12 @@ export function fuseVerdict(
   changedFiles: string[],
   cov: CoverageAssessment,
 ): VerdictReport {
-  const base = { gates: result.gates, changedFiles, coverage: cov };
+  const base = {
+    gates: result.gates,
+    changedFiles,
+    testFilesChanged: changedFiles.filter(isTestFile),
+    coverage: cov,
+  };
 
   if (!result.passed) {
     const failedGate: 'syntax' | 'imports' | 'tests' = !result.gates.syntax.passed

@@ -4,7 +4,7 @@
 // changed (for coverage fusion). Uses the `diff` package — no hand-rolled hunks.
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
-import { applyPatch, parsePatch, structuredPatch } from 'diff';
+import { applyPatch, parsePatch, structuredPatch, type ParsedDiff } from 'diff';
 
 export interface FileEdit {
   path: string; // repo-relative
@@ -23,6 +23,87 @@ function stripPrefix(p: string): string {
   return p.replace(/^[ab]\//, '');
 }
 
+// v1 verify models CONTENT edits only. Deletions, renames, and binary changes
+// are not verifiable through the shadow-tree + coverage pipeline, so they must
+// be REJECTED loudly rather than silently dropped: a diff that deletes a module
+// yet also makes one benign edit once verified SAFE while `git apply` of the
+// same diff ImportError'd the whole package. Full deletion/rename support is a
+// later feature; until then honesty beats a partial verdict.
+//
+// Detection is belt-and-braces on purpose. parsePatch models a deletion as
+// newFileName `/dev/null` and a content-carrying rename as old !== new, but it
+// DROPS a pure 100%-similarity rename (no hunks) and can elide metadata-only
+// entries entirely. So we also raw-scan the diff text for the git headers
+// `deleted file mode`, `rename from `/`rename to `, and the binary markers —
+// either source firing is enough to refuse.
+
+interface RawDiffSignals {
+  deletions: string[]; // repo-relative paths of deleted files
+  renames: Array<{ from: string; to: string }>;
+  hasBinary: boolean;
+}
+
+function scanRawDiff(diffStr: string): RawDiffSignals {
+  const deletions: string[] = [];
+  const renames: Array<{ from: string; to: string }> = [];
+  let hasBinary = false;
+  let headerOldPath: string | null = null;
+  let pendingRenameFrom: string | null = null;
+
+  for (const line of diffStr.split('\n')) {
+    const gitHeader = /^diff --git a\/(.+?) b\/(.+)$/.exec(line);
+    if (gitHeader) {
+      headerOldPath = gitHeader[1] ?? null;
+      pendingRenameFrom = null;
+      continue;
+    }
+    if (line.startsWith('deleted file mode')) {
+      if (headerOldPath) deletions.push(headerOldPath);
+      continue;
+    }
+    const renameFrom = /^rename from (.+)$/.exec(line);
+    if (renameFrom) {
+      pendingRenameFrom = renameFrom[1] ?? null;
+      continue;
+    }
+    const renameTo = /^rename to (.+)$/.exec(line);
+    if (renameTo && pendingRenameFrom) {
+      renames.push({ from: pendingRenameFrom, to: renameTo[1] ?? '' });
+      pendingRenameFrom = null;
+      continue;
+    }
+    if (line.startsWith('Binary files ') || line.startsWith('GIT binary patch')) {
+      hasBinary = true;
+    }
+  }
+  return { deletions, renames, hasBinary };
+}
+
+/** The deleted path if this diff deletes a file (parsePatch or raw), else null. */
+function findDeletion(patches: ParsedDiff[], raw: RawDiffSignals): string | null {
+  for (const p of patches) {
+    const oldRel = stripPrefix(p.oldFileName ?? '');
+    const newRel = stripPrefix(p.newFileName ?? '');
+    if (newRel === '/dev/null' && oldRel && oldRel !== '/dev/null') return oldRel;
+  }
+  return raw.deletions[0] ?? null;
+}
+
+/** The {from,to} if this diff renames a file (parsePatch or raw), else null. */
+function findRename(
+  patches: ParsedDiff[],
+  raw: RawDiffSignals,
+): { from: string; to: string } | null {
+  for (const p of patches) {
+    const oldRel = stripPrefix(p.oldFileName ?? '');
+    const newRel = stripPrefix(p.newFileName ?? '');
+    if (oldRel && newRel && oldRel !== '/dev/null' && newRel !== '/dev/null' && oldRel !== newRel) {
+      return { from: oldRel, to: newRel };
+    }
+  }
+  return raw.renames[0] ?? null;
+}
+
 /** Normalize CRLF to LF for line comparison. A CRLF base (Windows autocrlf
  *  checkout) diffed against an LF-authored edit — or vice versa — must not
  *  read as every-line-changed: that inflates the changed-line set into
@@ -33,10 +114,28 @@ function normalizeEol(s: string): string {
 
 export async function editsFromUnifiedDiff(repoRoot: string, diffStr: string): Promise<FileEdit[]> {
   const patches = parsePatch(diffStr);
+  const raw = scanRawDiff(diffStr);
+
+  // Refuse unsupported operations before building any edits, so a diff that also
+  // does one of these never verifies on the strength of its benign hunks alone.
+  const deleted = findDeletion(patches, raw);
+  if (deleted) {
+    throw new DiffApplyError(
+      `diff deletes ${deleted}; file deletions are not supported yet, verify that change manually`,
+    );
+  }
+  const renamed = findRename(patches, raw);
+  if (renamed) {
+    throw new DiffApplyError(
+      `diff renames ${renamed.from} to ${renamed.to}; renames are not supported yet`,
+    );
+  }
+
   const edits: FileEdit[] = [];
   for (const p of patches) {
     const rel = stripPrefix(p.newFileName ?? p.oldFileName ?? '');
     if (!rel || rel === '/dev/null') continue;
+    if (p.hunks.length === 0) continue; // metadata/binary-only entry: no content
     let base = '';
     try {
       base = await fs.readFile(path.join(repoRoot, rel), 'utf8');
@@ -49,6 +148,19 @@ export async function editsFromUnifiedDiff(repoRoot: string, diffStr: string): P
     }
     edits.push({ path: rel, newContent: applied });
   }
+
+  // Binary changes are unverifiable. Alone → the diff has nothing to verify;
+  // alongside text edits → still refuse, so a partial verdict on the text half
+  // never reads as a verdict on the whole diff.
+  if (raw.hasBinary) {
+    if (edits.length === 0) {
+      throw new DiffApplyError('diff contains only binary changes; nothing verifiable');
+    }
+    throw new DiffApplyError(
+      'diff contains binary changes alongside text edits; binary changes cannot be verified',
+    );
+  }
+
   return edits;
 }
 
