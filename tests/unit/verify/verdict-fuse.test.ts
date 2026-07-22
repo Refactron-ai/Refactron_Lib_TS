@@ -97,4 +97,14 @@ describe('fuseVerdict — testFilesChanged note', () => {
     const r = fuseVerdict(result(true), ['src/attr/_make.py', 'src/attr/_config.py'], covered);
     expect(r.testFilesChanged).toEqual([]);
   });
+
+  it('flags tsx, js, and cjs/mjs test variants too', () => {
+    const changed = ['ui/panel.test.tsx', 'lib/util.spec.js', 'lib/util.test.mjs', 'ui/panel.tsx'];
+    const r = fuseVerdict(result(true), changed, covered);
+    expect(r.testFilesChanged).toEqual([
+      'ui/panel.test.tsx',
+      'lib/util.spec.js',
+      'lib/util.test.mjs',
+    ]);
+  });
 });

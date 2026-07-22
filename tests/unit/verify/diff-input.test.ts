@@ -135,6 +135,42 @@ describe('editsFromUnifiedDiff — unsupported operations are rejected loudly', 
     );
   });
 
+  it('quoted-path EMPTY-file deletion + benign edit → still throws (review gap)', async () => {
+    // git quotes header paths containing spaces, and an empty-file deletion has
+    // no hunks and no `+++ /dev/null` line, so BOTH detection nets could miss
+    // it. The `deleted file mode` marker alone must be proof enough to refuse.
+    const repo = await tmpRepo({ 'my pkg/__init__.py': '', 'my pkg/calc.py': 'a = 1\nb = 2\n' });
+    const quotedEmptyDeletion =
+      'diff --git "a/my pkg/__init__.py" "b/my pkg/__init__.py"\n' +
+      'deleted file mode 100644\n' +
+      'index e69de29..0000000\n' +
+      'diff --git "a/my pkg/calc.py" "b/my pkg/calc.py"\n' +
+      'index 6794464..d63752c 100644\n' +
+      '--- "a/my pkg/calc.py"\n' +
+      '+++ "b/my pkg/calc.py"\n' +
+      '@@ -1,2 +1,2 @@\n a = 1\n-b = 2\n+b = 3\n';
+    await expect(editsFromUnifiedDiff(repo, quotedEmptyDeletion)).rejects.toBeInstanceOf(
+      DiffApplyError,
+    );
+    await expect(editsFromUnifiedDiff(repo, quotedEmptyDeletion)).rejects.toThrow(/diff deletes/);
+  });
+
+  it('copy-with-edit diff → throws naming the copy, not a rename', async () => {
+    const repo = await tmpRepo({ 'src/a.py': 'a = 1\nb = 2\n' });
+    const copyWithEdit =
+      'diff --git a/src/a.py b/src/a_copy.py\n' +
+      'similarity index 80%\n' +
+      'copy from src/a.py\n' +
+      'copy to src/a_copy.py\n' +
+      'index 6794464..d63752c 100644\n' +
+      '--- a/src/a.py\n' +
+      '+++ b/src/a_copy.py\n' +
+      '@@ -1,2 +1,2 @@\n a = 1\n-b = 2\n+b = 3\n';
+    await expect(editsFromUnifiedDiff(repo, copyWithEdit)).rejects.toThrow(
+      /diff copies src\/a\.py to src\/a_copy\.py; copies are not supported yet/,
+    );
+  });
+
   it('binary change alongside a text edit → throws (no partial verdict)', async () => {
     const repo = await tmpRepo({ 'src/attr/_make.py': 'a = 1\nb = 2\n' });
     const binaryPlusEdit =

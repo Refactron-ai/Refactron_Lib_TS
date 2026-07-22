@@ -40,25 +40,34 @@ function stripPrefix(p: string): string {
 interface RawDiffSignals {
   deletions: string[]; // repo-relative paths of deleted files
   renames: Array<{ from: string; to: string }>;
+  copies: Array<{ from: string; to: string }>;
   hasBinary: boolean;
 }
 
 function scanRawDiff(diffStr: string): RawDiffSignals {
   const deletions: string[] = [];
   const renames: Array<{ from: string; to: string }> = [];
+  const copies: Array<{ from: string; to: string }> = [];
   let hasBinary = false;
   let headerOldPath: string | null = null;
   let pendingRenameFrom: string | null = null;
+  let pendingCopyFrom: string | null = null;
 
   for (const line of diffStr.split('\n')) {
-    const gitHeader = /^diff --git a\/(.+?) b\/(.+)$/.exec(line);
+    // git quotes header paths containing spaces/tabs/non-ASCII; match both forms.
+    const gitHeader =
+      /^diff --git a\/(.+?) b\/(.+)$/.exec(line) ?? /^diff --git "a\/(.+?)" "b\/(.+)"$/.exec(line);
     if (gitHeader) {
       headerOldPath = gitHeader[1] ?? null;
       pendingRenameFrom = null;
+      pendingCopyFrom = null;
       continue;
     }
     if (line.startsWith('deleted file mode')) {
-      if (headerOldPath) deletions.push(headerOldPath);
+      // The marker alone is proof of a deletion. Never gate the refusal on
+      // having parsed the header path: an EMPTY-file deletion has no hunks and
+      // no `+++ /dev/null`, so this line may be the only signal there is.
+      deletions.push(headerOldPath ?? '(path unresolved)');
       continue;
     }
     const renameFrom = /^rename from (.+)$/.exec(line);
@@ -72,11 +81,22 @@ function scanRawDiff(diffStr: string): RawDiffSignals {
       pendingRenameFrom = null;
       continue;
     }
+    const copyFrom = /^copy from (.+)$/.exec(line);
+    if (copyFrom) {
+      pendingCopyFrom = copyFrom[1] ?? null;
+      continue;
+    }
+    const copyTo = /^copy to (.+)$/.exec(line);
+    if (copyTo && pendingCopyFrom) {
+      copies.push({ from: pendingCopyFrom, to: copyTo[1] ?? '' });
+      pendingCopyFrom = null;
+      continue;
+    }
     if (line.startsWith('Binary files ') || line.startsWith('GIT binary patch')) {
       hasBinary = true;
     }
   }
-  return { deletions, renames, hasBinary };
+  return { deletions, renames, copies, hasBinary };
 }
 
 /** The deleted path if this diff deletes a file (parsePatch or raw), else null. */
@@ -122,6 +142,14 @@ export async function editsFromUnifiedDiff(repoRoot: string, diffStr: string): P
   if (deleted) {
     throw new DiffApplyError(
       `diff deletes ${deleted}; file deletions are not supported yet, verify that change manually`,
+    );
+  }
+  // Copies first: parsePatch models a copy-with-edit as old !== new, exactly
+  // like a rename, so without this order the copy would be mislabeled.
+  const copied = raw.copies[0];
+  if (copied) {
+    throw new DiffApplyError(
+      `diff copies ${copied.from} to ${copied.to}; copies are not supported yet`,
     );
   }
   const renamed = findRename(patches, raw);

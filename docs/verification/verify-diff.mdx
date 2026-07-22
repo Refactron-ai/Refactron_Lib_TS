@@ -100,12 +100,13 @@ Output is the verdict, its reason, and (for `UNPROVEN` by lack of coverage) the 
 
 ## Unsupported operations
 
-v1 verifies content edits. A diff that deletes a file, renames a file, or changes a binary file is refused with exit `2` rather than partially verified. This is deliberate: a diff that deleted a module while also making one innocuous edit once verified `SAFE`, yet applying it broke every import in the package. A partial verdict on the verifiable half must never read as a verdict on the whole diff.
+v1 verifies content edits. A diff that deletes, renames, or copies a file, or changes a binary file, is refused with exit `2` rather than partially verified. This is deliberate: a diff that deleted a module while also making one innocuous edit once verified `SAFE`, yet applying it broke every import in the package. A partial verdict on the verifiable half must never read as a verdict on the whole diff.
 
 | Operation        | Message                                                                                  |
 | ---------------- | ---------------------------------------------------------------------------------------- |
 | File deletion    | `diff deletes <path>; file deletions are not supported yet, verify that change manually` |
 | File rename      | `diff renames <old> to <new>; renames are not supported yet`                             |
+| File copy        | `diff copies <old> to <new>; copies are not supported yet`                               |
 | Binary only      | `diff contains only binary changes; nothing verifiable`                                  |
 | Binary plus text | `diff contains binary changes alongside text edits; binary changes cannot be verified`   |
 

@@ -34,8 +34,7 @@ function isTestFile(p: string): boolean {
     base === 'conftest.py' ||
     /^test_.+\.py$/.test(base) ||
     /_test\.py$/.test(base) ||
-    /\.test\.ts$/.test(base) ||
-    /\.spec\.ts$/.test(base)
+    /\.(test|spec)\.[cm]?[jt]sx?$/.test(base)
   );
 }
 
