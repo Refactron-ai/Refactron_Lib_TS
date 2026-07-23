@@ -28,7 +28,9 @@ Refactron applies the diff in an isolated shadow tree, runs the syntax, imports,
 <Warning>
   Coverage is **Python-only** (via `coverage.py`). A TypeScript or mixed-language diff can never
   earn `SAFE` today; it returns `UNPROVEN` with the reason "coverage of the changed code could not
-  be determined." The gates still run; only the coverage half is Python-only.
+  be determined." The gates still run; only the coverage half is Python-only. Coverage also cannot
+  see code that runs only in a subprocess, so a change exercised solely through `subprocess.run` or
+  a `multiprocessing` worker reads as `UNPROVEN` until in-process subprocess coverage lands.
 </Warning>
 
 ## Install (from source)
