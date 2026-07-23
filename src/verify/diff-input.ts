@@ -24,7 +24,20 @@ type Hunk = ParsedDiff['hunks'][number];
 // `Subproject commit <sha>` (with the unified-diff +/-/space prefix). Requiring
 // the hex sha after the literal keeps prose that merely mentions the phrase
 // (e.g. a markdown line `+Subproject commit is a gitlink`) from false-matching.
+// BUT the phrase alone is NOT proof: a docs file editing `+Subproject commit
+// deadbeef...` produces this exact line too (I1). The load-bearing signal is the
+// gitlink mode 160000 on the enclosing entry (see GITLINK_MODE_RE) — only when
+// that has been seen do we trust a Subproject line as a real pointer change.
 const SUBPROJECT_RE = /^[-+ ]Subproject commit [0-9a-f]{7,40}(-dirty)?$/;
+
+// A gitlink (submodule) entry always carries mode 160000 on one of its git
+// metadata lines: `index <a>..<b> 160000` for a pointer bump, `new file mode
+// 160000` for an add, or `deleted file mode 160000` for a removal. These
+// metadata lines have no +/-/space prefix, so a diff's CONTENT can never forge
+// one — which is exactly why the mode, not the `Subproject commit` content, is
+// the trustworthy submodule signal.
+const GITLINK_MODE_RE =
+  /^index [0-9a-f]+\.\.[0-9a-f]+ 160000$|^(?:new file |deleted file |old |new )?mode 160000$/;
 
 /** Strip a leading `a/` or `b/` git prefix. */
 function stripPrefix(p: string): string {
@@ -62,6 +75,10 @@ function scanRawDiff(diffStr: string): RawDiffSignals {
   let headerOldPath: string | null = null;
   let pendingRenameFrom: string | null = null;
   let pendingCopyFrom: string | null = null;
+  // Whether the current `diff --git` entry has declared gitlink mode 160000.
+  // A `Subproject commit` content line is only trusted as a real submodule
+  // pointer change once this is set — otherwise it is ordinary file content.
+  let sawGitlinkMode = false;
 
   for (const line of diffStr.split('\n')) {
     // git quotes header paths containing spaces/tabs/non-ASCII; match both forms.
@@ -71,6 +88,7 @@ function scanRawDiff(diffStr: string): RawDiffSignals {
       headerOldPath = gitHeader[1] ?? null;
       pendingRenameFrom = null;
       pendingCopyFrom = null;
+      sawGitlinkMode = false;
       continue;
     }
     if (line.startsWith('deleted file mode')) {
@@ -102,9 +120,17 @@ function scanRawDiff(diffStr: string): RawDiffSignals {
       pendingCopyFrom = null;
       continue;
     }
-    if (SUBPROJECT_RE.test(line)) {
-      // The `Subproject commit` content lines carry the submodule's path in the
-      // enclosing `diff --git` header, captured above in headerOldPath.
+    if (GITLINK_MODE_RE.test(line)) {
+      // The enclosing entry is a gitlink (submodule). This mode line precedes the
+      // `Subproject commit` content, so the flag is already set by the time we
+      // reach it below.
+      sawGitlinkMode = true;
+      continue;
+    }
+    if (sawGitlinkMode && SUBPROJECT_RE.test(line)) {
+      // A `Subproject commit` line is only a real pointer change once we have
+      // seen the 160000 gitlink mode; otherwise it is ordinary content (I1). The
+      // submodule's path lives in the enclosing `diff --git` header (headerOldPath).
       submodules.push(headerOldPath ?? '(path unresolved)');
       continue;
     }
@@ -141,17 +167,11 @@ function findRename(
 }
 
 /** The submodule path if this diff bumps a git submodule pointer, else null.
- *  parsePatch models a submodule bump as an ordinary patch whose hunk lines are
- *  `Subproject commit <sha>`, so we scan the parsed hunks first and fall back to
- *  the raw-text scan (belt-and-braces, in case the header path was unresolved). */
-function findSubmodule(patches: ParsedDiff[], raw: RawDiffSignals): string | null {
-  for (const p of patches) {
-    for (const h of p.hunks) {
-      if (h.lines.some((l) => SUBPROJECT_RE.test(l))) {
-        return stripPrefix(p.newFileName ?? p.oldFileName ?? '') || '(path unresolved)';
-      }
-    }
-  }
+ *  Sourced ONLY from the raw scan, which pairs a `Subproject commit` content line
+ *  with the enclosing entry's 160000 gitlink mode. The former parsePatch-hunk
+ *  fallback was dropped: a parsed hunk cannot see the mode, so it false-rejected
+ *  any content line reading `Subproject commit <hex>` (e.g. a docs edit, I1). */
+function findSubmodule(raw: RawDiffSignals): string | null {
   return raw.submodules[0] ?? null;
 }
 
@@ -171,10 +191,16 @@ function isAnchorlessHunk(hunk: Hunk): boolean {
 }
 
 /** Read a repo file as a UTF-8 string, or null if it is absent (a new file).
- *  Rejects non-UTF-8 bytes: reading them as 'utf8' substitutes U+FFFD
- *  replacement characters that do NOT round-trip, so writing the "base" into the
- *  shadow would corrupt the unchanged bytes. A byte-for-byte round-trip is a
- *  sufficient validity check. */
+ *  A single fatal TextDecoder pass rejects byte sequences that are not valid
+ *  UTF-8 (e.g. a lone latin-1 0xE9): decoding those non-fatally would substitute
+ *  U+FFFD replacement characters that never round-trip, so writing the "base"
+ *  into the shadow would corrupt the unchanged bytes.
+ *
+ *  Scope, stated honestly: this gate only catches INVALID UTF-8 bytes. Content
+ *  that is byte-valid UTF-8 yet is really another encoding — e.g. UTF-16 that is
+ *  all ASCII+NUL — passes here and instead fails loudly downstream when
+ *  applyPatch cannot match its hunks. `ignoreBOM` keeps a leading BOM in the
+ *  string so the returned base still round-trips byte-for-byte. */
 async function readUtf8Base(repoRoot: string, rel: string): Promise<string | null> {
   let buf: Buffer;
   try {
@@ -182,13 +208,13 @@ async function readUtf8Base(repoRoot: string, rel: string): Promise<string | nul
   } catch {
     return null; // absent → new file
   }
-  const text = buf.toString('utf8');
-  if (!Buffer.from(text, 'utf8').equals(buf)) {
+  try {
+    return new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(buf);
+  } catch {
     throw new DiffApplyError(
       `base file ${rel} is not valid UTF-8; only UTF-8 sources are supported yet`,
     );
   }
-  return text;
 }
 
 /** Normalize CRLF to LF for line comparison. A CRLF base (Windows autocrlf
@@ -228,7 +254,7 @@ export async function editsFromUnifiedDiff(repoRoot: string, diffStr: string): P
   // A submodule pointer is a gitlink, not a file: it cannot be applied to a
   // shadow tree or covered by tests, so a bump must be refused rather than fall
   // through to a confusing "did not apply".
-  const submodule = findSubmodule(patches, raw);
+  const submodule = findSubmodule(raw);
   if (submodule) {
     throw new DiffApplyError(
       `diff changes a git submodule pointer (${submodule}); submodules are not supported yet`,
@@ -242,7 +268,15 @@ export async function editsFromUnifiedDiff(repoRoot: string, diffStr: string): P
     if (p.hunks.length === 0) continue; // metadata/binary-only entry: no content
     const base = await readUtf8Base(repoRoot, rel);
     const oldRel = stripPrefix(p.oldFileName ?? '');
-    const isNewFile = base === null || oldRel === '/dev/null';
+    // Trust the DISK, not the diff's `--- /dev/null` claim. A diff can assert
+    // "new file" on the old side while the victim path already exists: trusting
+    // that claim would let an anchorless hunk skip the guard below and splice
+    // content in at a raw line number onto the live file (C1). A file is "new"
+    // only when its base is genuinely absent. The one safe relaxation is a
+    // recreate-into-empty: the diff claims /dev/null AND the on-disk base is
+    // empty, where an all-insertion hunk cannot misapply onto drift because
+    // there is no base content to drift from.
+    const isNewFile = base === null || (oldRel === '/dev/null' && base === '');
     // Anchorless hunks (no context, no deletions) cannot validate against the
     // base, so they silently misapply onto a drifted base. Creating a new file
     // is the one legitimately context-free case; everything else must carry an

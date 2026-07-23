@@ -283,6 +283,110 @@ describe('editsFromUnifiedDiff - R3.5 submodule pointer diffs are rejected', () 
   });
 });
 
+// C1: the anchorless-hunk guard (R3.1) must key off the DISK, not the diff's
+// claim. A diff can lie: `--- /dev/null` on the old side asserts "new file", but
+// the victim path may already exist on disk. Trusting `oldRel === '/dev/null'`
+// let such a diff skip the zero-context rejection and insert at a raw line number
+// onto the live file. The base on disk is the source of truth.
+describe('editsFromUnifiedDiff - C1 a /dev/null claim cannot bypass the anchorless guard', () => {
+  it('THE BYPASS: `--- /dev/null` claimed against an EXISTING non-empty file throws zero-context', async () => {
+    // victim.py exists and is non-empty. The diff falsely claims the old side is
+    // /dev/null and carries an anchorless (all-insertion) hunk. Trusting the claim
+    // would skip the R3.1 guard and splice INJECTED in at a raw line number.
+    const repo = await tmpRepo({ 'victim.py': 'REAL-1\nREAL-2\nREAL-3\n' });
+    const spoof =
+      'diff --git a/victim.py b/victim.py\n' +
+      'new file mode 100644\n' +
+      'index 0000000..abc1234\n' +
+      '--- /dev/null\n' +
+      '+++ b/victim.py\n' +
+      '@@ -0,0 +1 @@\n' +
+      '+INJECTED\n';
+    await expect(editsFromUnifiedDiff(repo, spoof)).rejects.toBeInstanceOf(DiffApplyError);
+    await expect(editsFromUnifiedDiff(repo, spoof)).rejects.toThrow(
+      /diff has a zero-context hunk in victim\.py; regenerate the diff with context/,
+    );
+  });
+
+  it('a genuinely absent base with `--- /dev/null` still creates the new file', async () => {
+    // Regression guard: the fix trusts the disk, so a real new-file diff (base
+    // truly absent) must keep working — its all-insertion hunk is legitimate.
+    const repo = await tmpRepo({});
+    const newFile =
+      'diff --git a/fresh.py b/fresh.py\n' +
+      'new file mode 100644\n' +
+      'index 0000000..abc1234\n' +
+      '--- /dev/null\n' +
+      '+++ b/fresh.py\n' +
+      '@@ -0,0 +1,2 @@\n+a = 1\n+b = 2\n';
+    const edits = await editsFromUnifiedDiff(repo, newFile);
+    expect(edits).toEqual([{ path: 'fresh.py', newContent: 'a = 1\nb = 2\n' }]);
+  });
+});
+
+// I1: a bare `Subproject commit <hex>` content line is NOT proof of a submodule
+// change — that phrase also appears verbatim in prose (a docs file about
+// submodules). A real gitlink change ALWAYS carries mode 160000 on the enclosing
+// entry (`index <a>..<b> 160000`, `new file mode 160000`, or `deleted file mode
+// 160000`). The mode is the load-bearing signal; the content line alone is not.
+describe('editsFromUnifiedDiff - I1 submodule detection requires a 160000 gitlink mode', () => {
+  it('(a) a docs line `+Subproject commit <hex>` with NO gitlink mode is a normal edit', async () => {
+    // A docs file documenting submodules adds a prose line that happens to read
+    // `Subproject commit deadbeefcafe1234`. With a plain 100644 mode this is
+    // ordinary content and must produce a normal edit, never a submodule refusal.
+    const repo = await tmpRepo({ 'docs/submodules.md': 'Title\nintro\ntail\n' });
+    const docsEdit =
+      'diff --git a/docs/submodules.md b/docs/submodules.md\n' +
+      'index 1111111..2222222 100644\n' +
+      '--- a/docs/submodules.md\n' +
+      '+++ b/docs/submodules.md\n' +
+      '@@ -1,3 +1,4 @@\n' +
+      ' Title\n' +
+      ' intro\n' +
+      '+Subproject commit deadbeefcafe1234\n' +
+      ' tail\n';
+    const edits = await editsFromUnifiedDiff(repo, docsEdit);
+    expect(edits).toEqual([
+      {
+        path: 'docs/submodules.md',
+        newContent: 'Title\nintro\nSubproject commit deadbeefcafe1234\ntail\n',
+      },
+    ]);
+  });
+
+  it('(b) a genuine submodule bump (index <a>..<b> 160000) still throws the submodule message', async () => {
+    const repo = await tmpRepo({});
+    const bump =
+      'diff --git a/vendor/lib b/vendor/lib\n' +
+      'index 2ebfa60..fb7df87 160000\n' +
+      '--- a/vendor/lib\n' +
+      '+++ b/vendor/lib\n' +
+      '@@ -1 +1 @@\n' +
+      '-Subproject commit 2ebfa600000000000000000000000000000000ab\n' +
+      '+Subproject commit fb7df870000000000000000000000000000000ab\n';
+    await expect(editsFromUnifiedDiff(repo, bump)).rejects.toBeInstanceOf(DiffApplyError);
+    await expect(editsFromUnifiedDiff(repo, bump)).rejects.toThrow(
+      /diff changes a git submodule pointer \(vendor\/lib\); submodules are not supported yet/,
+    );
+  });
+
+  it('(c) a `new file mode 160000` submodule-add still throws the submodule message', async () => {
+    const repo = await tmpRepo({});
+    const add =
+      'diff --git a/vendor/lib b/vendor/lib\n' +
+      'new file mode 160000\n' +
+      'index 0000000..fb7df87\n' +
+      '--- /dev/null\n' +
+      '+++ b/vendor/lib\n' +
+      '@@ -0,0 +1 @@\n' +
+      '+Subproject commit fb7df870000000000000000000000000000000ab\n';
+    await expect(editsFromUnifiedDiff(repo, add)).rejects.toBeInstanceOf(DiffApplyError);
+    await expect(editsFromUnifiedDiff(repo, add)).rejects.toThrow(
+      /diff changes a git submodule pointer \(vendor\/lib\); submodules are not supported yet/,
+    );
+  });
+});
+
 // R3.6: fs.readFile(..., 'utf8') on a non-UTF-8 source yields U+FFFD replacement
 // characters that do NOT round-trip back to the original bytes, so writing the
 // "base" into the shadow would corrupt unchanged bytes. Reject non-UTF-8 bases
