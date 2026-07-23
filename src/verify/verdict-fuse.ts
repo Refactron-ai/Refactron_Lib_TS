@@ -99,7 +99,16 @@ export function fuseVerdict(
     return { verdict: 'UNSAFE', ...base, reason };
   }
 
-  if (cov.changedLinesCovered === true) {
+  // C1 (zero-false-SAFE): a flaky heal is never a clean stable green. If any
+  // test flipped on retry, no stable green was ever observed, so SAFE is
+  // disqualified and the verdict floors at UNPROVEN below. Its reason pre-empts
+  // the would-be-SAFE reason only; when coverage already forces UNPROVEN, the
+  // coverage reason stands (see the tie-break comment below).
+  const flakyReason = flakyTests
+    ? `Tests pass, but ${flakyTests.length} test(s) flipped on retry (flaky); a stable green could not be established.`
+    : null;
+
+  if (cov.changedLinesCovered === true && !flakyReason) {
     return {
       verdict: 'SAFE',
       ...base,
@@ -115,11 +124,17 @@ export function fuseVerdict(
     cov.changedLinesCovered === false &&
     cov.uncovered.length === 0 &&
     (cov.removalOnlyFiles?.length ?? 0) > 0;
-  const reason = removalOnly
+  const coverageReason = removalOnly
     ? 'Tests pass. The change only removes code; there are no added lines for coverage to attest.'
     : cov.changedLinesCovered === 'unknown'
       ? 'Tests pass, but coverage of the changed code could not be determined.'
       : 'Tests pass, but the changed code is not exercised by any test.';
+  // Tie-break when both a flaky heal and a coverage shortfall could explain the
+  // UNPROVEN: the flaky reason wins ONLY when coverage would otherwise have said
+  // SAFE (changedLinesCovered === true). When coverage already forces UNPROVEN
+  // ('unknown' or false), keep the coverage reason. flakyTests rides on `base`
+  // in every branch, so the report always carries the suspects regardless.
+  const reason = flakyReason && cov.changedLinesCovered === true ? flakyReason : coverageReason;
   const missingTests = cov.uncovered.map((u) => ({
     file: u.file,
     hint: `add a test exercising ${u.file}:${u.line}`,

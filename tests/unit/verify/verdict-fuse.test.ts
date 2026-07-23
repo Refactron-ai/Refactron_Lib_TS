@@ -83,9 +83,42 @@ describe('fuseVerdict flakyTests surface', () => {
     } as VerificationResult;
   }
 
-  it('lifts tests-gate flakySuspects onto report.flakyTests, verdict stays non-UNSAFE', () => {
+  it('covered + flaky → UNPROVEN (SAFE disqualified), flaky reason, suspects surfaced', () => {
+    // C1: a flaky heal is never a clean stable green. Even with the changed
+    // lines covered — the only path that could otherwise reach SAFE — a test
+    // that flipped on retry floors the verdict at UNPROVEN. Zero-false-SAFE.
     const r = fuseVerdict(passingWithFlaky(['test_flaky.py::test_flaky']), ['a.py'], covered);
-    expect(r.verdict).not.toBe('UNSAFE');
+    expect(r.verdict).toBe('UNPROVEN');
+    expect(r.reason).toBe(
+      'Tests pass, but 1 test(s) flipped on retry (flaky); a stable green could not be established.',
+    );
+    expect(r.flakyTests).toEqual(['test_flaky.py::test_flaky']);
+  });
+
+  it('covered + multiple flaky → count reflected in the flaky reason', () => {
+    const r = fuseVerdict(passingWithFlaky(['a::x', 'b::y']), ['a.py'], covered);
+    expect(r.verdict).toBe('UNPROVEN');
+    expect(r.reason).toBe(
+      'Tests pass, but 2 test(s) flipped on retry (flaky); a stable green could not be established.',
+    );
+  });
+
+  it('unknown coverage + flaky → UNPROVEN, keeps the coverage reason, still carries flaky', () => {
+    // Coverage already forces UNPROVEN, so the coverage reason wins the tie; the
+    // flaky reason only pre-empts a would-be SAFE. Suspects still surface.
+    const r = fuseVerdict(passingWithFlaky(['test_flaky.py::test_flaky']), ['a.ts'], unknown);
+    expect(r.verdict).toBe('UNPROVEN');
+    expect(r.reason).toMatch(/coverage of the changed code could not be determined/);
+    expect(r.reason).not.toMatch(/flipped on retry/);
+    expect(r.flakyTests).toEqual(['test_flaky.py::test_flaky']);
+  });
+
+  it('uncovered + flaky → UNPROVEN, keeps the coverage reason + missingTests, carries flaky', () => {
+    const r = fuseVerdict(passingWithFlaky(['test_flaky.py::test_flaky']), ['a.py'], uncovered);
+    expect(r.verdict).toBe('UNPROVEN');
+    expect(r.reason).toMatch(/not exercised/);
+    expect(r.reason).not.toMatch(/flipped on retry/);
+    expect(r.missingTests?.[0]?.file).toBe('a.py');
     expect(r.flakyTests).toEqual(['test_flaky.py::test_flaky']);
   });
 
