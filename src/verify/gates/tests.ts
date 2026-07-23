@@ -4,7 +4,7 @@ import * as path from 'node:path';
 import type { GateResult } from '../../contracts.js';
 import type { CheckContext } from '../types.js';
 import { detectRunner } from '../runners/detect.js';
-import { runRunner } from '../runners/run.js';
+import { runRunner, type RunResult } from '../runners/run.js';
 import { summarizeVitestFailures } from '../summarize-vitest.js';
 import { extractFailureIds } from '../failure-ids.js';
 
@@ -101,8 +101,8 @@ export async function testsGate(
   }
 
   // The after-run failed. Reaching here means the baseline was green (or
-  // skipped), so its failure set is empty and every after-failure id is a NEW
-  // failure introduced relative to baseline.
+  // skipped), so every after-failure id is a NEW failure relative to baseline.
+  // Empty by construction: the baseline is proven green before the delta path runs.
   const baselineFailures = new Set<string>();
   const afterFailures = extractFailureIds(after.stdout, after.stderr);
   const newFailures = [...afterFailures].filter((id) => !baselineFailures.has(id));
@@ -118,8 +118,22 @@ export async function testsGate(
     };
   }
 
-  // New failures exist: rerun the SAME shadow once to shake out flakes.
-  const retry = await runRunner({ ...runner, cwd: ctx.shadowRoot }, { retries: 0 });
+  // New failures exist: rerun once on a FRESH shadow tree to shake out flakes.
+  // Reusing ctx.shadowRoot (the already-run tree) would let a regression that
+  // heals via first-run state mutation — an idempotency break that writes files
+  // or DB state INTO the tree — masquerade as a flake: the second run would see
+  // the mutated tree and pass. A genuine timing/race flake heals on a pristine
+  // tree; a state-dependent heal fails again on the fresh tree and correctly
+  // stays a gate failure with the failing tail. The gate already has projectRoot
+  // and ctx.changes, so the fresh tree is built exactly like the engine's.
+  const { createShadowTree } = await import('../shadow-tree.js');
+  const freshHandle = await createShadowTree(projectRoot, ctx.changes);
+  let retry: RunResult;
+  try {
+    retry = await runRunner({ ...runner, cwd: freshHandle.path }, { retries: 0 });
+  } finally {
+    await freshHandle.cleanup();
+  }
 
   // The retry is authoritative. Because the baseline is green here, ANY red on
   // the retry is a new failure that survived the rerun: a genuine regression,
