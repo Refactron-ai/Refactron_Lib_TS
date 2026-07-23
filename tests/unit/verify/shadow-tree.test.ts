@@ -35,7 +35,7 @@ describe('createShadowTree', () => {
     expect(await fs.readFile(path.join(src, 'b.py'), 'utf8')).toBe('print(2)\n');
   });
 
-  it('excludes build output (.git / dist) but symlinks dependency dirs', async () => {
+  it('excludes build caches (.git / __pycache__ / dist) but symlinks dependency dirs', async () => {
     const src = await fs.mkdtemp(path.join(os.tmpdir(), 'st-skip-'));
     // dependency-style dir — should be SYMLINKED, not skipped
     await fs.mkdir(path.join(src, 'node_modules', 'x'), { recursive: true });
@@ -43,6 +43,9 @@ describe('createShadowTree', () => {
     // build-output dir, should be skipped entirely
     await fs.mkdir(path.join(src, 'dist'), { recursive: true });
     await fs.writeFile(path.join(src, 'dist', 'a.js'), 'bin');
+    // bytecode-cache dir, should be skipped entirely (blanket-skipped)
+    await fs.mkdir(path.join(src, '__pycache__'), { recursive: true });
+    await fs.writeFile(path.join(src, '__pycache__', 'a.pyc'), 'bin');
     await fs.writeFile(path.join(src, 'a.py'), 'print(1)\n');
 
     const handle = await createShadowTree(src, []);
@@ -51,6 +54,8 @@ describe('createShadowTree', () => {
     expect(await fs.readFile(path.join(handle.path, 'a.py'), 'utf8')).toBe('print(1)\n');
     // The build-output dir is skipped entirely.
     await expect(fs.access(path.join(handle.path, 'dist'))).rejects.toThrow();
+    // The bytecode-cache dir is skipped entirely.
+    await expect(fs.access(path.join(handle.path, '__pycache__'))).rejects.toThrow();
     // node_modules is reachable via the symlink — the test runner needs it.
     const pkgViaShadow = await fs.readFile(
       path.join(handle.path, 'node_modules', 'x', 'pkg.js'),
@@ -70,19 +75,19 @@ describe('createShadowTree', () => {
     await expect(fs.access(handle.path)).rejects.toThrow();
   });
 
-  // R3.2: Python validates a .pyc against its source's mtime (1s granularity) +
-  // size. An overlaid changed .py of identical byte length written within the
-  // same mtime second as the original can validate a STALE .pyc and execute old
-  // bytecode in the shadow, a false SAFE. For every overlaid change we drop the
-  // sibling __pycache__ in the shadow so Python must recompile from the new
-  // source, while unrelated bytecode (whose source is unchanged) is kept.
-  it('drops the sibling __pycache__ of a changed file but keeps unrelated bytecode', async () => {
+  // R3.2 (founder-adopted): __pycache__ is blanket-skipped, never copied into the
+  // shadow. Blanket-skip makes stale-bytecode false SAFEs structurally impossible
+  // (Python cannot validate a .pyc that isn't there) and avoids ENOENT races from
+  // hardlinking the most volatile directory in a Python repo. This lock asserts
+  // the structural invariant: NO __pycache__ survives anywhere in the shadow, for
+  // both a changed dir and an unchanged one.
+  it('never carries __pycache__ into the shadow, for changed and unchanged dirs alike', async () => {
     const src = await fs.mkdtemp(path.join(os.tmpdir(), 'st-pyc-'));
-    // A changed file and its (soon-to-be-stale) sibling bytecode.
+    // A CHANGED file with a populated sibling __pycache__.
     await fs.mkdir(path.join(src, 'pkg', '__pycache__'), { recursive: true });
     await fs.writeFile(path.join(src, 'pkg', 'mod.py'), 'x = 1\n');
     await fs.writeFile(path.join(src, 'pkg', '__pycache__', 'mod.cpython-311.pyc'), 'STALE');
-    // An unrelated dir whose source is untouched, so its bytecode stays valid.
+    // An UNCHANGED dir with a populated __pycache__.
     await fs.mkdir(path.join(src, 'other', '__pycache__'), { recursive: true });
     await fs.writeFile(path.join(src, 'other', 'thing.py'), 'y = 1\n');
     await fs.writeFile(path.join(src, 'other', '__pycache__', 'thing.cpython-311.pyc'), 'FRESH');
@@ -98,20 +103,30 @@ describe('createShadowTree', () => {
     const handle = await createShadowTree(src, changes);
     cleanups.push(handle.cleanup);
 
-    // The changed file's sibling bytecode is gone in the shadow.
+    // Structural immunity: no __pycache__ dir survives ANYWHERE in the shadow.
+    expect(await findDirsNamed(handle.path, '__pycache__')).toEqual([]);
+    // Named-path spot checks for both the changed and unchanged trees.
     await expect(fs.access(path.join(handle.path, 'pkg', '__pycache__'))).rejects.toThrow();
-    // Unrelated bytecode survives; recompiling it would be wasted work.
-    expect(
-      await fs.readFile(
-        path.join(handle.path, 'other', '__pycache__', 'thing.cpython-311.pyc'),
-        'utf8',
-      ),
-    ).toBe('FRESH');
-    // The overlaid change is in place.
+    await expect(fs.access(path.join(handle.path, 'other', '__pycache__'))).rejects.toThrow();
+    // The overlaid change is still in place, and unchanged source is mirrored.
     expect(await fs.readFile(path.join(handle.path, 'pkg', 'mod.py'), 'utf8')).toBe('x = 2\n');
-    // The SOURCE bytecode is never touched; pruning is shadow-only.
+    expect(await fs.readFile(path.join(handle.path, 'other', 'thing.py'), 'utf8')).toBe('y = 1\n');
+    // The SOURCE bytecode is never touched; skipping is copy-time only.
     expect(
       await fs.readFile(path.join(src, 'pkg', '__pycache__', 'mod.cpython-311.pyc'), 'utf8'),
     ).toBe('STALE');
   });
 });
+
+/** Recursively collect every directory named `name` under `root`. */
+async function findDirsNamed(root: string, name: string): Promise<string[]> {
+  const out: string[] = [];
+  const entries = await fs.readdir(root, { withFileTypes: true });
+  for (const entry of entries) {
+    if (!entry.isDirectory()) continue;
+    const full = path.join(root, entry.name);
+    if (entry.name === name) out.push(full);
+    out.push(...(await findDirsNamed(full, name)));
+  }
+  return out;
+}
