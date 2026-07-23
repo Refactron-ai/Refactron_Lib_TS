@@ -1,4 +1,6 @@
 import { describe, it, expect } from 'vitest';
+import * as fs from 'node:fs/promises';
+import * as os from 'node:os';
 import * as path from 'node:path';
 import { execSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
@@ -40,6 +42,32 @@ describe('python-line-coverage reporter', () => {
       projectRoot: FIXTURE,
       testCmd: 'pytest -q',
       _probeOverride: false, // injected for test isolation
+    });
+    expect(result.coverageToolFound).toBe(false);
+    expect(result.coveredLines.size).toBe(0);
+  });
+
+  it('reports toolFound=false when import succeeds but coverage cannot run', async () => {
+    // The namespace-package ghost: a directory literally named `coverage/` on
+    // sys.path (e.g. a vitest/jest HTML coverage OUTPUT dir in the cwd) makes
+    // `python3 -c "import coverage"` succeed with coverage.__file__ = None,
+    // while `python3 -m coverage run` fails (no __main__ in a data dir). The
+    // probe must therefore test module EXECUTION, not importability. Simulate
+    // with a shim python that accepts `-c import coverage` but fails `-m
+    // coverage`: the reporter must report the tool as absent, not silently
+    // return empty coverage under toolFound=true.
+    const shimDir = await fs.mkdtemp(path.join(os.tmpdir(), 'cov-shim-'));
+    const shim = path.join(shimDir, 'python-ghost');
+    await fs.writeFile(
+      shim,
+      '#!/bin/sh\ncase "$*" in *"-m coverage"*) exit 1;; *) exit 0;; esac\n',
+      { mode: 0o755 },
+    );
+    await fs.writeFile(path.join(shimDir, 'python-ghost.bat'), '@echo off\r\nexit /b 1\r\n');
+    const result = await reportCoverage({
+      projectRoot: FIXTURE,
+      testCmd: 'pytest -q',
+      pythonBin: shim,
     });
     expect(result.coverageToolFound).toBe(false);
     expect(result.coveredLines.size).toBe(0);
