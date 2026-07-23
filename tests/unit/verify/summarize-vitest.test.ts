@@ -41,6 +41,24 @@ describe('summarizeVitestFailures', () => {
     expect(r.suiteSummary).toBeNull();
   });
 
+  it('matches spec-style and .mts/.cts/.mjs/.cjs FAIL lines, not just .test.[tj]sx', () => {
+    // The flaky delta keys off parsed failure ids; a repo using .spec.mts (or the
+    // other module-extension variants verdict-fuse.isTestFile recognizes) must not
+    // silently yield an empty failure set and no-op the whole flaky feature.
+    const stdout = [
+      ' FAIL  tests/unit/foo.spec.mts > my failing spec',
+      'AssertionError: expected 1 to equal 2',
+      ' FAIL  tests/unit/bar.test.cjs > another one',
+      'Error: boom',
+      ' Test Files  2 failed (2)',
+    ].join('\n');
+    const r = summarizeVitestFailures(stdout);
+    expect(r.failures).toHaveLength(2);
+    expect(r.failures[0]?.file).toBe('tests/unit/foo.spec.mts');
+    expect(r.failures[0]?.testName).toBe('my failing spec');
+    expect(r.failures[1]?.file).toBe('tests/unit/bar.test.cjs');
+  });
+
   it('caps message at 10 lines per failure', () => {
     const lines = [' FAIL  tests/unit/x.test.ts > big'];
     for (let i = 0; i < 25; i++) lines.push(`context-line-${i}`);
