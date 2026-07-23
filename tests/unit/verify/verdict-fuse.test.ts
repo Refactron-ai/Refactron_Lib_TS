@@ -98,6 +98,37 @@ describe('fuseVerdict — testFilesChanged note', () => {
     expect(r.testFilesChanged).toEqual([]);
   });
 
+  it('removal-only change → UNPROVEN with a removal-specific reason, no missingTests', () => {
+    // A diff that only deletes lines has no added lines for coverage to attest.
+    // The old output was a bare "not exercised by any test" with an empty
+    // uncovered list, which reads as a coverage miss rather than what it is.
+    const removalOnly: CoverageAssessment = {
+      tool: 'coverage.py',
+      changedLinesCovered: false,
+      uncovered: [],
+      removalOnlyFiles: ['src/click/globals.py'],
+    };
+    const r = fuseVerdict(result(true), ['src/click/globals.py'], removalOnly);
+    expect(r.verdict).toBe('UNPROVEN');
+    expect(r.reason).toMatch(/only removes code/);
+    expect(r.reason).not.toMatch(/not exercised/);
+    expect(r.missingTests).toBeUndefined();
+    expect(r.coverage.removalOnlyFiles).toEqual(['src/click/globals.py']);
+  });
+
+  it('mixed removal-only + uncovered additions keeps the coverage reason', () => {
+    const mixed: CoverageAssessment = {
+      tool: 'coverage.py',
+      changedLinesCovered: false,
+      uncovered: [{ file: 'b.py', line: 3 }],
+      removalOnlyFiles: ['a.py'],
+    };
+    const r = fuseVerdict(result(true), ['a.py', 'b.py'], mixed);
+    expect(r.verdict).toBe('UNPROVEN');
+    expect(r.reason).toMatch(/not exercised/);
+    expect(r.missingTests).toEqual([{ file: 'b.py', hint: 'add a test exercising b.py:3' }]);
+  });
+
   it('flags tsx, js, and cjs/mjs test variants too', () => {
     const changed = ['ui/panel.test.tsx', 'lib/util.spec.js', 'lib/util.test.mjs', 'ui/panel.tsx'];
     const r = fuseVerdict(result(true), changed, covered);

@@ -116,10 +116,15 @@ async function assessCoverage(
       const rel = normalizePath(r.path);
       return r.lines.some((line) => report.coveredLines.has(`${rel}:${line}`));
     });
+    // A removal-only file has no added lines, so it can never satisfy the
+    // heuristic above; report it distinctly so the verdict reason can say
+    // "nothing to attest" instead of implying a coverage miss.
+    const removalOnlyFiles = ranges.filter((r) => r.lines.length === 0).map((r) => r.path);
     return {
       tool: 'coverage.py',
       changedLinesCovered,
       uncovered: changedLinesCovered ? [] : uncovered,
+      ...(removalOnlyFiles.length > 0 ? { removalOnlyFiles } : {}),
     };
   } finally {
     await shadow.cleanup();

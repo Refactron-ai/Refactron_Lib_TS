@@ -9,6 +9,10 @@ export interface CoverageAssessment {
   tool: 'coverage.py' | 'none';
   changedLinesCovered: boolean | 'unknown';
   uncovered: Array<{ file: string; line: number }>;
+  // Changed files whose edit only REMOVES lines: there are no added lines for
+  // coverage to attest, which is a different situation from "the added code is
+  // untested" and gets its own reason string.
+  removalOnlyFiles?: string[];
 }
 
 export interface VerdictReport {
@@ -88,8 +92,17 @@ export function fuseVerdict(
     };
   }
 
-  const reason =
-    cov.changedLinesCovered === 'unknown'
+  // Pure-removal case: every changed file only deletes lines, so there is
+  // nothing new for coverage to attest. Conservative UNPROVEN stands (removing
+  // uncovered behavior would go unnoticed by a green suite), but the reason
+  // must say what actually happened instead of implying a coverage miss.
+  const removalOnly =
+    cov.changedLinesCovered === false &&
+    cov.uncovered.length === 0 &&
+    (cov.removalOnlyFiles?.length ?? 0) > 0;
+  const reason = removalOnly
+    ? 'Tests pass. The change only removes code; there are no added lines for coverage to attest.'
+    : cov.changedLinesCovered === 'unknown'
       ? 'Tests pass, but coverage of the changed code could not be determined.'
       : 'Tests pass, but the changed code is not exercised by any test.';
   const missingTests = cov.uncovered.map((u) => ({
