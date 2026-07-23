@@ -6,11 +6,17 @@ import type { ShadowTreeHandle } from './types.js';
 
 // Dirs we never copy/walk into the shadow tree. Build outputs, caches, and
 // VCS state are pure noise. Source dirs to mutate are NOT here.
+//
+// `__pycache__` is deliberately NOT skipped: hardlinking valid bytecode lets the
+// shadow's test run skip recompiling unchanged modules. It is safe because an
+// unchanged .py is hardlinked (same inode → same mtime/size), so its .pyc stays
+// valid. For CHANGED files we prune the sibling __pycache__ after overlaying
+// (see createShadowTree) so Python never validates a stale .pyc against the new
+// source. `.pytest_cache` stays skipped; that IS pure noise.
 const SKIP_DIRS = new Set([
   '.git',
   'dist',
   'build',
-  '__pycache__',
   '.pytest_cache',
   '.refactron',
   'coverage',
@@ -34,6 +40,9 @@ export async function createShadowTree(
 
   await copyTree(sourceRoot, dest, changedPaths);
 
+  // Track which shadow __pycache__ dirs we have already pruned so multiple
+  // changes in the same directory prune it once.
+  const prunedPycache = new Set<string>();
   for (const change of changes) {
     const rel = path.relative(sourceRoot, change.path);
     if (rel.startsWith('..')) {
@@ -42,6 +51,19 @@ export async function createShadowTree(
     const target = path.join(dest, rel);
     await fs.mkdir(path.dirname(target), { recursive: true });
     await fs.writeFile(target, change.newContent, 'utf8');
+
+    // R3.2: Python validates a .pyc by the source's mtime (1s granularity) +
+    // size. Overlaying a changed .py of identical byte length within the same
+    // mtime second as the original can validate a STALE .pyc and execute old
+    // bytecode, a false SAFE. Drop the changed file's sibling __pycache__ in
+    // the SHADOW so Python must recompile from the new source. Shadow-only:
+    // unlinking a hardlinked .pyc leaves the source inode intact, so the source
+    // tree's bytecode is never touched.
+    const pycacheDir = path.join(path.dirname(target), '__pycache__');
+    if (!prunedPycache.has(pycacheDir)) {
+      prunedPycache.add(pycacheDir);
+      await fs.rm(pycacheDir, { recursive: true, force: true });
+    }
   }
 
   return {
