@@ -69,6 +69,16 @@ export function formatTestFilesNote(testFilesChanged: string[]): string | null {
   return `note: this diff modifies test files (${testFilesChanged.length}): ${preview}${suffix}`;
 }
 
+// One-line advisory when tests failed once then passed on the gate's same-shadow
+// retry. Those were treated as flaky (not the diff's fault) and did not change
+// the verdict; the note keeps that decision visible. Returns null when none.
+export function formatFlakyNote(flakyTests: string[]): string | null {
+  if (flakyTests.length === 0) return null;
+  const preview = flakyTests.slice(0, 3).join(', ');
+  const suffix = flakyTests.length > 3 ? ', ...' : '';
+  return `note: ${flakyTests.length} test(s) flipped on retry and were treated as flaky: ${preview}${suffix}`;
+}
+
 export async function runVerifyDiffCommand(argv: string[]): Promise<number> {
   const authResult = await requireAuth('verify-diff');
   if (authResult !== true) return authResult;
@@ -113,6 +123,8 @@ export async function runVerifyDiffCommand(argv: string[]): Promise<number> {
     }
     const note = formatTestFilesNote(report.testFilesChanged);
     if (note) process.stdout.write(note + '\n');
+    const flakyNote = formatFlakyNote(report.flakyTests ?? []);
+    if (flakyNote) process.stdout.write(flakyNote + '\n');
   }
   return report.verdict === 'UNSAFE' ? 1 : 0;
 }

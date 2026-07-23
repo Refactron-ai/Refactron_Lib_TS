@@ -1,5 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { execSync } from 'node:child_process';
+import * as fs from 'node:fs/promises';
+import * as os from 'node:os';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { verifyDiff } from '../../src/verify/verify-diff.js';
@@ -15,6 +17,33 @@ function pythonHasCoverage(): boolean {
   } catch {
     return false;
   }
+}
+
+// A pytest project with one deterministically flaky test (fails once per tree
+// via a cwd-relative marker, then passes) plus a source file the diff edits
+// harmlessly. Exercises the full verifyDiff pipeline end to end.
+async function flakyFixture(): Promise<string> {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'vd-flaky-'));
+  await fs.writeFile(
+    path.join(root, 'pyproject.toml'),
+    '[tool.pytest.ini_options]\ntestpaths = ["."]\npythonpath = ["."]\n',
+  );
+  await fs.writeFile(path.join(root, 'lib.py'), 'def add(a, b):\n    return a + b\n');
+  await fs.writeFile(
+    path.join(root, 'test_flaky.py'),
+    [
+      'import os',
+      '',
+      'def test_flaky():',
+      '    marker = os.path.join(os.getcwd(), ".flake_marker")',
+      '    if not os.path.exists(marker):',
+      '        open(marker, "w").close()',
+      '        raise AssertionError("flaky: first run in this tree fails")',
+      '    assert True',
+      '',
+    ].join('\n'),
+  );
+  return root;
 }
 
 describe('verifyDiff (python three-way, real coverage)', () => {
@@ -84,5 +113,19 @@ describe('verifyDiff (python three-way, real coverage)', () => {
     });
     expect(report.verdict).toBe('UNPROVEN');
     expect(report.coverage.uncovered.length).toBeGreaterThanOrEqual(1);
+  }, 180_000);
+
+  it('a flaky test that heals on retry does NOT produce a false UNSAFE; flakyTests carries it', async () => {
+    if (!pythonHasCoverage()) return;
+    const root = await flakyFixture();
+    const report = await verifyDiff({
+      repoRoot: root,
+      edits: [{ path: 'lib.py', newContent: 'def add(a, b):\n    return a + b  # reordered\n' }],
+      testCmd: TEST_CMD,
+    });
+    // The only after-run failure is the flake, which vanishes on the same-shadow
+    // retry: the diff must not be blamed (no false UNSAFE), and the id surfaces.
+    expect(report.verdict).not.toBe('UNSAFE');
+    expect(report.flakyTests).toContain('test_flaky.py::test_flaky');
   }, 180_000);
 });

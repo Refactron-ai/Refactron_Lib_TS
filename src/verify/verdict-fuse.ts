@@ -26,6 +26,19 @@ export interface VerdictReport {
   coverage: CoverageAssessment;
   reason: string;
   missingTests?: Array<{ file: string; hint: string }>;
+  // Tests that failed once in the changed shadow then passed on a same-shadow
+  // retry. The tests gate treated them as flaky rather than blaming the diff; we
+  // surface them so the human/JSON report can note them. Not a verdict input.
+  flakyTests?: string[];
+}
+
+// The tests gate carries flakySuspects on the SAME object it returns as the
+// tests GateResult (a verify-land extension; GateResult itself is locked). Read
+// it back structurally here without importing from the locked contract or
+// widening it.
+function flakySuspectsOf(tests: GateResult): string[] | undefined {
+  const suspects = (tests as { flakySuspects?: unknown }).flakySuspects;
+  return Array.isArray(suspects) && suspects.length > 0 ? (suspects as string[]) : undefined;
 }
 
 // Changed-file paths (repo-relative, posix) that look like tests: a `tests/` or
@@ -54,11 +67,13 @@ export function fuseVerdict(
   changedFiles: string[],
   cov: CoverageAssessment,
 ): VerdictReport {
+  const flakyTests = flakySuspectsOf(result.gates.tests);
   const base = {
     gates: result.gates,
     changedFiles,
     testFilesChanged: changedFiles.filter(isTestFile),
     coverage: cov,
+    ...(flakyTests ? { flakyTests } : {}),
   };
 
   if (!result.passed) {
