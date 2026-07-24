@@ -53,7 +53,7 @@ A gate rejected the change:
 - **Imports**: an import in the changed content doesn't resolve, or a previously-resolving import now fails.
 - **Tests**: your suite went red on the change.
 
-`UNSAFE` exits `1`, and a failing test gate prints the test output so you can see what broke. This is a real signal that the change is wrong, not merely unproven.
+`UNSAFE` exits `1`, and a failing test gate prints the test output so you can see what broke. This is a real signal that the change is wrong, not merely `UNPROVEN`.
 
 <Note>
   One case looks like a test failure but isn't a real one: if your suite is **already red before**

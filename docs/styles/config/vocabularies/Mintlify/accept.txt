@@ -23,3 +23,6 @@ repos
 repo's
 builtins
 builtin
+bool
+subprocess
+subprocesses
