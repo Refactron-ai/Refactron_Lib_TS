@@ -4,8 +4,9 @@ import * as path from 'node:path';
 import type { GateResult } from '../../contracts.js';
 import type { CheckContext } from '../types.js';
 import { detectRunner } from '../runners/detect.js';
-import { runRunner } from '../runners/run.js';
+import { runRunner, type RunResult } from '../runners/run.js';
 import { summarizeVitestFailures } from '../summarize-vitest.js';
+import { extractFailureIds } from '../failure-ids.js';
 
 const BASELINE_RETRIES = 2; // total attempts = retries + 1 = 3
 const TAIL_BYTES = 4000;
@@ -14,6 +15,16 @@ export interface TestsGateOptions {
   testCmd?: string;
   timeoutMs?: number;
   skipBaseline?: boolean;
+}
+
+// The tests gate returns a GateResult plus, optionally, the ids of tests that
+// failed once and healed on retry. `flakySuspects` is a verify-land extension:
+// GateResult lives in the LOCKED contracts surface, so we widen the RETURN type
+// here instead of touching contracts.ts. The extra field rides on the same
+// object the verifier stores in `VerificationResult.gates.tests`, where the
+// verdict fuser reads it back structurally without any contract change.
+export interface TestsGateResult extends GateResult {
+  flakySuspects?: string[];
 }
 
 export function baselineFailReason(stdout: string, stderr: string): string {
@@ -43,7 +54,7 @@ export async function testsGate(
   ctx: CheckContext,
   projectRoot: string,
   opts: TestsGateOptions,
-): Promise<GateResult> {
+): Promise<TestsGateResult> {
   const t0 = Date.now();
   const detectOpts: { override?: string; timeoutMs?: number } = {};
   if (opts.testCmd !== undefined) detectOpts.override = opts.testCmd;
@@ -57,7 +68,11 @@ export async function testsGate(
     };
   }
   if (!opts.skipBaseline) {
-    // Baseline: run against an unmodified shadow tree.
+    // Baseline: run against an unmodified shadow tree. A red baseline is the
+    // repo's pre-existing state, not this diff's fault, so it short-circuits
+    // here with a distinct reason (fused to UNPROVEN, never UNSAFE). This
+    // contract is unchanged by the flake-aware delta below, which only runs
+    // once the baseline is proven green (empty failure set).
     const baselineTree = await fs.mkdtemp(path.join(os.tmpdir(), 'refactron-baseline-'));
     try {
       const { createShadowTree } = await import('../shadow-tree.js');
@@ -75,13 +90,65 @@ export async function testsGate(
       await fs.rm(baselineTree, { recursive: true, force: true });
     }
   }
-  const mutated = await runRunner({ ...runner, cwd: ctx.shadowRoot }, { retries: 0 });
-  if (mutated.exitCode !== 0) {
+
+  const done = (): number => Date.now() - t0;
+
+  const after = await runRunner({ ...runner, cwd: ctx.shadowRoot }, { retries: 0 });
+  // Fast path: a green after-run needs no delta and no retry (the retry only
+  // doubles wall time when a new failure actually appears).
+  if (after.exitCode === 0) {
+    return { passed: true, durationMs: done() };
+  }
+
+  // The after-run failed. Reaching here means the baseline was green (or
+  // skipped), so every after-failure id is a NEW failure relative to baseline.
+  // Empty by construction: the baseline is proven green before the delta path runs.
+  const baselineFailures = new Set<string>();
+  const afterFailures = extractFailureIds(after.stdout, after.stderr);
+  const newFailures = [...afterFailures].filter((id) => !baselineFailures.has(id));
+
+  // Cannot compare sets: a non-zero run whose output yields no failure ids
+  // (crash, timeout, unrecognized reporter) must fall back to today's behavior
+  // (any failure fails the gate). Parse gaps never make the gate lenient.
+  if (newFailures.length === 0) {
     return {
       passed: false,
-      durationMs: Date.now() - t0,
-      blockingReason: formatVitestFailureBlock(mutated.stdout, mutated.stderr),
+      durationMs: done(),
+      blockingReason: formatVitestFailureBlock(after.stdout, after.stderr),
     };
   }
-  return { passed: true, durationMs: Date.now() - t0 };
+
+  // New failures exist: rerun once on a FRESH shadow tree to shake out flakes.
+  // Reusing ctx.shadowRoot (the already-run tree) would let a regression that
+  // heals via first-run state mutation — an idempotency break that writes files
+  // or DB state INTO the tree — masquerade as a flake: the second run would see
+  // the mutated tree and pass. A genuine timing/race flake heals on a pristine
+  // tree; a state-dependent heal fails again on the fresh tree and correctly
+  // stays a gate failure with the failing tail. The gate already has projectRoot
+  // and ctx.changes, so the fresh tree is built exactly like the engine's.
+  const { createShadowTree } = await import('../shadow-tree.js');
+  const freshHandle = await createShadowTree(projectRoot, ctx.changes);
+  let retry: RunResult;
+  try {
+    retry = await runRunner({ ...runner, cwd: freshHandle.path }, { retries: 0 });
+  } finally {
+    await freshHandle.cleanup();
+  }
+
+  // The retry is authoritative. Because the baseline is green here, ANY red on
+  // the retry is a new failure that survived the rerun: a genuine regression,
+  // never flaky. Keying off the exit code (not a parsed id set) means a retry
+  // that crashes with unparseable output still fails the gate, so the fallback
+  // is never more lenient than today. Failing tail + truncation preserved.
+  if (retry.exitCode !== 0) {
+    return {
+      passed: false,
+      durationMs: done(),
+      blockingReason: formatVitestFailureBlock(retry.stdout, retry.stderr),
+    };
+  }
+
+  // Green on retry: every new failure from the first run vanished. Treat them as
+  // flaky, pass the gate, and surface the suspects so the report can note them.
+  return { passed: true, durationMs: done(), flakySuspects: newFailures };
 }

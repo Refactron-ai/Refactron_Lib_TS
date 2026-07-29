@@ -16,7 +16,12 @@ export interface VitestSummary {
   suiteSummary: string | null;
 }
 
-const FAIL_LINE = /^\s*(?:FAIL|×|✗)\s+(\S+\.test\.[tj]sx?)\s*(?:>\s*(.+))?$/;
+// Test-file conventions kept in lockstep with verdict-fuse.isTestFile: both the
+// `.test.` and `.spec.` infixes, and the module-extension variants (.mts/.cts/
+// .mjs/.cjs) alongside .ts/.tsx/.js/.jsx. Narrower matching would let the flaky
+// delta silently no-op on spec-style repos (empty failure set). Direction stays
+// safe: an empty set is strict (any failure fails the gate), so this is breadth.
+const FAIL_LINE = /^\s*(?:FAIL|×|✗)\s+(\S+\.(?:test|spec)\.[cm]?[jt]sx?)\s*(?:>\s*(.+))?$/;
 const SUITE_SUMMARY = /^\s*Test Files\s+\d+\s+failed.*$/;
 const MAX_MESSAGE_LINES = 10;
 

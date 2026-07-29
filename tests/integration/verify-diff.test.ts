@@ -1,5 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { execSync } from 'node:child_process';
+import * as fs from 'node:fs/promises';
+import * as os from 'node:os';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { verifyDiff } from '../../src/verify/verify-diff.js';
@@ -15,6 +17,43 @@ function pythonHasCoverage(): boolean {
   } catch {
     return false;
   }
+}
+
+// A pytest project with one deterministically flaky test plus a source file the
+// diff edits harmlessly. The flake is CROSS-TREE: its marker lives in the system
+// temp dir (persists across shadow trees), so the gate's fresh-shadow retry
+// heals it — the signature of a real timing flake, not tree-state leakage. It is
+// ARMED only when it sees the CHANGED lib.py (the "# reordered" token), so the
+// unmodified baseline tree runs it green and never consumes the marker. The
+// marker is salted per run (env-injected) and removed in a finally, so reruns of
+// our own suite stay deterministic. Exercises verifyDiff end to end.
+async function flakyFixture(): Promise<string> {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'vd-flaky-'));
+  await fs.writeFile(
+    path.join(root, 'pyproject.toml'),
+    '[tool.pytest.ini_options]\ntestpaths = ["."]\npythonpath = ["."]\n',
+  );
+  await fs.writeFile(path.join(root, 'lib.py'), 'def add(a, b):\n    return a + b\n');
+  await fs.writeFile(
+    path.join(root, 'test_flaky.py'),
+    [
+      'import os',
+      'import tempfile',
+      '',
+      'def test_flaky():',
+      '    with open(os.path.join(os.getcwd(), "lib.py")) as f:',
+      '        src = f.read()',
+      '    if "# reordered" not in src:',
+      '        return  # baseline (unmodified) tree: unarmed, always green',
+      '    marker = os.path.join(tempfile.gettempdir(), os.environ["REFACTRON_FLAKE_SALT"])',
+      '    if not os.path.exists(marker):',
+      '        open(marker, "w").close()',
+      '        raise AssertionError("flaky: first run of the changed tree fails")',
+      '    assert True',
+      '',
+    ].join('\n'),
+  );
+  return root;
 }
 
 describe('verifyDiff (python three-way, real coverage)', () => {
@@ -84,5 +123,27 @@ describe('verifyDiff (python three-way, real coverage)', () => {
     });
     expect(report.verdict).toBe('UNPROVEN');
     expect(report.coverage.uncovered.length).toBeGreaterThanOrEqual(1);
+  }, 180_000);
+
+  it('a flaky test that heals on retry does NOT produce a false UNSAFE; flakyTests carries it', async () => {
+    if (!pythonHasCoverage()) return;
+    const root = await flakyFixture();
+    const salt = `refactron-vd-flake-${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    process.env.REFACTRON_FLAKE_SALT = salt;
+    try {
+      const report = await verifyDiff({
+        repoRoot: root,
+        edits: [{ path: 'lib.py', newContent: 'def add(a, b):\n    return a + b  # reordered\n' }],
+        testCmd: TEST_CMD,
+      });
+      // The only after-run failure is the flake, which vanishes on the fresh
+      // shadow retry: the diff must not be blamed (no false UNSAFE), and the id
+      // surfaces. Coverage of the reordered line stays unproven, so UNPROVEN.
+      expect(report.verdict).not.toBe('UNSAFE');
+      expect(report.flakyTests).toContain('test_flaky.py::test_flaky');
+    } finally {
+      await fs.rm(path.join(os.tmpdir(), salt), { force: true });
+      delete process.env.REFACTRON_FLAKE_SALT;
+    }
   }, 180_000);
 });
