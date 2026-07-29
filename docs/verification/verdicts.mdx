@@ -1,7 +1,7 @@
 ---
 title: Verdicts
 icon: scale-balanced
-description: "SAFE, UNSAFE, and UNPROVEN: the three-way verdict at the center of Refactron, how coverage fuses with the gates, and why UNPROVEN is the honest answer."
+description: 'SAFE, UNSAFE, and UNPROVEN: the three-way verdict at the center of Refactron, how coverage fuses with the gates, and why UNPROVEN is the honest answer.'
 ---
 
 Every verification returns exactly one of three verdicts. Two of them exist in most tools. The third, `UNPROVEN`, is the one that makes Refactron trustworthy.
@@ -53,7 +53,7 @@ A gate rejected the change:
 - **Imports**: an import in the changed content doesn't resolve, or a previously-resolving import now fails.
 - **Tests**: your suite went red on the change.
 
-`UNSAFE` exits `1`, and a failing test gate prints the test output so you can see what broke. This is a real signal that the change is wrong, not merely unproven.
+`UNSAFE` exits `1`, and a failing test gate prints the test output so you can see what broke. This is a real signal that the change is wrong, not merely `UNPROVEN`.
 
 <Note>
   One case looks like a test failure but isn't a real one: if your suite is **already red before**
@@ -93,6 +93,18 @@ Coverage fusion depends on `coverage.py`, so it is **Python-only** today:
 - A diff touching **any** TypeScript (or any non-Python) file, or run without `coverage.py`, returns `UNPROVEN` with `coverage.tool: "none"`. The gates still run; only the coverage half is unavailable.
 
 Refactron never guesses here. Reporting a non-Python change as "covered" would let an unverified change through as `SAFE`: a false `SAFE`, which the engine forbids. When it can't measure, it says `UNPROVEN`.
+
+## Coverage cannot see subprocesses
+
+Coverage fusion measures the lines your test process executes. Code that runs only in a child process, launched through `subprocess.run`, a `multiprocessing` worker, or a spawned server, is invisible to `coverage.py` unless you wire up subprocess coverage yourself: a `COVERAGE_PROCESS_START` environment variable plus a `coverage.process_startup()` call in `sitecustomize`.
+
+Without that wiring, a change whose only exercise happens inside a subprocess reads as `UNPROVEN`. The gates still pass, but the changed lines never register as covered, so Refactron declines to certify `SAFE`. This is the honest result, not a defect. First-class subprocess coverage is a planned fast-follow; until it lands, exercise the changed code in-process in at least one test so the verdict can reach `SAFE`.
+
+## SAFE means suite-approved, not proven correct
+
+`SAFE` says your suite ran the changed code and stayed green. It does not claim the change is correct in some absolute sense: it inherits exactly what your suite checks. Audits of AI agent patches (for example on SWE-bench) find that a substantial share of patches which pass the project's tests are still wrong, because the suite was too weak to catch the defect.
+
+Refactron cannot turn a weak suite into a strong one, but it refuses to overstate what a green run proves. That is why `UNPROVEN` exists, and why every uncovered changed line ships with a `missingTests` hint: the path to a `SAFE` you can trust is a suite that actually exercises the behavior you care about.
 
 ## Exit codes
 
