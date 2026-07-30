@@ -202,6 +202,18 @@ Without that wiring, a change whose only exercise happens inside a subprocess re
 
 Refactron cannot turn a weak suite into a strong one, but it refuses to overstate what a green run proves. That is why `UNPROVEN` exists, and why every uncovered statement ships with a `missingTests` hint: the path to a `SAFE` you can trust is a suite that actually exercises the behavior you care about.
 
+A worked example from our own hardening runs, on a real library. Jinja2's `truncate` filter guards its early return with `if len(s) <= length + leeway`. Change that `<=` to `<` and the behavior genuinely changes: at the exact boundary the string is now truncated instead of returned whole. All 911 tests in Jinja2's suite still pass, because none of them lands on that precise boundary, and the changed line is covered, so the verdict is `SAFE`.
+
+That verdict is correct about what it claims (the suite ran this line and stayed green) and it is still not a proof of correctness. Boundary conditions are exactly where suites tend to be thin. Read `SAFE` as "your tests approve this change", then decide separately whether your tests are strong where this change lives.
+
+## Make sure the tests run the code being verified
+
+Refactron verifies a change in an isolated copy of your project. If your tests import the package from somewhere else, they will exercise the original code and the run proves nothing about your change.
+
+The common cause is a project installed into the environment, including an editable install (`pip install -e .`), because `import yourpackage` then resolves to the installed location rather than the copy under verification. We hit this on Django: the same diff read `UNPROVEN` when the tests loaded the installed copy, and `UNSAFE` (correctly, since the auth suite catches the change) once the verified copy came first on `sys.path`.
+
+Refactron detects the case rather than guessing: if a changed file is never even measured by coverage, the verdict reports that coverage could not be determined instead of claiming the code is untested. To get a real verdict, make the verified tree win on `sys.path`, for example by exporting `PYTHONPATH=.` (or `PYTHONPATH=src` for a src layout) alongside your test command. Relative paths are resolved from the copy being verified, which is what you want here.
+
 ## Exit codes
 
 The verdict maps to a process exit code so it can gate CI directly:
