@@ -24,6 +24,15 @@ function pythonHasCoverage(): boolean {
 // while proving nothing. A skip is visible in the runner summary.
 const NO_COVERAGE = !pythonHasCoverage();
 
+// Fixture bytes are pinned to LF by .gitattributes, but a clone made before that
+// (or a stray core.autocrlf) would hand these tests CRLF, and every edit here is
+// built by replacing an LF-delimited snippet. A silent no-match makes the "edit"
+// identical to the base, which reads as UNPROVEN rather than a failed assertion,
+// so normalize on read and let the tests fail loudly if a snippet is wrong.
+async function readFixture(file: string): Promise<string> {
+  return (await fs.readFile(file, 'utf8')).replace(/\r\n/g, '\n');
+}
+
 // A pytest project with one deterministically flaky test plus a source file the
 // diff edits harmlessly. The flake is CROSS-TREE: its marker lives in the system
 // temp dir (persists across shadow trees), so the gate's fresh-shadow retry
@@ -164,7 +173,7 @@ describe('verifyDiff (python three-way, real coverage)', () => {
           edits: [
             {
               path: 'shapes.py',
-              newContent: (await fs.readFile(path.join(MULTILINE, 'shapes.py'), 'utf8')).replace(
+              newContent: (await readFixture(path.join(MULTILINE, 'shapes.py'))).replace(
                 '    ceil,\n    floor,\n',
                 '    floor,\n    ceil,\n',
               ),
@@ -190,7 +199,7 @@ describe('verifyDiff (python three-way, real coverage)', () => {
           edits: [
             {
               path: 'shapes.py',
-              newContent: (await fs.readFile(path.join(MULTILINE, 'shapes.py'), 'utf8')).replace(
+              newContent: (await readFixture(path.join(MULTILINE, 'shapes.py'))).replace(
                 '            a,\n            b,\n            c,\n',
                 '            a.strip(),\n            b.strip(),\n            c.strip(),\n',
               ),
@@ -227,7 +236,7 @@ describe('verifyDiff (python three-way, real coverage)', () => {
         edits: [
           {
             path: 'gated.py',
-            newContent: (await fs.readFile(path.join(PRAGMA, 'gated.py'), 'utf8')).replace(
+            newContent: (await readFixture(path.join(PRAGMA, 'gated.py'))).replace(
               '            a,\n            b,\n',
               '            a.strip(),\n            b.strip(),\n',
             ),
@@ -261,7 +270,7 @@ describe('verifyDiff (python three-way, real coverage)', () => {
         edits: [
           {
             path: 'mod.py',
-            newContent: (await fs.readFile(path.join(TC, 'mod.py'), 'utf8')).replace(
+            newContent: (await readFixture(path.join(TC, 'mod.py'))).replace(
               '        Context,\n        Decimal,\n',
               '        Decimal,\n        Context,\n',
             ),
@@ -292,7 +301,7 @@ describe('verifyDiff (python three-way, real coverage)', () => {
     ] as const;
 
     async function inertSource(): Promise<string> {
-      return fs.readFile(path.join(INERT, 'mod.py'), 'utf8');
+      return readFixture(path.join(INERT, 'mod.py'));
     }
 
     async function runInert(newContent: string) {

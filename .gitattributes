@@ -1,0 +1,6 @@
+# Test fixtures are DATA: their bytes are part of the assertion. Windows
+# checkouts default to CRLF, which silently breaks tests that build an edit by
+# string-replacing LF-delimited snippets (the replace finds nothing, the "edit"
+# equals the base, and the verdict degrades to UNPROVEN on every platform-
+# specific run). Pin them to LF everywhere.
+tests/fixtures/** text eol=lf
