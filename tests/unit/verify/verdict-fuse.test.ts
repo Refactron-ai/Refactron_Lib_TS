@@ -190,6 +190,108 @@ describe('fuseVerdict — testFilesChanged note', () => {
     expect(r.missingTests).toEqual([{ file: 'b.py', hint: 'add a test exercising b.py:3' }]);
   });
 
+  // The removal-only reason used to fire on "some removal-only file exists AND
+  // the uncovered list is empty". Both halves are now much easier to satisfy, so
+  // a MIXED diff — one removal-only file plus a file whose additions are fully
+  // covered — printed "the change only removes code", which is simply false.
+  it('does NOT claim removal-only when another changed file has real additions', () => {
+    const mixed: CoverageAssessment = {
+      tool: 'coverage.py',
+      changedLinesCovered: false,
+      uncovered: [],
+      removalOnlyFiles: ['a.py'],
+      // b.py contributed an inert-free, exercised statement, so it is in neither
+      // bucket; the verdict is UNPROVEN for some other reason entirely.
+    };
+    const r = fuseVerdict(result(true), ['a.py', 'b.py'], mixed);
+    expect(r.reason).not.toMatch(/only removes code/);
+    expect(r.reason).toMatch(/not exercised/);
+  });
+
+  // The zero-check must read the PRE-CAP total. `uncovered` is capped, so
+  // asking `uncovered.length === 0` asks "did any survive the cap?" when the
+  // question is "were there any at all?".
+  it('reads the pre-cap uncovered total, not the capped array length', () => {
+    const capped: CoverageAssessment = {
+      tool: 'coverage.py',
+      changedLinesCovered: false,
+      uncovered: [],
+      uncoveredTruncated: { shown: 0, total: 12 },
+      removalOnlyFiles: ['a.py'],
+    };
+    const r = fuseVerdict(result(true), ['a.py'], capped);
+    expect(r.reason).not.toMatch(/only removes code/);
+  });
+
+  it('inert-only change → UNPROVEN naming comments and blank lines, not a coverage miss', () => {
+    const inert: CoverageAssessment = {
+      tool: 'coverage.py',
+      changedLinesCovered: false,
+      uncovered: [],
+      inertOnlyFiles: ['a.py'],
+    };
+    const r = fuseVerdict(result(true), ['a.py'], inert);
+    expect(r.verdict).toBe('UNPROVEN');
+    expect(r.reason).toMatch(/comments and blank lines/);
+    expect(r.reason).not.toMatch(/not exercised/);
+    expect(r.missingTests).toBeUndefined();
+  });
+
+  it('removal-only AND inert-only together get a reason naming both', () => {
+    const both: CoverageAssessment = {
+      tool: 'coverage.py',
+      changedLinesCovered: false,
+      uncovered: [],
+      removalOnlyFiles: ['a.py'],
+      inertOnlyFiles: ['b.py'],
+    };
+    const r = fuseVerdict(result(true), ['a.py', 'b.py'], both);
+    expect(r.reason).toMatch(/only removes code and touches comments and blank lines/);
+  });
+
+  // A statement coverage.py EXCLUDED cannot be reached by any test, so "add a
+  // test exercising gated.py:6" is an uncompletable instruction that makes the
+  // tool look broken.
+  it('an excluded statement gets a review hint, never an add-a-test hint', () => {
+    const excluded: CoverageAssessment = {
+      tool: 'coverage.py',
+      changedLinesCovered: false,
+      uncovered: [
+        { file: 'gated.py', line: 6, excluded: true },
+        { file: 'plain.py', line: 9 },
+      ],
+    };
+    const r = fuseVerdict(result(true), ['gated.py', 'plain.py'], excluded);
+    expect(r.missingTests?.[0]?.hint).toContain('excluded from coverage');
+    expect(r.missingTests?.[0]?.hint).not.toContain('add a test');
+    expect(r.missingTests?.[1]?.hint).toBe('add a test exercising plain.py:9');
+  });
+
+  // The report is serialized verbatim by the MCP tool and by `--json`, so its
+  // shape is a public contract the moment it ships.
+  it('stamps reportVersion on every verdict', () => {
+    expect(fuseVerdict(result(true), ['a.py'], covered).reportVersion).toBe(1);
+    expect(fuseVerdict(result(true), ['a.py'], uncovered).reportVersion).toBe(1);
+    expect(fuseVerdict(result(false, 'boom'), ['a.py'], unknown).reportVersion).toBe(1);
+  });
+
+  // Disclosure is not a verdict input. A SAFE change can still hold statements
+  // no test ran, because SAFE clears on one exercised statement per changed file.
+  it('carries uncovered and changedStatements through a SAFE verdict', () => {
+    const partial: CoverageAssessment = {
+      tool: 'coverage.py',
+      changedLinesCovered: true,
+      uncovered: [{ file: 'a.py', line: 30 }],
+      changedStatements: { total: 2, covered: 1 },
+    };
+    const r = fuseVerdict(result(true), ['a.py'], partial);
+    expect(r.verdict).toBe('SAFE');
+    expect(r.coverage.uncovered).toEqual([{ file: 'a.py', line: 30 }]);
+    expect(r.coverage.changedStatements).toEqual({ total: 2, covered: 1 });
+    // Hints belong to the UNPROVEN path; SAFE discloses without instructing.
+    expect(r.missingTests).toBeUndefined();
+  });
+
   describe('missingTests cap', () => {
     // A 396-hunk reformat produced 3666 hints and an 883 KB JSON report. Nobody
     // reads 3666 hints, and no agent should have to stream them. Cap the list,

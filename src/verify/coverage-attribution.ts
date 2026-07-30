@@ -1,6 +1,7 @@
 // src/verify/coverage-attribution.ts
-// Map changed physical lines to the STATEMENTS coverage.py actually tracks, then
-// judge coverage on those statements. Pure: no I/O, no process state.
+// Map changed physical lines to the STATEMENTS that CONTAIN them, then judge
+// coverage on those statements. Pure: no I/O, no process state. The containment
+// map itself comes from the AST sidecar (checks/_py/statement_map.py).
 //
 // Why this exists. coverage.py records execution against a statement's FIRST
 // line only. Continuation lines, closing brackets, comments and blanks appear in
@@ -11,13 +12,31 @@
 // `from ipaddress import (...)` whose statement start (line 23) provably ran.
 // The verdict direction was conservative, but the evidence was fiction.
 //
-// The fix is attribution, NOT exclusion. Silently dropping changed lines that
-// are not statement starts would be the false-SAFE path: `x = [1,\n  3]` with
-// only the continuation edited has an unchanged statement start, so dropping the
-// one changed line leaves nothing to attest and a diff that DID change behavior
-// could fuse to SAFE. Mapping to the enclosing statement keeps the claim
-// anchored: the statement start is executable, and if it ran, the changed text
-// ran with it.
+// Why containment, and not a walk back to the nearest statement start. The
+// obvious repair, `enclosing(L) = max{start <= L}`, is UNSOUND, and it shipped a
+// false SAFE. Statement STARTS carry no extent, so that rule cannot distinguish
+//
+//   (a) L is a continuation line of that statement    (attribution is sound)
+//   (b) L is a blank / comment / dead-branch line that merely FOLLOWS it and
+//       belongs to a different, unexecuted block       (attribution is fiction)
+//
+// In case (b) an executed `def`/`class`/`if` header vouches for a body that
+// never ran. Reproduced end to end: a `return a + b` -> `return a * b` inside a
+// never-called function, plus ONE changed blank line elsewhere in the file, read
+// SAFE. Formatters insert and remove blank lines constantly, so this fired on
+// the exact workload the feature targets. Real extents from the AST are the only
+// way to tell (a) from (b), and the sidecar supplies them.
+//
+// Two properties the AST buys that no coverage.py line list can:
+//   * INERTNESS. A line carrying no code token (blank, or comment-only) belongs
+//     to no statement. It can neither change behavior nor be proven by a test,
+//     so it must not mark its file exercised and must not be reported uncovered.
+//   * INNERMOST CONTAINMENT. A change inside `if False:` attributes to the
+//     folded statement, which coverage never marked executed, rather than to the
+//     `if False:` header, which it did. coverage 7.11 reports statements inside
+//     a compiler-folded branch in NONE of executed / missing / excluded, so
+//     `executed U missing U excluded` is still not the executable set; only the
+//     AST closes that hole.
 import { normalizePath } from '../analyze/coverage/index.js';
 import type { ChangedRange } from './diff-input.js';
 
@@ -27,96 +46,227 @@ import type { ChangedRange } from './diff-input.js';
  *  would be a lie about the size of the gap. */
 export const UNCOVERED_CAP = 200;
 
+/** Slots each file is guaranteed before any file takes a second helping. A flat
+ *  cap applied in diff order lets ONE pathological file consume every slot, so
+ *  later files disappear from the report and `{shown,total}` discloses a count
+ *  without disclosing that whole FILES are missing. */
+export const PER_FILE_UNCOVERED_CAP = 5;
+
+/** Owner value the sidecar uses for a code line inside no statement. Should be
+ *  unreachable; it exists so an unanticipated shape degrades to "cannot
+ *  attribute" (never exercised) instead of vanishing into the inert bucket. */
+export const UNATTRIBUTABLE_OWNER = -1;
+
+/** A contiguous stretch of physical lines sharing one enclosing statement.
+ *  `owner` is that statement's first line, which is the line coverage.py records
+ *  execution against. Runs are ascending and non-overlapping; a line in NO run
+ *  is INERT. */
+export interface StatementRun {
+  first: number;
+  last: number;
+  owner: number;
+}
+
 export interface CoverageAttributionInput {
   ranges: ChangedRange[];
   /** `${normalizedRelPath}:${line}` for every line coverage.py saw execute. */
   coveredLines: Set<string>;
-  /** Statement-start lines per normalized relative path (executed UNION missing). */
-  executableLines: Map<string, Set<number>>;
-  /** Test seam; defaults to UNCOVERED_CAP. */
+  /** Line-to-enclosing-statement runs per normalized relative path, from the AST
+   *  sidecar. A file missing here is treated as fully unattributable (never
+   *  exercised); verify-diff bails the whole assessment to UNKNOWN first. */
+  statementRuns: Map<string, StatementRun[]>;
+  /** Statement lines coverage.py EXCLUDED (`# pragma: no cover`,
+   *  `if TYPE_CHECKING:`). Such a statement can never be exercised by any test,
+   *  so the report words its hint differently instead of asking for an
+   *  impossible one. */
+  excludedLines?: Map<string, Set<number>>;
+  /** Test seams; default to the caps above. */
   uncoveredCap?: number;
+  perFileCap?: number;
+}
+
+export interface UncoveredStatement {
+  file: string;
+  line: number;
+  /** Set when coverage.py excluded this statement, so no test can reach it. */
+  excluded?: boolean;
 }
 
 export interface CoverageAttribution {
   changedLinesCovered: boolean;
-  /** One entry per UNEXECUTED enclosing statement, deduped, capped. */
-  uncovered: Array<{ file: string; line: number }>;
+  /** One entry per UNEXECUTED enclosing statement, deduped, capped. Always
+   *  populated, including when the verdict is SAFE: a report that discloses the
+   *  statements it did NOT prove is strictly more honest, and suppressing this
+   *  list is what made the false SAFE invisible. */
+  uncovered: UncoveredStatement[];
   uncoveredTruncated?: { shown: number; total: number };
+  /** Distinct files with at least one uncovered statement, counted BEFORE any
+   *  cap, so a truncated list still says how many files it spans. */
+  filesWithUncovered: number;
+  /** Distinct changed statements, and how many of them executed. A ratio the
+   *  boolean cannot express ("12 of 40 changed statements exercised"). It does
+   *  NOT feed the verdict rule. */
+  changedStatements: { total: number; covered: number };
+  /** Files whose changed lines are ALL inert. Nothing to attest, so they get
+   *  their own bucket and reason rather than a free pass: added lines are all a
+   *  diff exposes, so a DELETED statement beside a moved blank line is invisible
+   *  here, exactly as for a removal-only file. */
+  inertOnlyFiles: string[];
 }
 
-/** `max{ e in stmts : e <= line }`, or null when `line` sits above every
- *  statement in the file. `stmts` must be ascending. Binary search, not a scan:
- *  a mass reformat pairs thousands of changed lines with thousands of
- *  statements, and the quadratic version of this is a visible stall. */
-function enclosingStatement(stmts: number[], line: number): number | null {
+/** The run containing `line`, or null when the line is inert. Binary search, not
+ *  a scan: a mass reformat pairs thousands of changed lines with thousands of
+ *  runs, and the quadratic version of this is a visible stall. */
+function runContaining(runs: StatementRun[], line: number): StatementRun | null {
   let lo = 0;
-  let hi = stmts.length - 1;
-  let best: number | null = null;
+  let hi = runs.length - 1;
   while (lo <= hi) {
     const mid = (lo + hi) >> 1;
-    const v = stmts[mid] as number;
-    if (v <= line) {
-      best = v;
-      lo = mid + 1;
-    } else {
-      hi = mid - 1;
-    }
+    const run = runs[mid] as StatementRun;
+    if (line < run.first) hi = mid - 1;
+    else if (line > run.last) lo = mid + 1;
+    else return run;
   }
-  return best;
+  return null;
+}
+
+interface FileAccumulator {
+  /** The caller's own spelling of the path; normalization is for lookup only. */
+  displayPath: string;
+  seen: Set<number>;
+  uncovered: UncoveredStatement[];
+  exercised: boolean;
+  /** Saw at least one changed line that was not inert. */
+  attributable: boolean;
+  /** Saw at least one changed line at all (false => removal-only). */
+  hadChangedLines: boolean;
 }
 
 export function attributeChangedLines(input: CoverageAttributionInput): CoverageAttribution {
   const cap = input.uncoveredCap ?? UNCOVERED_CAP;
-  const uncovered: Array<{ file: string; line: number }> = [];
-  let total = 0;
-  let allFilesExercised = true;
+  const perFileCap = input.perFileCap ?? PER_FILE_UNCOVERED_CAP;
 
-  for (const r of input.ranges) {
-    const rel = normalizePath(r.path);
-    const stmts = [...(input.executableLines.get(rel) ?? [])].sort((a, b) => a - b);
-    // Per-file dedup: one unexecuted multi-line statement reports ONCE, however
-    // many of its physical lines the diff touched. Statement starts and
-    // unattributable lines can never collide here: an unattributable line is by
-    // definition below every statement start in the file.
-    const seen = new Set<number>();
-    let fileExercised = false;
+  // Keyed by NORMALIZED path so two ranges naming the same file share one dedup
+  // set, one exercised flag and one uncovered list. Insertion order is diff
+  // order, which is the order the report reads back in.
+  const files = new Map<string, FileAccumulator>();
+  const changedStatements = { total: 0, covered: 0 };
 
-    const record = (line: number): void => {
-      if (seen.has(line)) return;
-      seen.add(line);
-      total += 1;
-      if (uncovered.length < cap) uncovered.push({ file: r.path, line });
-    };
-
-    for (const line of r.lines) {
-      const stmt = enclosingStatement(stmts, line);
-      if (stmt === null) {
-        // Nothing to attribute to: the line is above the file's first statement
-        // (leading comments, the module-docstring area) or the file has no
-        // statements at all. "Cannot attribute" must never read as "fine", since
-        // dropping it here is the false-SAFE path, so it is reported at its own
-        // physical line and counts against the file.
-        record(line);
-        continue;
-      }
-      if (input.coveredLines.has(`${rel}:${stmt}`)) {
-        fileExercised = true;
-        continue;
-      }
-      record(stmt);
+  for (const range of input.ranges) {
+    const rel = normalizePath(range.path);
+    let acc = files.get(rel);
+    if (!acc) {
+      acc = {
+        displayPath: range.path,
+        seen: new Set(),
+        uncovered: [],
+        exercised: false,
+        attributable: false,
+        hadChangedLines: false,
+      };
+      files.set(rel, acc);
     }
-    // A removal-only range (no added lines) can never satisfy this, exactly as
-    // before; verify-diff reports those files separately so the verdict reason
-    // can say "nothing to attest" instead of implying a coverage miss.
-    if (!fileExercised) allFilesExercised = false;
+    if (range.lines.length > 0) acc.hadChangedLines = true;
+
+    const runs = input.statementRuns.get(rel);
+    const excluded = input.excludedLines?.get(rel);
+
+    for (const line of range.lines) {
+      // A file the sidecar never analyzed has no runs. Err strict: treat every
+      // changed line as unattributable code rather than inert, so a map we
+      // failed to build can never read as "nothing to prove".
+      const run = runs
+        ? runContaining(runs, line)
+        : { first: line, last: line, owner: UNATTRIBUTABLE_OWNER };
+      if (run === null) continue; // inert: no code token on this line
+      acc.attributable = true;
+
+      // An unattributable code line is reported at its own physical line. It can
+      // never collide with a statement start in `seen`, since by definition it
+      // sits inside no statement.
+      const key = run.owner === UNATTRIBUTABLE_OWNER ? line : run.owner;
+      if (acc.seen.has(key)) continue;
+      acc.seen.add(key);
+      changedStatements.total += 1;
+
+      if (run.owner !== UNATTRIBUTABLE_OWNER && input.coveredLines.has(`${rel}:${run.owner}`)) {
+        changedStatements.covered += 1;
+        acc.exercised = true;
+        continue;
+      }
+      acc.uncovered.push({
+        file: acc.displayPath,
+        line: key,
+        ...(excluded?.has(key) ? { excluded: true } : {}),
+      });
+    }
+  }
+
+  const inertOnlyFiles: string[] = [];
+  let allFilesExercised = true;
+  for (const acc of files.values()) {
+    // A file with changed lines but nothing attributable among them has nothing
+    // to attest. Same treatment as removal-only: conservative, with its own
+    // bucket so the verdict reason can say what actually happened.
+    if (acc.hadChangedLines && !acc.attributable) inertOnlyFiles.push(acc.displayPath);
+    if (!acc.exercised) allFilesExercised = false;
   }
 
   return {
-    // v1 heuristic, unchanged: the change is covered iff EVERY changed file has
-    // at least one changed statement that executed. Documented limitation:
-    // partial per-file coverage still reads as covered.
+    // v1 heuristic, unchanged in strength: the change is covered iff EVERY
+    // changed file has at least one changed STATEMENT that executed. Documented
+    // limitation: partial per-file coverage still reads as covered, which is why
+    // `uncovered` is always disclosed and `changedStatements` carries the ratio.
     changedLinesCovered: allFilesExercised,
+    ...selectUncovered([...files.values()], cap, perFileCap),
+    changedStatements,
+    inertOnlyFiles,
+  };
+}
+
+/** Choose which uncovered statements to report, in two passes: a guaranteed
+ *  per-file share first so no file can be squeezed out entirely, then leftovers
+ *  in diff order until the global cap. The selection is emitted back in diff
+ *  order, so the fair-share pass never shows through as a reordering. */
+function selectUncovered(
+  accs: FileAccumulator[],
+  cap: number,
+  perFileCap: number,
+): Pick<CoverageAttribution, 'uncovered' | 'filesWithUncovered'> &
+  Partial<Pick<CoverageAttribution, 'uncoveredTruncated'>> {
+  let total = 0;
+  let filesWithUncovered = 0;
+  for (const acc of accs) {
+    total += acc.uncovered.length;
+    if (acc.uncovered.length > 0) filesWithUncovered += 1;
+  }
+
+  const taken = accs.map((acc) => Math.min(acc.uncovered.length, perFileCap));
+  let budget = cap - taken.reduce((a, b) => a + b, 0);
+  if (budget < 0) {
+    // More files than slots: trim the fair shares from the tail so the earliest
+    // files keep a full share rather than every file keeping a fractional one.
+    for (let i = taken.length - 1; i >= 0 && budget < 0; i--) {
+      const give = Math.min(taken[i] as number, -budget);
+      taken[i] = (taken[i] as number) - give;
+      budget += give;
+    }
+  } else {
+    for (let i = 0; i < accs.length && budget > 0; i++) {
+      const acc = accs[i] as FileAccumulator;
+      const extra = Math.min(acc.uncovered.length - (taken[i] as number), budget);
+      taken[i] = (taken[i] as number) + extra;
+      budget -= extra;
+    }
+  }
+
+  const uncovered: UncoveredStatement[] = [];
+  for (let i = 0; i < accs.length; i++) {
+    uncovered.push(...(accs[i] as FileAccumulator).uncovered.slice(0, taken[i] as number));
+  }
+  return {
     uncovered,
+    filesWithUncovered,
     ...(total > uncovered.length ? { uncoveredTruncated: { shown: uncovered.length, total } } : {}),
   };
 }

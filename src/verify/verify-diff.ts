@@ -8,6 +8,7 @@ import { RefactronVerifier } from './engine.js';
 import { createShadowTree } from './shadow-tree.js';
 import { reportCoverage, normalizePath } from '../analyze/coverage/index.js';
 import { attributeChangedLines } from './coverage-attribution.js';
+import { buildStatementMap } from './statement-map.js';
 import { fuseVerdict, type CoverageAssessment, type VerdictReport } from './verdict-fuse.js';
 import { changedLinesForEdits, editsFromUnifiedDiff, type FileEdit } from './diff-input.js';
 import type { FileChange, RefactorPlan, TransformId } from '../contracts.js';
@@ -64,13 +65,21 @@ export async function verifyDiff(input: VerifyDiffInput): Promise<VerdictReport>
   } as RefactorPlan);
 
   // 2. Coverage (only when gates pass; Python only).
-  let cov: CoverageAssessment = { tool: 'none', changedLinesCovered: 'unknown', uncovered: [] };
+  let cov: CoverageAssessment = unknownCoverage();
   if (result.passed) {
     cov = await assessCoverage(input, edits);
   }
 
   // 3. Fuse.
   return fuseVerdict(result, changedFiles, cov);
+}
+
+/** Coverage we could not establish. A fresh object each time: callers own it.
+ *  Never a shared literal, and never "covered": every degradation path in
+ *  assessCoverage lands here, and reporting an unmeasured change as covered
+ *  would be a false SAFE. */
+function unknownCoverage(): CoverageAssessment {
+  return { tool: 'none', changedLinesCovered: 'unknown', uncovered: [] };
 }
 
 async function assessCoverage(
@@ -84,7 +93,7 @@ async function assessCoverage(
   // false SAFE, which is forbidden. Bail to 'unknown' (→ UNPROVEN) unless every
   // edit is a `.py` file we can actually assess.
   if (pyEdits.length !== edits.length || pyEdits.length === 0) {
-    return { tool: 'none', changedLinesCovered: 'unknown', uncovered: [] };
+    return unknownCoverage();
   }
   const shadow = await createShadowTree(input.repoRoot, toChanges(input.repoRoot, edits));
   try {
@@ -96,7 +105,7 @@ async function assessCoverage(
     // same thing: coverage is UNKNOWN. Reporting an unmeasured empty set as
     // "not exercised by any test" would be a confident lie about the suite.
     if (!report.coverageToolFound || report.measurementFailed) {
-      return { tool: 'none', changedLinesCovered: 'unknown', uncovered: [] };
+      return unknownCoverage();
     }
     const ranges = await changedLinesForEdits(input.repoRoot, pyEdits);
     // Shadow-bypass guard. If a changed file was never MEASURED at all, the
@@ -111,29 +120,51 @@ async function assessCoverage(
       (r) => r.lines.length > 0 && !report.measuredFiles.has(normalizePath(r.path)),
     );
     if (unmeasured.length > 0) {
-      return { tool: 'none', changedLinesCovered: 'unknown', uncovered: [] };
+      return unknownCoverage();
     }
-    // Judge coverage on STATEMENTS, not physical lines. coverage.py only ever
-    // marks a statement's first line, so a diff that rewraps statements (any
-    // formatter) otherwise reports every continuation line as uncovered. See
-    // coverage-attribution.ts for why this maps rather than filters.
+    // Judge coverage on STATEMENTS, not physical lines, using real extents from
+    // the Python AST. coverage.py only ever marks a statement's FIRST line, so a
+    // diff that rewraps statements (any formatter) would otherwise report every
+    // continuation line as uncovered — and the cheap repair of walking back to
+    // the nearest statement start above the line is unsound, because it cannot
+    // tell a continuation line from a blank/comment/dead-branch line that merely
+    // follows it. See coverage-attribution.ts. The map is built from the SHADOW
+    // copies, which hold the changed content the changed-line numbers refer to.
+    let statements;
+    try {
+      statements = await buildStatementMap(
+        shadow.path,
+        pyEdits.map((e) => e.path),
+      );
+    } catch {
+      // The sidecar could not run. Coverage of the change is UNKNOWN; degrading
+      // to "covered" here would be a false SAFE bought with no evidence at all.
+      return unknownCoverage();
+    }
+    // A file we could not parse has no honest containment map, and guessing one
+    // means guessing which changed lines are inert. Unknown, never covered.
+    if (statements.errors.size > 0) {
+      return unknownCoverage();
+    }
     const attributed = attributeChangedLines({
       ranges,
       coveredLines: report.coveredLines,
-      executableLines: report.executableLines,
+      statementRuns: statements.runs,
+      excludedLines: report.excludedLines,
     });
     // A removal-only file has no added lines, so it can never satisfy the
     // per-file heuristic; report it distinctly so the verdict reason can say
-    // "nothing to attest" instead of implying a coverage miss.
+    // "nothing to attest" instead of implying a coverage miss. (Its inert-only
+    // sibling gets the same treatment and rides along on `attributed`.)
     const removalOnlyFiles = ranges.filter((r) => r.lines.length === 0).map((r) => r.path);
-    const covered = attributed.changedLinesCovered;
+    // Spread, never rebuild field by field: an allow-list silently drops any
+    // field a future CoverageAttribution adds, and the last allow-list here also
+    // DELETED `uncovered` whenever the verdict was SAFE — which is precisely how
+    // the false SAFE stayed invisible. A SAFE report that discloses the changed
+    // statements it did not prove is strictly more honest.
     return {
       tool: 'coverage.py',
-      changedLinesCovered: covered,
-      uncovered: covered ? [] : attributed.uncovered,
-      ...(!covered && attributed.uncoveredTruncated
-        ? { uncoveredTruncated: attributed.uncoveredTruncated }
-        : {}),
+      ...attributed,
       ...(removalOnlyFiles.length > 0 ? { removalOnlyFiles } : {}),
     };
   } finally {

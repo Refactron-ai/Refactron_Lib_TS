@@ -11,17 +11,39 @@ export interface CoverageAssessment {
   // One entry per UNEXECUTED enclosing statement (deduped), not per physical
   // line: coverage.py attributes execution to a statement's first line, so a
   // multi-line statement reports once, at a line a human can write a test for.
-  uncovered: Array<{ file: string; line: number }>;
+  // ALWAYS populated, including under a SAFE verdict. The per-file heuristic
+  // clears SAFE on one exercised statement per file, so a SAFE change can still
+  // contain statements no test ran; hiding them is what let a false SAFE pass
+  // unnoticed. Disclosure never weakens a verdict, it only explains it.
+  uncovered: Array<{ file: string; line: number; excluded?: boolean }>;
   // Present only when `uncovered` was capped. `total` is the true number of
   // uncovered statements; a short list without this field would misstate the gap.
   uncoveredTruncated?: { shown: number; total: number };
+  // Distinct files with at least one uncovered statement, BEFORE any cap. The
+  // cap can drop entries, so `{shown,total}` alone cannot tell the reader
+  // whether whole files fell off the list.
+  filesWithUncovered?: number;
+  // Distinct changed statements and how many executed. A ratio ("12 of 40
+  // changed statements exercised") the boolean cannot express. Additive and
+  // advisory: it does NOT feed the verdict rule.
+  changedStatements?: { total: number; covered: number };
   // Changed files whose edit only REMOVES lines: there are no added lines for
   // coverage to attest, which is a different situation from "the added code is
   // untested" and gets its own reason string.
   removalOnlyFiles?: string[];
+  // Changed files whose added lines are ALL semantically inert (blank lines,
+  // comment-only lines). Nothing to attest, same as removal-only: a deletion is
+  // invisible in the added lines, so "provably inert edits" is not "provably
+  // unchanged file".
+  inertOnlyFiles?: string[];
 }
 
 export interface VerdictReport {
+  // Schema version for this report. The MCP tool and `--json` serialize the
+  // whole object verbatim, so its shape is a public contract; a consumer that
+  // stores reports as fleet history needs to know which shape it is holding.
+  // Bump on any breaking change to the fields below.
+  reportVersion: 1;
   verdict: Verdict;
   gates: { syntax: GateResult; imports: GateResult; tests: GateResult };
   changedFiles: string[];
@@ -81,6 +103,7 @@ export function fuseVerdict(
 ): VerdictReport {
   const flakyTests = flakySuspectsOf(result.gates.tests);
   const base = {
+    reportVersion: 1 as const,
     gates: result.gates,
     changedFiles,
     testFilesChanged: changedFiles.filter(isTestFile),
@@ -128,16 +151,36 @@ export function fuseVerdict(
     };
   }
 
-  // Pure-removal case: every changed file only deletes lines, so there is
-  // nothing new for coverage to attest. Conservative UNPROVEN stands (removing
-  // uncovered behavior would go unnoticed by a green suite), but the reason
-  // must say what actually happened instead of implying a coverage miss.
-  const removalOnly =
+  // Nothing-to-attest case: EVERY changed file either only deletes lines, or
+  // changes nothing but comments and blank lines. Conservative UNPROVEN stands
+  // (a deletion is invisible in the added lines, so a green suite proves nothing
+  // about what left), but the reason must say what actually happened instead of
+  // implying a coverage miss.
+  //
+  // Two things this predicate must get right. First, the zero-check reads the
+  // PRE-CAP total: `uncovered` is capped, so a long list truncated to zero would
+  // never happen today but the intent is "no uncovered statements at all", not
+  // "none survived the cap". Second, it requires every changed file to be
+  // accounted for. Checking only "some removal-only file exists" printed "the
+  // change only removes code" for a MIXED diff (a removal-only file plus a file
+  // with real, fully covered additions), which is simply false.
+  const removalOnlyFiles = cov.removalOnlyFiles ?? [];
+  const inertOnlyFiles = cov.inertOnlyFiles ?? [];
+  const uncoveredTotal = cov.uncoveredTruncated?.total ?? cov.uncovered.length;
+  const nothingToAttestFiles = new Set([...removalOnlyFiles, ...inertOnlyFiles]);
+  const nothingToAttest =
     cov.changedLinesCovered === false &&
-    cov.uncovered.length === 0 &&
-    (cov.removalOnlyFiles?.length ?? 0) > 0;
-  const coverageReason = removalOnly
-    ? 'Tests pass. The change only removes code; there are no added lines for coverage to attest.'
+    uncoveredTotal === 0 &&
+    nothingToAttestFiles.size > 0 &&
+    changedFiles.every((f) => nothingToAttestFiles.has(f));
+  const nothingToAttestReason =
+    inertOnlyFiles.length === 0
+      ? 'Tests pass. The change only removes code; there are no added lines for coverage to attest.'
+      : removalOnlyFiles.length === 0
+        ? 'Tests pass. The change only touches comments and blank lines; there are no added statements for coverage to attest.'
+        : 'Tests pass. The change only removes code and touches comments and blank lines; there are no added statements for coverage to attest.';
+  const coverageReason = nothingToAttest
+    ? nothingToAttestReason
     : cov.changedLinesCovered === 'unknown'
       ? 'Tests pass, but coverage of the changed code could not be determined.'
       : 'Tests pass, but the changed code is not exercised by any test.';
@@ -152,10 +195,15 @@ export function fuseVerdict(
   // shortfall is still reported in full via `missingTestsTruncated.total`, which
   // must reflect the count BEFORE any upstream capping of `cov.uncovered`;
   // otherwise the notice under-counts the gap it exists to disclose.
-  const uncoveredTotal = cov.uncoveredTruncated?.total ?? cov.uncovered.length;
   const missingTests = cov.uncovered.slice(0, MISSING_TESTS_CAP).map((u) => ({
     file: u.file,
-    hint: `add a test exercising ${u.file}:${u.line}`,
+    // A statement coverage.py EXCLUDED (`# pragma: no cover`, `if
+    // TYPE_CHECKING:`) is deliberately unreachable by the suite. Telling the
+    // user to "add a test exercising" it hands them an uncompletable task and
+    // makes the tool look broken; name the real situation instead.
+    hint: u.excluded
+      ? `${u.file}:${u.line} is excluded from coverage (e.g. \`# pragma: no cover\`, \`if TYPE_CHECKING:\`), so no test can exercise it; review this change by hand`
+      : `add a test exercising ${u.file}:${u.line}`,
   }));
   const truncated = missingTests.length > 0 && uncoveredTotal > missingTests.length;
   return {

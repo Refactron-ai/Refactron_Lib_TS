@@ -5,6 +5,7 @@ import {
   formatTestFilesNote,
   formatFlakyNote,
   formatUncoveredLines,
+  formatCoverageSummary,
 } from '../../../src/cli/verify-diff-command.js';
 
 describe('formatUncoveredLines', () => {
@@ -36,6 +37,64 @@ describe('formatUncoveredLines', () => {
     expect(
       formatUncoveredLines({ tool: 'coverage.py', changedLinesCovered: true, uncovered: [] }),
     ).toEqual([]);
+  });
+
+  it('marks an excluded statement so nobody is told to write an impossible test', () => {
+    expect(
+      formatUncoveredLines({
+        tool: 'coverage.py',
+        changedLinesCovered: false,
+        uncovered: [{ file: 'gated.py', line: 6, excluded: true }],
+      }),
+    ).toEqual(['  uncovered: gated.py:6 (excluded from coverage; no test can reach it)']);
+  });
+
+  it('says how many files a truncated list spans, not just how many entries', () => {
+    const lines = formatUncoveredLines({
+      tool: 'coverage.py',
+      changedLinesCovered: false,
+      uncovered: [{ file: 'a.py', line: 1 }],
+      uncoveredTruncated: { shown: 1, total: 412 },
+      filesWithUncovered: 37,
+    });
+    expect(lines[1]).toBe('  ... and 411 more uncovered statement(s) (412 total across 37 files)');
+  });
+});
+
+describe('formatCoverageSummary', () => {
+  // SAFE clears on ONE exercised statement per changed file, so a SAFE change can
+  // still hold statements no test ran. The terminal gets the ratio; `--json` keeps
+  // the full list. What it must never do is imply everything was proven.
+  it('states the shortfall behind a SAFE verdict', () => {
+    expect(
+      formatCoverageSummary({
+        tool: 'coverage.py',
+        changedLinesCovered: true,
+        uncovered: [{ file: 'a.py', line: 31 }],
+        changedStatements: { total: 40, covered: 12 },
+        filesWithUncovered: 3,
+      }),
+    ).toBe(
+      '  note: 12 of 40 changed statements were exercised; 28 were not across 3 files ' +
+        '(SAFE requires one per file). See --json for the list.',
+    );
+  });
+
+  it('stays silent when every changed statement really did run', () => {
+    expect(
+      formatCoverageSummary({
+        tool: 'coverage.py',
+        changedLinesCovered: true,
+        uncovered: [],
+        changedStatements: { total: 2, covered: 2 },
+      }),
+    ).toBeNull();
+  });
+
+  it('stays silent when there is no ratio to report', () => {
+    expect(
+      formatCoverageSummary({ tool: 'none', changedLinesCovered: 'unknown', uncovered: [] }),
+    ).toBeNull();
   });
 });
 

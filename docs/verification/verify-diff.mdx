@@ -6,7 +6,7 @@ description: Prove a change preserved behavior. Refactron runs your real tests i
 
 `verify-diff` takes a change (your AI agent's, a codemod's, or your own) and answers one question: **did it preserve behavior, and can you prove it?**
 
-Refactron applies the diff in an isolated shadow tree, runs the syntax, imports, and test gates against it, checks whether your tests actually exercise the changed lines, and returns one of three verdicts. Your working tree is never touched.
+Refactron applies the diff in an isolated shadow tree, runs the syntax, imports, and test gates against it, checks whether your tests actually exercise the changed statements, and returns one of three verdicts. Your working tree is never touched.
 
 <Frame caption="A diff enters, the gates run in an isolated shadow tree, and one of three verdicts comes out.">
   <img
@@ -19,7 +19,7 @@ Refactron applies the diff in an isolated shadow tree, runs the syntax, imports,
 
 | Verdict    | Meaning                                                                                              | Exit |
 | ---------- | ---------------------------------------------------------------------------------------------------- | ---- |
-| `SAFE`     | Every gate passed **and** your tests exercise the changed code (at least one changed line per file). | `0`  |
+| `SAFE`     | Every gate passed **and** your tests exercise the changed code (at least one changed statement per file). | `0`  |
 | `UNSAFE`   | A gate failed: the change broke something.                                                           | `1`  |
 | `UNPROVEN` | Tests pass, but the changed code isn't exercised (or coverage couldn't be assessed).                 | `0`  |
 
@@ -131,6 +131,7 @@ This is a note, not a verdict change. A green verdict on a diff that also weaken
 
 ```json
 {
+  "reportVersion": 1,
   "verdict": "UNPROVEN",
   "gates": {
     "syntax": { "passed": true, "durationMs": 12 },
@@ -142,18 +143,25 @@ This is a note, not a verdict change. A green verdict on a diff that also weaken
   "coverage": {
     "tool": "coverage.py",
     "changedLinesCovered": false,
-    "uncovered": [{ "file": "calc.py", "line": 14 }]
+    "changedStatements": { "total": 3, "covered": 2 },
+    "uncovered": [{ "file": "calc.py", "line": 14 }],
+    "filesWithUncovered": 1,
+    "inertOnlyFiles": []
   },
   "reason": "Tests pass, but the changed code is not exercised by any test.",
   "missingTests": [{ "file": "calc.py", "hint": "add a test exercising calc.py:14" }]
 }
 ```
 
+- `reportVersion`: schema version of this report. The shape below is a public contract; the version tells a consumer that stores reports which shape it is holding.
 - `gates`: each gate's `passed` flag and wall-clock. A failed gate also carries a `blockingReason`.
 - `testFilesChanged`: changed files matching test conventions. A note that the diff touched tests, never a verdict input.
 - `coverage.tool`: `coverage.py` when coverage was assessed, `none` when it couldn't be (non-Python diff, or no `coverage.py` installed).
-- `coverage.uncovered`: one entry per unexercised **statement**, at the statement's first line. Coverage is attributed per statement, so a multi-line statement reports once rather than once per wrapped line.
-- `missingTests`: present on `UNPROVEN`-by-coverage, a concrete hint per uncovered statement, capped at 50. `coverage.uncoveredTruncated` and `missingTestsTruncated` (`{ shown, total }`) appear whenever a list was capped, so a truncated report never reads as a complete one.
+- `coverage.uncovered`: one entry per unexercised **statement**, at the statement's first line, mapped from the changed line by AST containment. A multi-line statement reports once rather than once per wrapped line. Present on `SAFE` too: the per-file rule clears `SAFE` on one exercised statement per file, so a `SAFE` change can still hold statements no test ran, and hiding them would make the verdict read stronger than it is. An entry marked `"excluded": true` sits in a `# pragma: no cover` or `if TYPE_CHECKING:` block that no test can reach.
+- `coverage.changedStatements`: `{ total, covered }` across the whole diff, so you can read the ratio ("12 of 40 changed statements exercised") rather than only the boolean.
+- `coverage.filesWithUncovered`: distinct files with at least one uncovered statement, counted **before** the cap.
+- `coverage.inertOnlyFiles` / `coverage.removalOnlyFiles`: changed files with nothing for coverage to attest, because their added lines are all blank/comment lines, or because the file only had lines removed.
+- `missingTests`: present on `UNPROVEN`-by-coverage, a concrete hint per uncovered statement, **capped at 50**. `coverage.uncoveredTruncated` and `missingTestsTruncated` (`{ shown, total }`) appear whenever a list was capped, so a truncated report never reads as a complete one.
 
 ## Verify in CI
 

@@ -35,6 +35,14 @@ export interface CoverageReport {
   // formatter wrapped as uncovered. This set is what lets a consumer map a
   // changed line back to the statement that actually ran.
   executableLines: Map<string, Set<number>>;
+  // Lines coverage.py EXCLUDED from judgement (`# pragma: no cover`, and in most
+  // projects `if TYPE_CHECKING:`). Reported separately from `executableLines`
+  // because an excluded statement can never be exercised by ANY test: a consumer
+  // that reports it as uncovered must say so differently, instead of asking the
+  // user for a test that cannot exist. Note the exclusion is a PHYSICAL RANGE,
+  // not a set of statement starts: measured on coverage 7.11, a pragma'd `def`
+  // whose body spans 6..11 reports excluded_lines [5,6,7,8,9,10,11].
+  excludedLines: Map<string, Set<number>>;
   runDurationMs: number;
   // True when coverage.py exists but the measurement could not be performed
   // (unwrappable command, failed run, no data emitted). Callers MUST treat this
@@ -154,6 +162,7 @@ export async function reportCoverage(input: CoverageReportInput): Promise<Covera
       coveredLines: new Set(),
       measuredFiles: new Set(),
       executableLines: new Map(),
+      excludedLines: new Map(),
       runDurationMs: 0,
       measurementFailed: false,
     };
@@ -166,6 +175,7 @@ export async function reportCoverage(input: CoverageReportInput): Promise<Covera
       coveredLines: new Set(),
       measuredFiles: new Set(),
       executableLines: new Map(),
+      excludedLines: new Map(),
       runDurationMs: performance.now() - t0,
       measurementFailed: true,
       measurementFailureReason: `cannot wrap test command for coverage: ${testCmd}`,
@@ -180,6 +190,7 @@ export async function reportCoverage(input: CoverageReportInput): Promise<Covera
   const covered = new Set<string>();
   const measured = new Set<string>();
   const executable = new Map<string, Set<number>>();
+  const excludedByFile = new Map<string, Set<number>>();
   let failureReason: string | undefined;
   try {
     // 1) Run tests under coverage. A nonzero exit here is NOT itself a failure
@@ -251,10 +262,13 @@ export async function reportCoverage(input: CoverageReportInput): Promise<Covera
         for (const line of fileData.missing_lines ?? []) {
           stmts.add(line);
         }
+        const skipped = excludedByFile.get(normalized) ?? new Set<number>();
         for (const line of fileData.excluded_lines ?? []) {
           stmts.add(line);
+          skipped.add(line);
         }
         executable.set(normalized, stmts);
+        excludedByFile.set(normalized, skipped);
       }
     } catch {
       // JSON missing or unparseable. We have no measurement, so say so rather
@@ -272,6 +286,7 @@ export async function reportCoverage(input: CoverageReportInput): Promise<Covera
     coveredLines: covered,
     measuredFiles: measured,
     executableLines: executable,
+    excludedLines: excludedByFile,
     runDurationMs: performance.now() - t0,
     measurementFailed: failureReason !== undefined,
     ...(failureReason !== undefined ? { measurementFailureReason: failureReason } : {}),
