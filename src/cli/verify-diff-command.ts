@@ -3,6 +3,7 @@
 // and print the SAFE/UNSAFE/UNPROVEN verdict. The local primitive under the MCP tool.
 import * as fs from 'node:fs/promises';
 import { verifyDiff } from '../verify/verify-diff.js';
+import type { VerdictReport } from '../verify/verdict-fuse.js';
 import { requireAuth } from './auth-gate.js';
 import { applyColor } from './apply-color.js';
 
@@ -69,6 +70,51 @@ export function formatTestFilesNote(testFilesChanged: string[]): string | null {
   return `note: this diff modifies test files (${testFilesChanged.length}): ${preview}${suffix}`;
 }
 
+// One line per unexercised STATEMENT (deduped upstream), not per physical line:
+// coverage.py attributes execution to a statement's first line, so a rewrapped
+// statement would otherwise print once per wrapped line. A capped list always
+// ends with the shortfall, because a short list that looks complete understates
+// the gap the user has to close.
+//
+// SAFE takes the one-line summary below instead. The report still CARRIES every
+// unexercised statement (see formatCoverageSummary and `--json`), but a green
+// headline followed by 128 "uncovered:" lines reads like a contradiction, and a
+// terminal is the wrong place to dump a list nobody is being asked to act on.
+export function formatUncoveredLines(coverage: VerdictReport['coverage']): string[] {
+  const out = coverage.uncovered.map(
+    (u) =>
+      `  uncovered: ${u.file}:${u.line}` +
+      (u.excluded ? ' (excluded from coverage; no test can reach it)' : ''),
+  );
+  const cut = coverage.uncoveredTruncated;
+  if (cut) {
+    const files = coverage.filesWithUncovered;
+    const spread = files !== undefined && files > 1 ? ` across ${files} files` : '';
+    out.push(
+      `  ... and ${cut.total - cut.shown} more uncovered statement(s) (${cut.total} total${spread})`,
+    );
+  }
+  return out;
+}
+
+// What a SAFE verdict did NOT prove, in one line. SAFE clears on one exercised
+// statement per changed file, so a SAFE change can still hold statements no test
+// ran. Saying so is the difference between a verdict you can audit and one you
+// have to take on faith; suppressing it entirely is how a false SAFE stays
+// invisible. Returns null when every changed statement ran, or when there is no
+// ratio to report.
+export function formatCoverageSummary(coverage: VerdictReport['coverage']): string | null {
+  const stats = coverage.changedStatements;
+  if (!stats || stats.total === 0 || stats.covered >= stats.total) return null;
+  const gap = stats.total - stats.covered;
+  const files = coverage.filesWithUncovered;
+  const spread = files !== undefined && files > 1 ? ` across ${files} files` : '';
+  return (
+    `  note: ${stats.covered} of ${stats.total} changed statements were exercised; ` +
+    `${gap} were not${spread} (SAFE requires one per file). See --json for the list.`
+  );
+}
+
 // One-line advisory when tests failed once then passed on the gate's same-shadow
 // retry. Those were treated as flaky (not the diff's fault) and did not change
 // the verdict; the note keeps that decision visible. Returns null when none.
@@ -118,8 +164,13 @@ export async function runVerifyDiffCommand(argv: string[]): Promise<number> {
     process.stdout.write(
       applyColor(`[${report.verdict}] ${report.reason}`, VERDICT_COLOR[report.verdict]) + '\n',
     );
-    for (const u of report.coverage.uncovered) {
-      process.stdout.write(`  uncovered: ${u.file}:${u.line}\n`);
+    if (report.verdict === 'SAFE') {
+      const summary = formatCoverageSummary(report.coverage);
+      if (summary) process.stdout.write(summary + '\n');
+    } else {
+      for (const line of formatUncoveredLines(report.coverage)) {
+        process.stdout.write(line + '\n');
+      }
     }
     const note = formatTestFilesNote(report.testFilesChanged);
     if (note) process.stdout.write(note + '\n');

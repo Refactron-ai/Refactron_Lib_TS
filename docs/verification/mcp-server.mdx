@@ -1,7 +1,7 @@
 ---
 title: MCP server
 icon: plug
-description: "Give your AI agent the deterministic gate it can call before it lands a change: a verify_change tool over MCP that returns a SAFE, UNSAFE, or UNPROVEN verdict."
+description: 'Give your AI agent the deterministic gate it can call before it lands a change: a verify_change tool over MCP that returns a SAFE, UNSAFE, or UNPROVEN verdict.'
 ---
 
 Refactron ships an [MCP](https://modelcontextprotocol.io) server that exposes one tool: **`verify_change`**. An agent proposes an edit, calls `verify_change`, and gets back a `SAFE` / `UNSAFE` / `UNPROVEN` verdict with a reproducible report, before it writes anything to your repo.
@@ -58,6 +58,7 @@ The tool returns the [verification report](/verification/verify-diff#the-json-re
 
 ```json
 {
+  "reportVersion": 1,
   "verdict": "SAFE",
   "gates": {
     "syntax": { "passed": true, "durationMs": 11 },
@@ -65,12 +66,51 @@ The tool returns the [verification report](/verification/verify-diff#the-json-re
     "tests": { "passed": true, "durationMs": 2980 }
   },
   "changedFiles": ["calc.py"],
-  "coverage": { "tool": "coverage.py", "changedLinesCovered": true, "uncovered": [] },
+  "coverage": {
+    "tool": "coverage.py",
+    "changedLinesCovered": true,
+    "changedStatements": { "total": 3, "covered": 2 },
+    "uncovered": [{ "file": "calc.py", "line": 31 }],
+    "filesWithUncovered": 1
+  },
   "reason": "Tests pass and the changed code is covered."
 }
 ```
 
 An agent reads `verdict` and decides: land on `SAFE`, stop on `UNSAFE`, and on `UNPROVEN` either add the test named in `missingTests` or ask a human.
+
+`reportVersion` identifies the schema. Read it before relying on any field, and treat an unknown value as a report you do not understand rather than one you can partially trust.
+
+<Warning>
+  **`SAFE` does not mean every changed statement ran.** It means every changed *file* had at least
+  one changed statement executed. `coverage.uncovered` is populated on `SAFE` too, and
+  `changedStatements` gives the ratio: in the example above, two of three. An agent that treats
+  `SAFE` as "fully tested" is over-reading the verdict. If your policy needs more, gate on
+  `changedStatements` yourself.
+</Warning>
+
+### Both list fields are capped
+
+`missingTests` is capped at **50** entries and `coverage.uncovered` at **200**, so a mass reformat
+cannot return a multi-megabyte report. When either is truncated the report says so explicitly:
+
+```json
+"coverage": {
+  "uncoveredTruncated": { "shown": 200, "total": 412 },
+  "filesWithUncovered": 37
+},
+"missingTestsTruncated": { "shown": 50, "total": 412 }
+```
+
+An agent must not read the absence of a file from `missingTests` as "that file is fine". Check
+`missingTestsTruncated` first; when it is present, the named hints are a sample, and `total` plus
+`filesWithUncovered` describe the real size of the gap. Each file is guaranteed a share of the list
+before any file takes a second helping, so the sample spans the diff instead of stopping at the
+first noisy file.
+
+A hint carrying `"excluded": true` on its `coverage.uncovered` entry sits in a `# pragma: no cover`
+or `if TYPE_CHECKING:` block. No test can reach it, so its hint asks for a human review rather than
+a new test, and an agent should not try to write one.
 
 <Warning>
   Coverage is **Python-only**. A TypeScript or mixed-language change returns `UNPROVEN` ("coverage

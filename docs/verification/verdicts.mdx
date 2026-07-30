@@ -9,7 +9,7 @@ Every verification returns exactly one of three verdicts. Two of them exist in m
 <CardGroup cols={3}>
   <Card title="SAFE">
     <img src="/assets/verdict-safe.svg" alt="The SAFE verdict mark" />
-    Gates pass **and** your tests exercise the changed lines.
+    Gates pass **and** your tests exercise the changed statements.
   </Card>
   <Card title="UNSAFE">
     <img src="/assets/verdict-unsafe.svg" alt="The UNSAFE verdict mark" />A gate failed. The change
@@ -26,22 +26,34 @@ Every verification returns exactly one of three verdicts. Two of them exist in m
 Refactron runs two independent checks and fuses them:
 
 1. **The gates**: syntax, then imports, then your test suite, all against the change applied in an isolated [shadow tree](/concepts/safety-model). A gate either passes or fails.
-2. **Changed-line coverage**: did your tests actually execute the lines the change touched? Assessed only when the gates pass.
+2. **Changed-statement coverage**: did your tests actually execute the statements the change touched? Each changed line is mapped to the statement containing it first. Assessed only when the gates pass.
 
 The fusion rule:
 
-| Gates         | Changed lines covered? | Verdict    | Reason                                                                  |
-| ------------- | ---------------------- | ---------- | ----------------------------------------------------------------------- |
-| A gate failed | n/a                    | `UNSAFE`   | The failing gate's blocking reason.                                     |
-| All passed    | yes                    | `SAFE`     | "Tests pass and the changed code is covered."                           |
-| All passed    | no                     | `UNPROVEN` | "Tests pass, but the changed code is not exercised by any test."        |
-| All passed    | couldn't tell          | `UNPROVEN` | "Tests pass, but coverage of the changed code could not be determined." |
+| Gates         | Changed statements covered? | Verdict    | Reason                                                                  |
+| ------------- | --------------------------- | ---------- | ----------------------------------------------------------------------- |
+| A gate failed | n/a                         | `UNSAFE`   | The failing gate's blocking reason.                                     |
+| All passed    | yes                         | `SAFE`     | "Tests pass and the changed code is covered."                           |
+| All passed    | no                          | `UNPROVEN` | "Tests pass, but the changed code is not exercised by any test."        |
+| All passed    | couldn't tell               | `UNPROVEN` | "Tests pass, but coverage of the changed code could not be determined." |
 
 ## SAFE
 
-Every gate passed, and at least one changed line in every changed file was executed by your test suite. The change is on a tested path, and that path is green.
+Every gate passed, and at least one changed **statement** in every changed file was executed by your test suite. The change is on a tested path, and that path is green.
 
-`SAFE` is a per-file check, not a per-line one. It means every changed file had at least one changed line run by your suite; it does not mean every changed line ran. A file with some covered and some uncovered changed lines still reads as covered, so `SAFE` can leave individual changed lines unexercised. Full line-level strictness is a planned fast-follow. Until then, read `SAFE` as "the change is on a tested path," not "every changed line is tested."
+`SAFE` is a per-file check, not a per-statement one. It means every changed file had at least one changed statement run by your suite; it does not mean every changed statement ran. A file with some exercised and some unexercised changed statements still reads as covered, so `SAFE` can leave individual statements unexercised. Requiring **all** changed statements, not one per file, is the roadmap item here. Until then, read `SAFE` as "the change is on a tested path," not "every changed statement is tested."
+
+`SAFE` reports still list what they did not prove. `coverage.uncovered` is always populated, and `coverage.changedStatements` gives the ratio outright:
+
+```json
+"coverage": {
+  "changedLinesCovered": true,
+  "changedStatements": { "total": 40, "covered": 12 },
+  "uncovered": [{ "file": "calc.py", "line": 31 }]
+}
+```
+
+Twelve of forty changed statements ran. That is a real `SAFE` under the per-file rule and also a clear picture of its limits. A verdict that hid the other twenty-eight would be easier to read and worth less.
 
 `SAFE` requires coverage, and [coverage is Python-only](#the-python-only-limitation). A change that isn't entirely Python can't reach `SAFE` today.
 
@@ -68,7 +80,7 @@ The gates passed, but Refactron won't claim the change is safe, because the evid
 
 There are two ways to land here:
 
-- **The changed code isn't exercised.** Your tests pass, but none of them run the lines you changed. A green suite tells you nothing about untested lines. Refactron lists each uncovered line and, in the JSON report, a `missingTests` hint:
+- **The changed code isn't exercised.** Your tests pass, but none of them run the code you changed. A green suite tells you nothing about untested lines. Refactron lists each uncovered statement and, in the JSON report, a `missingTests` hint:
 
   ```json
   "missingTests": [
@@ -76,14 +88,98 @@ There are two ways to land here:
   ]
   ```
 
-- **Coverage couldn't be assessed.** The change isn't entirely Python, or `coverage.py` isn't installed. Refactron can't measure whether the changed lines ran, so it declines to certify `SAFE`. The reason reads "coverage of the changed code could not be determined."
+- **Coverage couldn't be assessed.** The change isn't entirely Python, or `coverage.py` isn't installed. Refactron can't measure whether the changed statements ran, so it declines to certify `SAFE`. The reason reads "coverage of the changed code could not be determined."
 
 `UNPROVEN` exits `0`. It is a warning, not a rejection: nothing is known to be broken, but nothing is proven either. The right response is to add the missing test, then re-run and earn `SAFE`.
 
 <Tip>
-  `UNPROVEN` turns your test suite's blind spots into a to-do list. Every uncovered changed line is
-  a test you could write to move the verdict to `SAFE`.
+  `UNPROVEN` turns your test suite's blind spots into a to-do list. Every uncovered statement is a
+  test you could write to move the verdict to `SAFE`.
 </Tip>
+
+### Coverage is judged per statement, not per line
+
+`coverage.py` records execution against the **first line of a statement**. A statement wrapped
+across several lines, which is what any formatter produces, has continuation lines, closing
+brackets, and trailing commas that `coverage.py` never marks at all.
+
+Refactron therefore maps each changed line to the statement that **contains** it, using the Python
+AST, before judging it. A changed continuation line counts as exercised when the statement it
+belongs to ran, and one unexercised multi-line statement produces **one** entry, at the line you
+would actually write a test against, not one entry per physical line. Without this, a reformat that
+only rewraps code reports every wrapped line as uncovered: a `black` run over 28 files once produced
+3666 such entries, almost all of them for code that provably executed.
+
+Containment is the load-bearing word. The cheaper version of this idea, "walk back to the nearest
+statement start at or above the changed line," is wrong in a way that manufactures false `SAFE`
+verdicts: it cannot tell a continuation line of that statement from a blank line, a comment, or a
+dead-branch line that merely _follows_ it and belongs to somewhere else entirely. Under that rule an
+executed `def` vouches for a body that never ran. Real extents from the AST answer the question
+exactly.
+
+### Blank lines and comments prove nothing, and are asked to prove nothing
+
+A changed line carrying no code at all, a blank line or a comment-only line, is **inert**. It cannot
+change behavior, so Refactron never reports it as uncovered; and it cannot be exercised by a test,
+so it never counts toward a file's coverage either. Formatters move blank lines constantly, and a
+mechanism that let them vouch for their neighbours would turn every reformat into a free `SAFE`.
+
+A file whose changed lines are _all_ inert has nothing to attest, and gets its own reason rather
+than a pass:
+
+```
+[UNPROVEN] Tests pass. The change only touches comments and blank lines; there are no added
+statements for coverage to attest.
+```
+
+That is deliberately conservative. A diff exposes only the lines it **adds**, so "every added line
+is inert" is not the same claim as "this file is unchanged": a deleted statement next to a moved
+blank line looks identical from here. Removal-only files are treated the same way and for the same
+reason.
+
+A docstring is a real statement in Python, so a docstring-only edit lands on its own statement and
+is judged like any other. `coverage.py` does not track function docstrings, so such a change
+typically reads as unexercised, which is the honest answer rather than a convenient one.
+
+### Code your suite is not allowed to reach
+
+Some statements can never be exercised, by design. A `# pragma: no cover` block, or an import under
+`if TYPE_CHECKING:`, is excluded from `coverage.py`'s judgement and never executes under test. A
+diff that touches only such code therefore **cannot reach `SAFE`**, no matter how good your suite
+is: there is no execution to observe, and Refactron will not certify what it did not see.
+
+These entries are marked, and their hints say what is actually true instead of asking for a test
+that cannot exist:
+
+```json
+"coverage": {
+  "uncovered": [{ "file": "gated.py", "line": 6, "excluded": true }]
+},
+"missingTests": [
+  {
+    "file": "gated.py",
+    "hint": "gated.py:6 is excluded from coverage (e.g. `# pragma: no cover`, `if TYPE_CHECKING:`), so no test can exercise it; review this change by hand"
+  }
+]
+```
+
+The right response is a human review of that hunk, not a new test.
+
+Large diffs are capped so the report stays readable. When Refactron truncates, it says so rather
+than shipping a short list that looks complete:
+
+```json
+"coverage": {
+  "uncoveredTruncated": { "shown": 200, "total": 412 },
+  "filesWithUncovered": 37
+},
+"missingTestsTruncated": { "shown": 50, "total": 412 }
+```
+
+Each file is guaranteed a share of the list before any file takes a second helping, so one
+pathological file cannot consume every slot and push later files out of the report entirely.
+`filesWithUncovered` counts distinct files **before** the cap, so you can always tell whether the
+list you are reading spans the whole diff.
 
 ## The Python-only limitation
 
@@ -98,13 +194,13 @@ Refactron never guesses here. Reporting a non-Python change as "covered" would l
 
 Coverage fusion measures the lines your test process executes. Code that runs only in a child process, launched through `subprocess.run`, a `multiprocessing` worker, or a spawned server, is invisible to `coverage.py` unless you wire up subprocess coverage yourself: a `COVERAGE_PROCESS_START` environment variable plus a `coverage.process_startup()` call in `sitecustomize`.
 
-Without that wiring, a change whose only exercise happens inside a subprocess reads as `UNPROVEN`. The gates still pass, but the changed lines never register as covered, so Refactron declines to certify `SAFE`. This is the honest result, not a defect. First-class subprocess coverage is a planned fast-follow; until it lands, exercise the changed code in-process in at least one test so the verdict can reach `SAFE`.
+Without that wiring, a change whose only exercise happens inside a subprocess reads as `UNPROVEN`. The gates still pass, but the changed statements never register as covered, so Refactron declines to certify `SAFE`. This is the honest result, not a defect. First-class subprocess coverage is a planned fast-follow; until it lands, exercise the changed code in-process in at least one test so the verdict can reach `SAFE`.
 
 ## SAFE means suite-approved, not proven correct
 
 `SAFE` says your suite ran the changed code and stayed green. It does not claim the change is correct in some absolute sense: it inherits exactly what your suite checks. Audits of AI agent patches (for example on SWE-bench) find that a substantial share of patches which pass the project's tests are still wrong, because the suite was too weak to catch the defect.
 
-Refactron cannot turn a weak suite into a strong one, but it refuses to overstate what a green run proves. That is why `UNPROVEN` exists, and why every uncovered changed line ships with a `missingTests` hint: the path to a `SAFE` you can trust is a suite that actually exercises the behavior you care about.
+Refactron cannot turn a weak suite into a strong one, but it refuses to overstate what a green run proves. That is why `UNPROVEN` exists, and why every uncovered statement ships with a `missingTests` hint: the path to a `SAFE` you can trust is a suite that actually exercises the behavior you care about.
 
 A worked example from our own hardening runs, on a real library. Jinja2's `truncate` filter guards its early return with `if len(s) <= length + leeway`. Change that `<=` to `<` and the behavior genuinely changes: at the exact boundary the string is now truncated instead of returned whole. All 911 tests in Jinja2's suite still pass, because none of them lands on that precise boundary, and the changed line is covered, so the verdict is `SAFE`.
 
