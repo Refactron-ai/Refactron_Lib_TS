@@ -220,7 +220,7 @@ def main(argv):
             # Never fall back to "no statements": that would make every changed
             # line inert and hand the file a free pass. The caller degrades the
             # whole assessment to UNKNOWN coverage on any error entry.
-            errors[path] = "{}: {}".format(type(exc).__name__, exc)
+            errors[path] = f"{type(exc).__name__}: {exc}"
     payload = json.dumps({"files": files, "errors": errors}, separators=(",", ":"))
     # Byte-exact stdout for the same reason as stdin above.
     sys.stdout.buffer.write(payload.encode("utf-8", "surrogateescape"))
