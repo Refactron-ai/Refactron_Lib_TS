@@ -192,8 +192,8 @@ describe('fuseVerdict — testFilesChanged note', () => {
 
   // The removal-only reason used to fire on "some removal-only file exists AND
   // the uncovered list is empty". Both halves are now much easier to satisfy, so
-  // a MIXED diff — one removal-only file plus a file whose additions are fully
-  // covered — printed "the change only removes code", which is simply false.
+  // a MIXED diff (one removal-only file plus a file whose additions are fully
+  // covered) printed "the change only removes code", which is simply false.
   it('does NOT claim removal-only when another changed file has real additions', () => {
     const mixed: CoverageAssessment = {
       tool: 'coverage.py',

@@ -25,8 +25,8 @@ special:
     it as uncovered.
   * owner == -1 marks a code line inside no statement. It should be unreachable
     (every code token belongs to some statement), and exists so that a shape we
-    failed to anticipate degrades to "cannot attribute" — which the caller treats
-    as never-exercised — instead of silently vanishing into the inert bucket.
+    failed to anticipate degrades to "cannot attribute" (which the caller treats
+    as never-exercised) instead of silently vanishing into the inert bucket.
 
 WHY THIS EXISTS. coverage.py records execution against a statement's FIRST line
 only, so a consumer cannot ask "did this physical line run?". The obvious repair,
@@ -126,7 +126,7 @@ def _units(tree):
     tracks in its own right; without it, a change to an except clause that never
     fired would be attributed to the `try:` above, which did run. `else:` and
     `finally:` are NOT nodes in the grammar and coverage.py does not track them
-    either, so they keep the enclosing `try:` as their owner — the closest honest
+    either, so they keep the enclosing `try:` as their owner: the closest honest
     answer available, and a line no diff can change on its own.
     """
     units = []

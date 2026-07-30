@@ -125,7 +125,7 @@ async function assessCoverage(
     // Judge coverage on STATEMENTS, not physical lines, using real extents from
     // the Python AST. coverage.py only ever marks a statement's FIRST line, so a
     // diff that rewraps statements (any formatter) would otherwise report every
-    // continuation line as uncovered — and the cheap repair of walking back to
+    // continuation line as uncovered. The cheap repair of walking back to
     // the nearest statement start above the line is unsound, because it cannot
     // tell a continuation line from a blank/comment/dead-branch line that merely
     // follows it. See coverage-attribution.ts. The map is built from the SHADOW
@@ -159,7 +159,7 @@ async function assessCoverage(
     const removalOnlyFiles = ranges.filter((r) => r.lines.length === 0).map((r) => r.path);
     // Spread, never rebuild field by field: an allow-list silently drops any
     // field a future CoverageAttribution adds, and the last allow-list here also
-    // DELETED `uncovered` whenever the verdict was SAFE — which is precisely how
+    // DELETED `uncovered` whenever the verdict was SAFE, which is precisely how
     // the false SAFE stayed invisible. A SAFE report that discloses the changed
     // statements it did not prove is strictly more honest.
     return {

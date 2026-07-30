@@ -116,7 +116,7 @@ describe('verifyDiff (python three-way, real coverage)', () => {
         testCmd: TEST_CMD,
       });
       // The .py change alone would be SAFE, but the .ts change is unassessable by
-      // the Python-only coverage tool — so the whole change must not read as SAFE.
+      // the Python-only coverage tool, so the whole change must not read as SAFE.
       expect(report.verdict).toBe('UNPROVEN');
     },
     180_000,
@@ -375,7 +375,7 @@ describe('verifyDiff (python three-way, real coverage)', () => {
     );
 
     // Nothing but a blank line moved. Inert lines can neither change behavior
-    // nor be proven by a test, so there is nothing to attest — but the diff also
+    // nor be proven by a test, so there is nothing to attest, but the diff also
     // cannot prove the file is unchanged (a deletion is invisible in the added
     // lines), so this gets the removal-only treatment, not a free SAFE.
     it.skipIf(NO_COVERAGE)(

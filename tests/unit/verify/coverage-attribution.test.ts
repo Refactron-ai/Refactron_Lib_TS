@@ -305,7 +305,7 @@ describe('attributeChangedLines (AST statement containment)', () => {
   describe('inert lines', () => {
     // A file whose changed lines are ALL inert has nothing to attest. It must not
     // be a free pass: added lines are the only thing a diff exposes, so a
-    // DELETED statement beside a moved blank line is invisible here — exactly why
+    // DELETED statement beside a moved blank line is invisible here, exactly why
     // removal-only files are conservative too. Same bucket, same treatment.
     it('a file whose changed lines are ALL inert gets its own bucket, never a free pass', () => {
       const out = attributeChangedLines({
