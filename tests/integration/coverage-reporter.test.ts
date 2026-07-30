@@ -126,6 +126,56 @@ describe('python-line-coverage reporter', () => {
       expect(result.coveredLines.size).toBe(0);
     });
 
+    it('keeps quoted arguments intact when tokenizing', async () => {
+      // The tests gate runs the command through a shell, so `-k "not slow"` is
+      // ONE argument there. A naive whitespace split turns it into `"not` and
+      // `slow"`, which changes which tests run and therefore what gets measured.
+      const { toCoverageRunArgs } =
+        await import('../../src/analyze/coverage/python-line-coverage.js');
+      expect(toCoverageRunArgs('pytest tests/ -k "not slow"')).toEqual([
+        '-m',
+        'pytest',
+        'tests/',
+        '-k',
+        'not slow',
+      ]);
+      expect(toCoverageRunArgs("pytest -k 'a or b'")).toEqual(['-m', 'pytest', '-k', 'a or b']);
+      expect(toCoverageRunArgs('python3 tests/runtests.py "my app"')).toEqual([
+        'tests/runtests.py',
+        'my app',
+      ]);
+    });
+
+    it('reports measurementFailed when the report step fails after a good run', async () => {
+      // A shim python that satisfies the probe and the `coverage run` (writing a
+      // data file) but fails `coverage json`. The old code swallowed that and
+      // returned an empty covered set as if measured: the same lie this module
+      // exists to prevent.
+      if (process.platform === 'win32') return;
+      const shimDir = await fs.mkdtemp(path.join(os.tmpdir(), 'cov-jsonfail-'));
+      const shim = path.join(shimDir, 'python-jsonfail');
+      await fs.writeFile(
+        shim,
+        '#!/bin/sh\n' +
+          'case "$*" in\n' +
+          '  *"coverage --version"*) exit 0 ;;\n' +
+          '  *"coverage run"*)\n' +
+          '     for a in "$@"; do case "$a" in *.coverage) : > "$a" ;; esac; done\n' +
+          '     exit 0 ;;\n' +
+          '  *"coverage json"*) echo "boom" >&2; exit 1 ;;\n' +
+          '  *) exit 0 ;;\n' +
+          'esac\n',
+        { mode: 0o755 },
+      );
+      const result = await reportCoverage({
+        projectRoot: FIXTURE,
+        testCmd: 'pytest -q',
+        pythonBin: shim,
+      });
+      expect(result.measurementFailed).toBe(true);
+      expect(result.coveredLines.size).toBe(0);
+    });
+
     it('refuses to guess at shell-composite commands', async () => {
       if (!pythonHasCoverage()) return;
       const result = await reportCoverage({

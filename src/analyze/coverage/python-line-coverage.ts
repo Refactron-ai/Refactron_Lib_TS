@@ -44,9 +44,41 @@ const SHELL_COMPOSITE_RE = /&&|\|\||[;|`<>]|\$\(/;
 /** How to hand `testCmd` to `coverage run`. Module form needs `-m`; a script
  *  path must be passed positionally, or coverage tries to import a module by
  *  that name (Django's `python3 tests/runtests.py` failed exactly this way). */
+/** Split a command into argv, honoring single and double quotes. The tests gate
+ *  hands the command to a shell, where `-k "not slow"` is ONE argument; a plain
+ *  whitespace split would pass `"not` and `slow"` and silently change which
+ *  tests run, so the measured coverage would not match the verified run. */
+function tokenizeCommand(cmd: string): string[] {
+  const out: string[] = [];
+  let cur = '';
+  let quote: '"' | "'" | null = null;
+  let started = false;
+  for (const ch of cmd.trim()) {
+    if (quote) {
+      if (ch === quote) quote = null;
+      else cur += ch;
+      continue;
+    }
+    if (ch === '"' || ch === "'") {
+      quote = ch;
+      started = true;
+      continue;
+    }
+    if (/\s/.test(ch)) {
+      if (cur || started) out.push(cur);
+      cur = '';
+      started = false;
+      continue;
+    }
+    cur += ch;
+  }
+  if (cur || started) out.push(cur);
+  return out;
+}
+
 export function toCoverageRunArgs(testCmd: string): string[] | null {
   if (SHELL_COMPOSITE_RE.test(testCmd)) return null;
-  const tokens = testCmd.trim().split(/\s+/).filter(Boolean);
+  const tokens = tokenizeCommand(testCmd);
   if (tokens.length === 0) return null;
 
   // Drop a leading interpreter: `python3 -m pytest` and `python3 script.py`
@@ -161,12 +193,17 @@ export async function reportCoverage(input: CoverageReportInput): Promise<Covera
     // without the flag `coverage json` exits non-zero and writes NOTHING,
     // silently zeroing coverage for every real file. Phantom entries are
     // dropped; real files keep their data.
-    await runCmd(
+    const emit = await runCmd(
       pythonBin,
       ['-m', 'coverage', 'json', '--ignore-errors', '--data-file', dataFile, '-o', jsonFile],
       input.projectRoot,
       env,
     );
+    if (failureReason === undefined && emit.code !== 0) {
+      // Data exists but we could not turn it into a report. Reporting an empty
+      // covered set here would be the same lie as a failed run: unknown, not zero.
+      failureReason = `coverage json failed (exit ${emit.code ?? 'null'}): ${emit.stderr.trim().slice(0, 200)}`;
+    }
 
     // 3) Parse.
     try {
@@ -184,7 +221,11 @@ export async function reportCoverage(input: CoverageReportInput): Promise<Covera
         }
       }
     } catch {
-      // JSON missing/unparseable → return empty but still mark tool as found.
+      // JSON missing or unparseable. We have no measurement, so say so rather
+      // than returning an empty covered set that reads as "nothing is covered".
+      if (failureReason === undefined) {
+        failureReason = 'coverage report could not be read';
+      }
     }
   } finally {
     await fs.rm(tmp, { recursive: true, force: true });
