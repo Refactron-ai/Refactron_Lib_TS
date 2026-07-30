@@ -84,8 +84,12 @@ describe('python-line-coverage reporter', () => {
     // executed, and it must still be a statement the consumer can land on.
     expect(gated?.has(6)).toBe(true);
     expect(result.coveredLines.has('gated.py:6')).toBe(false);
-    // The `def dead(...)` line itself DID run at import time.
-    expect(result.coveredLines.has('gated.py:5')).toBe(true);
+    // The `def dead(...)` line is excluded too, so it must also be executable.
+    // Deliberately NOT asserting that it appears in coveredLines: whether an
+    // excluded line is ALSO reported as executed varies by coverage.py and
+    // Python version (3.13 reports both, 3.11 reports excluded only), and that
+    // incidental detail is not the property this test defends.
+    expect(gated?.has(5)).toBe(true);
   });
 
   it('returns coverageToolFound=false when coverage.py is absent', async () => {

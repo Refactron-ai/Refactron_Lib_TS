@@ -26,3 +26,12 @@ builtin
 bool
 subprocess
 subprocesses
+[Ff]ormatters
+agentic
+boolean
+booleans
+docstring
+docstrings
+rewrap
+rewraps
+verify_change
