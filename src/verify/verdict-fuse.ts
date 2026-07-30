@@ -31,6 +31,9 @@ export interface CoverageAssessment {
   // coverage to attest, which is a different situation from "the added code is
   // untested" and gets its own reason string.
   removalOnlyFiles?: string[];
+  // Why coverage is 'unknown', when we know. A bare unknown is indistinguishable
+  // from an untested change to a reader, and diagnosing one cost a full CI cycle.
+  unknownReason?: string;
   // Changed files whose added lines are ALL semantically inert (blank lines,
   // comment-only lines). Nothing to attest, same as removal-only: a deletion is
   // invisible in the added lines, so "provably inert edits" is not "provably

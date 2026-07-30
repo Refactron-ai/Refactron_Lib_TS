@@ -206,7 +206,11 @@ def main(argv):
         sys.stderr.write("usage: statement_map.py  (NUL-separated paths on stdin)\n")
         return 2
 
-    paths = [p for p in sys.stdin.read().split("\0") if p]
+    # Read BINARY and decode explicitly. On Windows, text-mode stdin applies
+    # newline translation and the console code page, which can corrupt a
+    # NUL-separated payload of native paths; the buffer is byte-exact.
+    raw = sys.stdin.buffer.read().decode("utf-8", "surrogateescape")
+    paths = [p for p in raw.split("\0") if p]
     files = {}
     errors = {}
     for path in paths:
@@ -217,7 +221,10 @@ def main(argv):
             # line inert and hand the file a free pass. The caller degrades the
             # whole assessment to UNKNOWN coverage on any error entry.
             errors[path] = "{}: {}".format(type(exc).__name__, exc)
-    sys.stdout.write(json.dumps({"files": files, "errors": errors}, separators=(",", ":")))
+    payload = json.dumps({"files": files, "errors": errors}, separators=(",", ":"))
+    # Byte-exact stdout for the same reason as stdin above.
+    sys.stdout.buffer.write(payload.encode("utf-8", "surrogateescape"))
+    sys.stdout.buffer.flush()
     return 0
 
 

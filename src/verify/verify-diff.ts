@@ -78,8 +78,13 @@ export async function verifyDiff(input: VerifyDiffInput): Promise<VerdictReport>
  *  Never a shared literal, and never "covered": every degradation path in
  *  assessCoverage lands here, and reporting an unmeasured change as covered
  *  would be a false SAFE. */
-function unknownCoverage(): CoverageAssessment {
-  return { tool: 'none', changedLinesCovered: 'unknown', uncovered: [] };
+function unknownCoverage(reason?: string): CoverageAssessment {
+  return {
+    tool: 'none',
+    changedLinesCovered: 'unknown',
+    uncovered: [],
+    ...(reason ? { unknownReason: reason } : {}),
+  };
 }
 
 async function assessCoverage(
@@ -136,15 +141,18 @@ async function assessCoverage(
         shadow.path,
         pyEdits.map((e) => e.path),
       );
-    } catch {
+    } catch (err) {
       // The sidecar could not run. Coverage of the change is UNKNOWN; degrading
       // to "covered" here would be a false SAFE bought with no evidence at all.
-      return unknownCoverage();
+      // Carry WHY: a silent unknown is indistinguishable from an untested change
+      // and cost us a full CI cycle to diagnose once already.
+      return unknownCoverage(err instanceof Error ? err.message : String(err));
     }
     // A file we could not parse has no honest containment map, and guessing one
     // means guessing which changed lines are inert. Unknown, never covered.
     if (statements.errors.size > 0) {
-      return unknownCoverage();
+      const [file, reason] = [...statements.errors.entries()][0] ?? [];
+      return unknownCoverage(`could not map statements in ${file}: ${reason}`);
     }
     const attributed = attributeChangedLines({
       ranges,
