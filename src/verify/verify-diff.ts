@@ -36,15 +36,11 @@ function toChanges(repoRoot: string, edits: FileEdit[]): FileChange[] {
   }));
 }
 
-// The two consumers of `testCmd` disagree on shape. RefactronVerifier runs it as
-// a full shell command (`sh -c "<testCmd>"`), so it wants `python3 -m pytest -q`.
-// reportCoverage runs `python -m coverage run -m <testCmd tokens>`, so it wants
-// the module invocation *after* `python -m` (`pytest -q`). Strip a leading
-// `python[3] -m ` so the caller can pass one full command and both get the form
-// they expect.
-function toCoverageModuleCmd(testCmd: string): string {
-  return testCmd.replace(/^\s*python[0-9.]*\s+-m\s+/, '');
-}
+// The caller passes ONE full shell command. RefactronVerifier runs it verbatim
+// via `sh -c`; reportCoverage decides for itself how to wrap it for `coverage
+// run` (see toCoverageRunArgs). This module deliberately does no pre-mangling:
+// the old `python -m ` strip destroyed script-form commands such as Django's
+// `python3 tests/runtests.py`, which then measured no coverage at all.
 
 export async function verifyDiff(input: VerifyDiffInput): Promise<VerdictReport> {
   const edits =
@@ -91,15 +87,31 @@ async function assessCoverage(
   }
   const shadow = await createShadowTree(input.repoRoot, toChanges(input.repoRoot, edits));
   try {
-    const covTestCmd = input.testCmd ? toCoverageModuleCmd(input.testCmd) : undefined;
     const report = await reportCoverage({
       projectRoot: shadow.path,
-      ...(covTestCmd ? { testCmd: covTestCmd } : {}),
+      ...(input.testCmd ? { testCmd: input.testCmd } : {}),
     });
-    if (!report.coverageToolFound) {
+    // No tool, or a measurement we could not actually perform, both mean the
+    // same thing: coverage is UNKNOWN. Reporting an unmeasured empty set as
+    // "not exercised by any test" would be a confident lie about the suite.
+    if (!report.coverageToolFound || report.measurementFailed) {
       return { tool: 'none', changedLinesCovered: 'unknown', uncovered: [] };
     }
     const ranges = await changedLinesForEdits(input.repoRoot, pyEdits);
+    // Shadow-bypass guard. If a changed file was never MEASURED at all, the
+    // suite never loaded our copy of it. The usual cause is the project being
+    // pip-installed (editable or not) so `import pkg` resolves to the installed
+    // copy instead of the tree under verification, meaning the tests ran the
+    // ORIGINAL code and this run proves nothing about the change. Proven on
+    // django: without the shadow root on sys.path the same diff read UNPROVEN
+    // while with it the auth suite caught the change. Report unknown, never
+    // "not exercised by any test".
+    const unmeasured = ranges.filter(
+      (r) => r.lines.length > 0 && !report.measuredFiles.has(normalizePath(r.path)),
+    );
+    if (unmeasured.length > 0) {
+      return { tool: 'none', changedLinesCovered: 'unknown', uncovered: [] };
+    }
     const uncovered: Array<{ file: string; line: number }> = [];
     for (const r of ranges) {
       const rel = normalizePath(r.path);
