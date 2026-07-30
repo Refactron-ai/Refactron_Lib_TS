@@ -68,7 +68,7 @@ The gates passed, but Refactron won't claim the change is safe, because the evid
 
 There are two ways to land here:
 
-- **The changed code isn't exercised.** Your tests pass, but none of them run the lines you changed. A green suite tells you nothing about untested lines. Refactron lists each uncovered line and, in the JSON report, a `missingTests` hint:
+- **The changed code isn't exercised.** Your tests pass, but none of them run the code you changed. A green suite tells you nothing about untested lines. Refactron lists each uncovered statement and, in the JSON report, a `missingTests` hint:
 
   ```json
   "missingTests": [
@@ -81,9 +81,30 @@ There are two ways to land here:
 `UNPROVEN` exits `0`. It is a warning, not a rejection: nothing is known to be broken, but nothing is proven either. The right response is to add the missing test, then re-run and earn `SAFE`.
 
 <Tip>
-  `UNPROVEN` turns your test suite's blind spots into a to-do list. Every uncovered changed line is
-  a test you could write to move the verdict to `SAFE`.
+  `UNPROVEN` turns your test suite's blind spots into a to-do list. Every uncovered statement is a
+  test you could write to move the verdict to `SAFE`.
 </Tip>
+
+### Coverage is judged per statement, not per line
+
+`coverage.py` records execution against the **first line of a statement**. A statement wrapped
+across several lines, which is what any formatter produces, has continuation lines, closing
+brackets, and trailing commas that `coverage.py` never marks at all.
+
+Refactron therefore maps each changed line to its enclosing statement before judging it. A changed
+continuation line counts as exercised when the statement it belongs to ran, and one unexercised
+multi-line statement produces **one** entry, at the line you would actually write a test against,
+not one entry per physical line. Without this, a reformat that only rewraps code reports every
+wrapped line as uncovered: a `black` run over 28 files once produced 3666 such entries, almost all
+of them for code that provably executed.
+
+Large diffs are capped so the report stays readable. When Refactron truncates, it says so rather
+than shipping a short list that looks complete:
+
+```json
+"coverage": { "uncoveredTruncated": { "shown": 200, "total": 412 } },
+"missingTestsTruncated": { "shown": 50, "total": 412 }
+```
 
 ## The Python-only limitation
 
@@ -104,7 +125,7 @@ Without that wiring, a change whose only exercise happens inside a subprocess re
 
 `SAFE` says your suite ran the changed code and stayed green. It does not claim the change is correct in some absolute sense: it inherits exactly what your suite checks. Audits of AI agent patches (for example on SWE-bench) find that a substantial share of patches which pass the project's tests are still wrong, because the suite was too weak to catch the defect.
 
-Refactron cannot turn a weak suite into a strong one, but it refuses to overstate what a green run proves. That is why `UNPROVEN` exists, and why every uncovered changed line ships with a `missingTests` hint: the path to a `SAFE` you can trust is a suite that actually exercises the behavior you care about.
+Refactron cannot turn a weak suite into a strong one, but it refuses to overstate what a green run proves. That is why `UNPROVEN` exists, and why every uncovered statement ships with a `missingTests` hint: the path to a `SAFE` you can trust is a suite that actually exercises the behavior you care about.
 
 ## Exit codes
 

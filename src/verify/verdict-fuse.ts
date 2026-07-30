@@ -8,7 +8,13 @@ export type Verdict = 'SAFE' | 'UNSAFE' | 'UNPROVEN';
 export interface CoverageAssessment {
   tool: 'coverage.py' | 'none';
   changedLinesCovered: boolean | 'unknown';
+  // One entry per UNEXECUTED enclosing statement (deduped), not per physical
+  // line: coverage.py attributes execution to a statement's first line, so a
+  // multi-line statement reports once, at a line a human can write a test for.
   uncovered: Array<{ file: string; line: number }>;
+  // Present only when `uncovered` was capped. `total` is the true number of
+  // uncovered statements; a short list without this field would misstate the gap.
+  uncoveredTruncated?: { shown: number; total: number };
   // Changed files whose edit only REMOVES lines: there are no added lines for
   // coverage to attest, which is a different situation from "the added code is
   // untested" and gets its own reason string.
@@ -26,6 +32,8 @@ export interface VerdictReport {
   coverage: CoverageAssessment;
   reason: string;
   missingTests?: Array<{ file: string; hint: string }>;
+  // Present only when `missingTests` was capped, carrying the true shortfall.
+  missingTestsTruncated?: { shown: number; total: number };
   // Tests that failed once in the changed shadow then passed on a same-shadow
   // retry. The tests gate treated them as flaky rather than blaming the diff; we
   // surface them so the human/JSON report can note them. Not a verdict input.
@@ -59,6 +67,10 @@ function isTestFile(p: string): boolean {
 // the two "we cannot establish a verdict" cases. A tests-gate failure carrying
 // either of these does NOT mean the diff broke anything — it means we could not
 // prove anything at all — so it must map to UNPROVEN, never UNSAFE.
+/** Ceiling on `missingTests` hints. Truncation is always disclosed in
+ *  `missingTestsTruncated`; silently dropping hints would misstate the gap. */
+export const MISSING_TESTS_CAP = 50;
+
 const NO_RUNNER_SUBSTRING = 'no test runner detected';
 const BASELINE_RED_SUBSTRING = 'baseline tests already fail';
 
@@ -135,14 +147,24 @@ export function fuseVerdict(
   // ('unknown' or false), keep the coverage reason. flakyTests rides on `base`
   // in every branch, so the report always carries the suspects regardless.
   const reason = flakyReason && cov.changedLinesCovered === true ? flakyReason : coverageReason;
-  const missingTests = cov.uncovered.map((u) => ({
+  // Cap the hint list. A mass reformat once emitted 3666 hints and an 883 KB
+  // JSON report; nobody reads that, and no agent should have to stream it. The
+  // shortfall is still reported in full via `missingTestsTruncated.total`, which
+  // must reflect the count BEFORE any upstream capping of `cov.uncovered`;
+  // otherwise the notice under-counts the gap it exists to disclose.
+  const uncoveredTotal = cov.uncoveredTruncated?.total ?? cov.uncovered.length;
+  const missingTests = cov.uncovered.slice(0, MISSING_TESTS_CAP).map((u) => ({
     file: u.file,
     hint: `add a test exercising ${u.file}:${u.line}`,
   }));
+  const truncated = missingTests.length > 0 && uncoveredTotal > missingTests.length;
   return {
     verdict: 'UNPROVEN',
     ...base,
     reason,
     ...(missingTests.length > 0 ? { missingTests } : {}),
+    ...(truncated
+      ? { missingTestsTruncated: { shown: missingTests.length, total: uncoveredTotal } }
+      : {}),
   };
 }

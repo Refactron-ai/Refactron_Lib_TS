@@ -152,7 +152,8 @@ This is a note, not a verdict change. A green verdict on a diff that also weaken
 - `gates`: each gate's `passed` flag and wall-clock. A failed gate also carries a `blockingReason`.
 - `testFilesChanged`: changed files matching test conventions. A note that the diff touched tests, never a verdict input.
 - `coverage.tool`: `coverage.py` when coverage was assessed, `none` when it couldn't be (non-Python diff, or no `coverage.py` installed).
-- `missingTests`: present on `UNPROVEN`-by-coverage, a concrete hint per uncovered line.
+- `coverage.uncovered`: one entry per unexercised **statement**, at the statement's first line. Coverage is attributed per statement, so a multi-line statement reports once rather than once per wrapped line.
+- `missingTests`: present on `UNPROVEN`-by-coverage, a concrete hint per uncovered statement, capped at 50. `coverage.uncoveredTruncated` and `missingTestsTruncated` (`{ shown, total }`) appear whenever a list was capped, so a truncated report never reads as a complete one.
 
 ## Verify in CI
 

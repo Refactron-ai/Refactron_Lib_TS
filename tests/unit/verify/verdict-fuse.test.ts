@@ -1,5 +1,9 @@
 import { describe, it, expect } from 'vitest';
-import { fuseVerdict, type CoverageAssessment } from '../../../src/verify/verdict-fuse.js';
+import {
+  fuseVerdict,
+  MISSING_TESTS_CAP,
+  type CoverageAssessment,
+} from '../../../src/verify/verdict-fuse.js';
 import type { VerificationResult } from '../../../src/contracts.js';
 
 const ok = { passed: true, durationMs: 1 };
@@ -184,6 +188,47 @@ describe('fuseVerdict — testFilesChanged note', () => {
     expect(r.verdict).toBe('UNPROVEN');
     expect(r.reason).toMatch(/not exercised/);
     expect(r.missingTests).toEqual([{ file: 'b.py', hint: 'add a test exercising b.py:3' }]);
+  });
+
+  describe('missingTests cap', () => {
+    // A 396-hunk reformat produced 3666 hints and an 883 KB JSON report. Nobody
+    // reads 3666 hints, and no agent should have to stream them. Cap the list,
+    // but say so in the data: a silently short list is a lie about the count.
+    function uncoveredAt(n: number): CoverageAssessment {
+      return {
+        tool: 'coverage.py',
+        changedLinesCovered: false,
+        uncovered: Array.from({ length: n }, (_, i) => ({ file: 'a.py', line: i + 1 })),
+      };
+    }
+
+    it('caps missingTests and reports the truncation explicitly', () => {
+      const r = fuseVerdict(result(true), ['a.py'], uncoveredAt(MISSING_TESTS_CAP + 7));
+      expect(r.missingTests).toHaveLength(MISSING_TESTS_CAP);
+      expect(r.missingTestsTruncated).toEqual({
+        shown: MISSING_TESTS_CAP,
+        total: MISSING_TESTS_CAP + 7,
+      });
+    });
+
+    it('omits the truncation signal when nothing was dropped', () => {
+      const r = fuseVerdict(result(true), ['a.py'], uncoveredAt(3));
+      expect(r.missingTests).toHaveLength(3);
+      expect(r.missingTestsTruncated).toBeUndefined();
+    });
+
+    // When `coverage.uncovered` was ITSELF capped upstream, the hint total must
+    // report the real number of uncovered statements, not the capped array
+    // length: otherwise the truncation notice under-counts the shortfall.
+    it('reports the pre-truncation total when uncovered was already capped', () => {
+      const cov: CoverageAssessment = {
+        ...uncoveredAt(MISSING_TESTS_CAP + 7),
+        uncoveredTruncated: { shown: MISSING_TESTS_CAP + 7, total: 4231 },
+      };
+      const r = fuseVerdict(result(true), ['a.py'], cov);
+      expect(r.missingTests).toHaveLength(MISSING_TESTS_CAP);
+      expect(r.missingTestsTruncated).toEqual({ shown: MISSING_TESTS_CAP, total: 4231 });
+    });
   });
 
   it('flags tsx, js, and cjs/mjs test variants too', () => {

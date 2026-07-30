@@ -7,6 +7,7 @@ import * as path from 'node:path';
 import { RefactronVerifier } from './engine.js';
 import { createShadowTree } from './shadow-tree.js';
 import { reportCoverage, normalizePath } from '../analyze/coverage/index.js';
+import { attributeChangedLines } from './coverage-attribution.js';
 import { fuseVerdict, type CoverageAssessment, type VerdictReport } from './verdict-fuse.js';
 import { changedLinesForEdits, editsFromUnifiedDiff, type FileEdit } from './diff-input.js';
 import type { FileChange, RefactorPlan, TransformId } from '../contracts.js';
@@ -112,30 +113,27 @@ async function assessCoverage(
     if (unmeasured.length > 0) {
       return { tool: 'none', changedLinesCovered: 'unknown', uncovered: [] };
     }
-    const uncovered: Array<{ file: string; line: number }> = [];
-    for (const r of ranges) {
-      const rel = normalizePath(r.path);
-      for (const line of r.lines) {
-        if (!report.coveredLines.has(`${rel}:${line}`)) uncovered.push({ file: r.path, line });
-      }
-    }
-    // v1 heuristic: the change is "covered" iff every changed Python file has at
-    // least one changed line that was executed by the test suite (the change is
-    // on a tested path). Documented limitation: partial per-line coverage still
-    // reads as covered; line-level strictness is a fast-follow. Honesty is
-    // preserved on the other side — zero executed changed lines → UNPROVEN.
-    const changedLinesCovered = ranges.every((r) => {
-      const rel = normalizePath(r.path);
-      return r.lines.some((line) => report.coveredLines.has(`${rel}:${line}`));
+    // Judge coverage on STATEMENTS, not physical lines. coverage.py only ever
+    // marks a statement's first line, so a diff that rewraps statements (any
+    // formatter) otherwise reports every continuation line as uncovered. See
+    // coverage-attribution.ts for why this maps rather than filters.
+    const attributed = attributeChangedLines({
+      ranges,
+      coveredLines: report.coveredLines,
+      executableLines: report.executableLines,
     });
     // A removal-only file has no added lines, so it can never satisfy the
-    // heuristic above; report it distinctly so the verdict reason can say
+    // per-file heuristic; report it distinctly so the verdict reason can say
     // "nothing to attest" instead of implying a coverage miss.
     const removalOnlyFiles = ranges.filter((r) => r.lines.length === 0).map((r) => r.path);
+    const covered = attributed.changedLinesCovered;
     return {
       tool: 'coverage.py',
-      changedLinesCovered,
-      uncovered: changedLinesCovered ? [] : uncovered,
+      changedLinesCovered: covered,
+      uncovered: covered ? [] : attributed.uncovered,
+      ...(!covered && attributed.uncoveredTruncated
+        ? { uncoveredTruncated: attributed.uncoveredTruncated }
+        : {}),
       ...(removalOnlyFiles.length > 0 ? { removalOnlyFiles } : {}),
     };
   } finally {

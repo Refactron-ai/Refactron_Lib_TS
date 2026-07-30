@@ -125,6 +125,96 @@ describe('verifyDiff (python three-way, real coverage)', () => {
     expect(report.coverage.uncovered.length).toBeGreaterThanOrEqual(1);
   }, 180_000);
 
+  // Statement-level attribution. coverage.py attributes execution to a
+  // statement's FIRST line, so a reformat that splits statements across lines
+  // makes every continuation line look uncovered. Proven on pydantic: a black
+  // reformat of `pydantic/_internal` reported 3666 "uncovered" entries, among
+  // them lines 24-30 of _generate_schema.py: the names inside a
+  // `from ipaddress import (...)` whose statement start (line 23) provably ran.
+  describe('multi-line statements', () => {
+    const MULTILINE = path.resolve(__dirname, '../fixtures/verify-diff-multiline');
+
+    // shapes.py lines 1-4 are one `from math import (...)` statement. Swapping
+    // the two imported names touches ONLY lines 2-3: the statement start is
+    // unchanged, so it is not even in the changed set. This is the safety shape
+    // (`x = [1,\n  3]` with only the continuation edited), so the change must be
+    // attested by the enclosing statement, never dropped as unattributable.
+    it('changed CONTINUATION lines of an executed statement → SAFE', async () => {
+      if (!pythonHasCoverage()) return;
+      const report = await verifyDiff({
+        repoRoot: MULTILINE,
+        edits: [
+          {
+            path: 'shapes.py',
+            newContent: (await fs.readFile(path.join(MULTILINE, 'shapes.py'), 'utf8')).replace(
+              '    ceil,\n    floor,\n',
+              '    floor,\n    ceil,\n',
+            ),
+          },
+        ],
+        testCmd: TEST_CMD,
+      });
+      expect(report.verdict).toBe('SAFE');
+      expect(report.coverage.uncovered).toEqual([]);
+    }, 180_000);
+
+    // The other half: unused_join's `return "-".join(` at line 16 never runs.
+    // Editing three of its continuation lines (18, 19, 20) must report ONE
+    // uncovered entry at line 16, the statement a human can write a test for,
+    // not three entries at lines coverage.py never tracks.
+    it('changed lines under an UNEXECUTED statement → one deduped entry at the start', async () => {
+      if (!pythonHasCoverage()) return;
+      const report = await verifyDiff({
+        repoRoot: MULTILINE,
+        edits: [
+          {
+            path: 'shapes.py',
+            newContent: (await fs.readFile(path.join(MULTILINE, 'shapes.py'), 'utf8')).replace(
+              '            a,\n            b,\n            c,\n',
+              '            a.strip(),\n            b.strip(),\n            c.strip(),\n',
+            ),
+          },
+        ],
+        testCmd: TEST_CMD,
+      });
+      expect(report.verdict).toBe('UNPROVEN');
+      expect(report.coverage.uncovered).toEqual([{ file: 'shapes.py', line: 16 }]);
+      expect(report.missingTests).toEqual([
+        { file: 'shapes.py', hint: 'add a test exercising shapes.py:16' },
+      ]);
+    }, 180_000);
+  });
+
+  // Statement-level attribution must not open a hole where coverage.py EXCLUDES
+  // lines. `# pragma: no cover` (and `if TYPE_CHECKING:` under the usual
+  // exclude_lines config) drops a statement from executed_lines AND
+  // missing_lines, so a naive "executed UNION missing" executable set skips it
+  // and the enclosing lookup walks BACKWARDS to the covered `def` line above.
+  // The excluded body provably never ran, so attributing it to a covered
+  // neighbour would manufacture a false SAFE. Excluded lines are executable.
+  it('a change inside a `# pragma: no cover` body is never attributed to covered code', async () => {
+    if (!pythonHasCoverage()) return;
+    const PRAGMA = path.resolve(__dirname, '../fixtures/verify-diff-pragma');
+    const report = await verifyDiff({
+      repoRoot: PRAGMA,
+      edits: [
+        {
+          path: 'gated.py',
+          newContent: (await fs.readFile(path.join(PRAGMA, 'gated.py'), 'utf8')).replace(
+            '            a,\n            b,\n',
+            '            a.strip(),\n            b.strip(),\n',
+          ),
+        },
+      ],
+      testCmd: TEST_CMD,
+    });
+    expect(report.verdict).toBe('UNPROVEN');
+    expect(report.coverage.uncovered.length).toBeGreaterThanOrEqual(1);
+    // Never the `def dead(...)` line at 5: that one DID execute at import time,
+    // and pointing the hint there would tell the user to test code that ran.
+    expect(report.coverage.uncovered.every((u) => u.line >= 6)).toBe(true);
+  }, 180_000);
+
   it('a flaky test that heals on retry does NOT produce a false UNSAFE; flakyTests carries it', async () => {
     if (!pythonHasCoverage()) return;
     const root = await flakyFixture();

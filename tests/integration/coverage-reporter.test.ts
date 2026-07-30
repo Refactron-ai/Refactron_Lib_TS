@@ -34,6 +34,60 @@ describe('python-line-coverage reporter', () => {
     expect([...result.coveredLines].some((k) => k.startsWith('svc_untouched.py:'))).toBe(false);
   });
 
+  // coverage.py only ever marks the FIRST line of a statement. Continuation
+  // lines, closing brackets, comments and blanks are never in executed_lines, so
+  // a physical-line consumer reports them all as uncovered. executed_lines UNION
+  // missing_lines is the file's statement-START set, which is what lets a
+  // consumer map a changed line to the statement that actually ran.
+  it('exposes the executable (statement-start) line set per file', async () => {
+    if (!pythonHasCoverage()) {
+      // eslint-disable-next-line no-console
+      console.warn('skipping: coverage.py not installed');
+      return;
+    }
+    const result = await reportCoverage({ projectRoot: FIXTURE, testCmd: 'pytest -q' });
+    const svc = result.executableLines.get('svc_tested.py');
+    expect(svc).toBeDefined();
+    // Both the executed `return 42` (line 2) and the missing `return 99` (line
+    // 5) are executable; the blank separator line 3 is not.
+    expect(svc?.has(2)).toBe(true);
+    expect(svc?.has(5)).toBe(true);
+    expect(svc?.has(3)).toBe(false);
+    // Keyed the same way as coveredLines, so `${rel}:${line}` lookups line up.
+    expect([...result.executableLines.keys()]).toContain('svc_tested.py');
+    // Every covered line is by definition executable.
+    for (const key of result.coveredLines) {
+      const idx = key.lastIndexOf(':');
+      const file = key.slice(0, idx);
+      const line = Number(key.slice(idx + 1));
+      expect(result.executableLines.get(file)?.has(line)).toBe(true);
+    }
+  });
+
+  // coverage.py drops EXCLUDED statements (`# pragma: no cover`, and whatever
+  // else the project's exclude_lines matches) from executed_lines AND
+  // missing_lines, reporting them in a third list. They are still statements, so
+  // leaving them out of the executable set makes a consumer's enclosing-statement
+  // lookup skip backwards past them onto whatever covered statement precedes,
+  // turning provably-unexecuted code into apparently-covered code.
+  it('counts EXCLUDED lines as executable so they cannot be attributed away', async () => {
+    if (!pythonHasCoverage()) {
+      // eslint-disable-next-line no-console
+      console.warn('skipping: coverage.py not installed');
+      return;
+    }
+    const pragma = path.resolve(__dirname, '../fixtures/verify-diff-pragma');
+    const result = await reportCoverage({ projectRoot: pragma, testCmd: 'pytest -q' });
+    const gated = result.executableLines.get('gated.py');
+    expect(gated).toBeDefined();
+    // `return "-".join(` at line 6 opens the pragma'd body: excluded, never
+    // executed, and it must still be a statement the consumer can land on.
+    expect(gated?.has(6)).toBe(true);
+    expect(result.coveredLines.has('gated.py:6')).toBe(false);
+    // The `def dead(...)` line itself DID run at import time.
+    expect(result.coveredLines.has('gated.py:5')).toBe(true);
+  });
+
   it('returns coverageToolFound=false when coverage.py is absent', async () => {
     // Force absence by pointing testCmd at a python that can't import coverage —
     // simulate via PATH override or just by inspecting the negative branch.
@@ -45,6 +99,7 @@ describe('python-line-coverage reporter', () => {
     });
     expect(result.coverageToolFound).toBe(false);
     expect(result.coveredLines.size).toBe(0);
+    expect(result.executableLines.size).toBe(0);
   });
 
   it('reports toolFound=false when import succeeds but coverage cannot run', async () => {

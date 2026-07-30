@@ -4,7 +4,40 @@ import {
   VerifyDiffFlagError,
   formatTestFilesNote,
   formatFlakyNote,
+  formatUncoveredLines,
 } from '../../../src/cli/verify-diff-command.js';
+
+describe('formatUncoveredLines', () => {
+  it('prints one line per uncovered statement', () => {
+    expect(
+      formatUncoveredLines({
+        tool: 'coverage.py',
+        changedLinesCovered: false,
+        uncovered: [
+          { file: 'a.py', line: 16 },
+          { file: 'b.py', line: 4 },
+        ],
+      }),
+    ).toEqual(['  uncovered: a.py:16', '  uncovered: b.py:4']);
+  });
+
+  it('discloses truncation instead of shipping a short list that looks complete', () => {
+    const lines = formatUncoveredLines({
+      tool: 'coverage.py',
+      changedLinesCovered: false,
+      uncovered: [{ file: 'a.py', line: 1 }],
+      uncoveredTruncated: { shown: 1, total: 412 },
+    });
+    expect(lines).toHaveLength(2);
+    expect(lines[1]).toBe('  ... and 411 more uncovered statement(s) (412 total)');
+  });
+
+  it('emits nothing when the change is fully covered', () => {
+    expect(
+      formatUncoveredLines({ tool: 'coverage.py', changedLinesCovered: true, uncovered: [] }),
+    ).toEqual([]);
+  });
+});
 
 describe('parseVerifyDiffFlags', () => {
   it('defaults repoRoot to "." with no flags', () => {
