@@ -73,6 +73,70 @@ describe('python-line-coverage reporter', () => {
     expect(result.coveredLines.size).toBe(0);
   });
 
+  // Script-form test commands (Django's `python3 tests/runtests.py`, manage.py
+  // test, custom runners) are extremely common. The old code stripped only a
+  // `python -m ` prefix and then unconditionally re-added `-m`, so it ran
+  // `coverage run -m python3 tests/runtests.py`, tried to execute a MODULE named
+  // "python3", failed, swallowed the failure, and returned an empty covered set:
+  // covered Django code read as "not exercised by any test". Proven against
+  // django/django during round-4 hardening.
+  describe('test-command forms', () => {
+    async function scriptRunnerFixture(): Promise<string> {
+      const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'cov-script-'));
+      await fs.writeFile(
+        path.join(dir, 'svc.py'),
+        'def used():\n    return 1\n\n\ndef unused():\n    return 2\n',
+      );
+      await fs.writeFile(
+        path.join(dir, 'runtests.py'),
+        'import sys, os\nsys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))\n' +
+          'from svc import used\nassert used() == 1\nprint("ok")\n',
+      );
+      return dir;
+    }
+
+    it('measures coverage for a SCRIPT-form test command', async () => {
+      if (!pythonHasCoverage()) return;
+      const dir = await scriptRunnerFixture();
+      const result = await reportCoverage({ projectRoot: dir, testCmd: 'python3 runtests.py' });
+      expect(result.coverageToolFound).toBe(true);
+      expect(result.measurementFailed).toBe(false);
+      expect(result.coveredLines.has('svc.py:2')).toBe(true); // used() return
+      expect(result.coveredLines.has('svc.py:6')).toBe(false); // unused() return
+    });
+
+    it('still measures coverage for module-form commands (regression guard)', async () => {
+      if (!pythonHasCoverage()) return;
+      for (const testCmd of ['python3 -m pytest -q', 'pytest -q']) {
+        const result = await reportCoverage({ projectRoot: FIXTURE, testCmd });
+        expect(result.measurementFailed).toBe(false);
+        expect(result.coveredLines.has('svc_tested.py:2')).toBe(true);
+      }
+    });
+
+    it('reports measurementFailed when the coverage run cannot execute', async () => {
+      if (!pythonHasCoverage()) return;
+      const dir = await scriptRunnerFixture();
+      const result = await reportCoverage({
+        projectRoot: dir,
+        testCmd: 'python3 no_such_runner_qq.py',
+      });
+      // Never claim zero coverage when we could not measure at all.
+      expect(result.measurementFailed).toBe(true);
+      expect(result.coveredLines.size).toBe(0);
+    });
+
+    it('refuses to guess at shell-composite commands', async () => {
+      if (!pythonHasCoverage()) return;
+      const result = await reportCoverage({
+        projectRoot: FIXTURE,
+        testCmd: 'pytest -q && echo done',
+      });
+      expect(result.measurementFailed).toBe(true);
+      expect(result.coveredLines.size).toBe(0);
+    });
+  });
+
   it('still reports real files when the suite executes phantom-filename code', async () => {
     // A suite that runs exec(compile(src, "string", "exec")) makes coverage.py
     // record a measured "file" named `string` with no source on disk. Without
