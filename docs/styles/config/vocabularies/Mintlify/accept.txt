@@ -26,3 +26,5 @@ builtin
 bool
 subprocess
 subprocesses
+src
+sys
