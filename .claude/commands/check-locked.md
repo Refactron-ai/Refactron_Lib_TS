@@ -1,5 +1,5 @@
 ---
-description: Verify the locked-contract invariant — fails if any locked file has been modified on the current branch.
+description: Verify the locked-contract invariant: fails if any locked file has been modified on the current branch.
 ---
 
 Check whether the current branch modifies any locked file. The locked files are:
@@ -16,6 +16,6 @@ Steps:
    - Show the user which file(s) and the diff.
    - State: this requires a major version bump and a written ADR in `dev-docs/decisions/` BEFORE the PR is opened. Per `CLAUDE.md`, PRs that touch these files are closed without review.
    - Ask if the user wants you to dispatch the **principal-engineer** subagent to evaluate whether the change is genuinely necessary, draft the ADR, and plan the migration.
-4. If no locked file is modified, report: "Locked-contract invariant holds — branch is safe to PR."
+4. If no locked file is modified, report: "Locked-contract invariant holds, branch is safe to PR."
 
-This command is non-destructive — read-only checks only.
+This command is non-destructive: read-only checks only.
