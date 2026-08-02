@@ -7,12 +7,12 @@ description: Release history for Refactron, newest first.
 Refactron follows [Semantic Versioning](https://semver.org/). The full,
 unabridged log lives in [`CHANGELOG.md`](https://github.com/Refactron-ai/Refactron_Lib_TS/blob/main/CHANGELOG.md).
 
-<Update label="Unreleased" description="on main">
-  The verification layer lands on main: verify any diff (an AI agent's, a
-  codemod's, or your own) for a `SAFE` / `UNSAFE` / `UNPROVEN` verdict, and
-  expose the same gate to agents over MCP. Not yet on npm; build from source
-  until the next release (`refactron@0.2.4` remains the migration-mode
-  transform CLI).
+<Update label="0.3.0" description="August 2, 2026">
+  The verification layer ships. Verify any diff (an AI agent's, a codemod's, or
+  your own) for a `SAFE` / `UNSAFE` / `UNPROVEN` verdict, and expose the same
+  gate to agents over MCP. Purely additive: nothing was renamed or removed, and
+  the transform CLI behaves exactly as it did in 0.2.4. Install with
+  `npm install -g refactron@0.3.0`.
 
 **Added**
 
@@ -21,26 +21,74 @@ unabridged log lives in [`CHANGELOG.md`](https://github.com/Refactron-ai/Refactr
   shadow tree, runs the syntax / imports / tests gates, and fuses changed-line
   coverage into the verdict. Read-only: your working tree is never mutated.
   (PR #75)
-- **MCP server with the `verify_change` tool**: a stdio server (name
-  `refactron`) an AI agent calls before it lands a change; accepts full-file
-  `edits` or a `unifiedDiff` and returns the same JSON verdict report. (PR #75)
+- **`refactron-mcp`, an MCP server exposing `verify_change`**: a stdio server
+  an AI agent calls before it lands a change; accepts full-file `edits` or a
+  `unifiedDiff` and returns the same JSON verdict report. Ships as a second bin
+  in the same package. (PR #75)
 - **Three-way verdict fusion**: `SAFE` (gates pass and the changed lines are
   exercised), `UNSAFE` (a gate failed), `UNPROVEN` (tests pass but the change
   isn't proven, or coverage couldn't be measured). Coverage is Python-only via
   `coverage.py`; a non-Python or mixed diff returns `UNPROVEN`, never a false
   `SAFE`. (PR #75)
-- **`preflight` command**: a coverage-aware SQLAlchemy 1.x → 2.0 migration
+- **`preflight` command**: a coverage-aware SQLAlchemy 1.x to 2.0 migration
   safety report that classifies each `Model.query` site as safe-to-automate,
   unproven, or needs-review; `--fail-on-unproven` gates CI. (PR #74)
+- **A versioned report shape**: `reportVersion`, plus `changedStatements`,
+  `filesWithUncovered`, `testFilesChanged`, and `flakyTests`, so the evidence
+  behind a verdict is legible in `--json` and over MCP rather than implied.
+  (PRs #79, #83, #86)
 
 **Fixed**
 
+Each item is a false-verdict class the shipped release does not have. None
+reached a published build, since `verify-diff` is new here; they are listed
+because what a verification tool refuses to claim is the product.
+
+- **A diff that deleted a file could read `SAFE`.** Unmodelable operations were
+  silently skipped, so a diff removing a module plus one benign edit passed the
+  gates. Deletions, renames, copies, and binary changes are now refused with
+  exit `2`. So are anchorless hunks that misrepresent a live file as new,
+  submodule pointer bumps, and non-UTF-8 bases. (PRs #79, #82)
+- **A changed blank line could vouch for a function that never ran.** Coverage
+  attribution walked back to the nearest preceding statement start, so an
+  executed `def` header covered a body that was never called. Attribution is
+  now exact line-to-statement containment from the Python AST, and a line
+  carrying no code token never marks a file exercised. (PR #86)
+- **A flaky suite became a false `UNSAFE` rate.** The tests gate now computes
+  new failures against the baseline set and retries once on a **fresh** shadow
+  tree, so a timing flake heals but an idempotency break does not. Flakiness
+  floors the verdict at `UNPROVEN`: a green that needed a retry is not proof.
+  (PR #83)
+- **The imports gate failed modern Python.** `if TYPE_CHECKING:` imports,
+  platform-conditional imports, and the repo's pre-existing breakage were all
+  blamed on the change. The gate is now delta-aware and `TYPE_CHECKING`-safe,
+  failing only on imports the change introduced or newly broke. (PR #78)
+- **Coverage reported fake zeros.** Script-form test commands, quoted
+  arguments, a directory named `coverage/` on `sys.path`, dynamically compiled
+  code, and pip-installed projects each produced an empty covered set that read
+  as "not exercised". Each now reports honestly, and an unmeasurable run says
+  coverage could not be determined instead of guessing. (PRs #78, #80, #84)
+- **Removal-only diffs read like a coverage miss.** A diff that only deletes
+  lines now says so: there are no added lines for coverage to attest. The
+  verdict stays a conservative `UNPROVEN`. (PR #81)
 - **CRLF diffs could produce a false `SAFE`.** Changed-line derivation now
   normalizes CRLF before the diff, so a change that only differs in line
   endings no longer mismatches coverage and slips through as covered. (PR #75)
 - **Coverage was unavailable in CI.** `coverage.py` is now installed into the
   same `python3` the test suite spawns, so the coverage-based verdict is
   exercised in the CI runner instead of degrading to `UNPROVEN`. (PR #74)
+
+**Security**
+
+- **Dependency advisories cleared**: `npm audit` reports 0, down from 6 (4
+  high). `brace-expansion` and `fast-uri` moved to patched versions in the
+  lockfile, with no change to any declared range.
+- **The PyPI wrapper no longer runs an unpinned global npm install.**
+  `pip install refactron` used to shell out to `npm install -g refactron` on
+  first use, fetching whatever was `latest` regardless of the version you
+  pinned. It now detects the CLI and, if missing, prints the exact matching
+  command and exits non-zero. The wrapper is also relicensed to Apache-2.0 to
+  match the rest of the project.
 
 </Update>
 
