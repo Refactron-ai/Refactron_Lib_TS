@@ -38,10 +38,11 @@ It applies the change in an isolated **shadow tree**, runs three gates against i
 
 ## Verify your first change
 
-The verification surfaces are unreleased on npm today; build from source and `login` first (both are in the [quickstart](/quickstart); an unauthenticated run exits `7`):
+Install the CLI and `login` first (both are in the [quickstart](/quickstart); an unauthenticated run exits `7`):
 
 ```bash
-node dist/cli/index.js verify-diff . --diff change.diff --test-cmd "python3 -m pytest -q"
+npm install -g refactron@0.3.0
+refactron verify-diff . --diff change.diff --test-cmd "python3 -m pytest -q"
 ```
 
 ```text
@@ -80,13 +81,13 @@ The verification engine is 100% deterministic: no model, no temperature, no stat
 
 Refactron also ships deterministic transforms (20 AST rewrites for Python and TypeScript) that both _author_ a change and _verify_ it through the same gates before an atomic write. They are the demo of the gate on real, mechanical migrations, and remain fully supported.
 
-The published `refactron@0.2.4` on npm is this transform CLI (`analyze`, `run`, `document`). See [Migration mode](/transforms/index) for the catalog.
+Migration mode (`analyze`, `run`, `document`) ships in the same package as the verification surfaces: `npm install -g refactron@0.3.0` gives you both. See [Migration mode](/transforms/index) for the catalog.
 
 ## Next steps
 
 <CardGroup cols={2}>
   <Card title="Quickstart" icon="rocket" href="/quickstart">
-    Build from source and verify your first diff end to end.
+    Install from npm and verify your first diff end to end.
   </Card>
   <Card title="Safety model" icon="shield-check" href="/concepts/safety-model">
     The shadow tree, the three gates, and the atomic-write contract.

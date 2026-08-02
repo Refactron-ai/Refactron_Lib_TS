@@ -16,24 +16,19 @@ It plugs in where change happens: a `verify-diff` CLI (and CI gate), and an MCP 
 
 ## Quickstart
 
-> `verify-diff`, the MCP server, and `preflight` are unreleased; they are **not** in `refactron@0.2.4` on npm yet. Build from source until the next release, which ships the `refactron` and `refactron-mcp` bins. The published npm package is the [migration-mode transform CLI](#migration-mode).
->
-> If `refactron verify-diff` reports an unknown command, you have the npm package (migration mode, `0.2.4`) on your `PATH`; `verify-diff` is from-source only until the next release.
-
 Requires Node.js ≥ 18, and Python 3.8+ with `coverage.py` for Python coverage.
 
 ```bash
-git clone https://github.com/Refactron-ai/Refactron_Lib_TS
-cd Refactron_Lib_TS
-npm install
-npm run build
+npm install -g refactron@0.3.0
 ```
 
-Authenticate once (`node dist/cli/index.js login`, or `REFACTRON_TOKEN` in CI; unauthenticated exits `7`), then verify a diff:
+That puts two binaries on your `PATH`: `refactron` (the CLI) and `refactron-mcp` (the MCP server). To skip the install, run `npx refactron@0.3.0 <command>` instead.
+
+Authenticate once (`refactron login`, or `REFACTRON_TOKEN` in CI; unauthenticated exits `7`), then verify a diff:
 
 ```bash
 git diff > change.diff        # or: your agent wrote change.diff
-node dist/cli/index.js verify-diff . --diff change.diff --test-cmd "python3 -m pytest -q"
+refactron verify-diff . --diff change.diff --test-cmd "python3 -m pytest -q"
 ```
 
 ```text
@@ -42,6 +37,21 @@ node dist/cli/index.js verify-diff . --diff change.diff --test-cmd "python3 -m p
 ```
 
 Refactron copies the repo into an isolated shadow tree, applies the diff there, runs the gates, and measures whether your tests exercise the changed lines. Your real tree is never modified. Add `--json` for the full reproducible report.
+
+### Installing from PyPI
+
+`pip install refactron==0.3.0` installs a thin `refactron` shim that shells out to the npm CLI. It is not a Node-free path: you still need Node.js ≥ 18 **and** the npm package (`npm install -g refactron@0.3.0`). If the npm CLI is missing, the shim prints the exact matching install command and exits non-zero rather than installing anything for you. The shim provides the `refactron` command only; `refactron-mcp` comes from the npm package.
+
+### Build from source (contributors)
+
+```bash
+git clone https://github.com/Refactron-ai/Refactron_Lib_TS
+cd Refactron_Lib_TS
+npm install
+npm run build
+```
+
+The CLI is then `node dist/cli/index.js <command>` and the MCP server is `node dist/mcp/server.js`. Use the published binaries above unless you are working on Refactron itself.
 
 ---
 
@@ -64,8 +74,10 @@ Coverage is **Python-only** (via `coverage.py`), so a TypeScript or mixed-langua
 Refactron ships a stdio [MCP](https://modelcontextprotocol.io) server exposing one tool, `verify_change`, so an AI agent can verify a change before it lands it. For Claude Code:
 
 ```bash
-claude mcp add refactron -- node /absolute/path/to/Refactron_Lib_TS/dist/mcp/server.js
+claude mcp add refactron -- refactron-mcp
 ```
+
+`refactron-mcp` is installed by `npm install -g refactron@0.3.0`. Working from a source checkout instead? Point the client at `node /absolute/path/to/Refactron_Lib_TS/dist/mcp/server.js`.
 
 The agent proposes an edit (full-file `edits` or a `unifiedDiff`), calls `verify_change`, and gets back the same `SAFE` / `UNSAFE` / `UNPROVEN` JSON report, then decides whether to land it. The tool runs entirely local and never mutates your repo.
 
@@ -73,17 +85,17 @@ The agent proposes an edit (full-file `edits` or a `unifiedDiff`), calls `verify
 
 ## Migration mode
 
-Refactron also ships 20 deterministic AST transforms (Python via LibCST, TypeScript via ts-morph) that both _author_ a mechanical change and _verify_ it through the same gates before an atomic write. This is the published npm CLI:
+Refactron also ships 20 deterministic AST transforms (Python via LibCST, TypeScript via ts-morph) that both _author_ a mechanical change and _verify_ it through the same gates before an atomic write. Same package, same install:
 
 ```bash
-npm install -g refactron@0.2.4
+npm install -g refactron@0.3.0
 cd your-project && refactron login
 refactron analyze .            # findings + blast radius + tier
 refactron run --dry-run        # preview the diff (no writes)
 refactron run --apply          # gates, then atomic write
 ```
 
-`refactron@0.2.4` on npm is the transform CLI only; it does **not** include `verify-diff`, the MCP server, or `preflight`. Full catalog and reference: [`docs/transforms/`](docs/transforms/) · [docs.refactron.dev](https://docs.refactron.dev).
+Full catalog and reference: [`docs/transforms/`](docs/transforms/) · [docs.refactron.dev](https://docs.refactron.dev).
 
 ---
 
@@ -159,9 +171,11 @@ Full schema in `src/core/config.ts`.
 
 ## Status & scope
 
-**On npm (`refactron@0.2.4`, migration mode):** the 4 engines, 20 transforms, 3-gate verification, atomic batch write, blast-radius scoring, tier taxonomy, precondition discipline, `.refactron/` session store, Ink TUI, JSON output, CLI flag scoping (`--transforms`, `--files`). Validated end-to-end on Ansible (4,465 files, ~100k LOC).
+`refactron@0.3.0` on npm ships both surfaces from one package, as the `refactron` and `refactron-mcp` bins.
 
-**On `main` (the verification layer, build from source):** `verify-diff` for an arbitrary diff, the MCP `verify_change` tool, the three-way `SAFE` / `UNSAFE` / `UNPROVEN` verdict with changed-line coverage fusion, and `preflight` (a coverage-aware SQLAlchemy 1.x → 2.0 safety report). These ship to npm in the next release as the `refactron` and `refactron-mcp` bins.
+**Verification layer:** `verify-diff` for an arbitrary diff, the MCP `verify_change` tool, the three-way `SAFE` / `UNSAFE` / `UNPROVEN` verdict with changed-line coverage fusion, and `preflight` (a coverage-aware SQLAlchemy 1.x → 2.0 safety report).
+
+**Migration mode:** the 4 engines, 20 transforms, 3-gate verification, atomic batch write, blast-radius scoring, tier taxonomy, precondition discipline, `.refactron/` session store, Ink TUI, JSON output, CLI flag scoping (`--transforms`, `--files`). Validated end-to-end on Ansible (4,465 files, ~100k LOC).
 
 **Deliberately not built:**
 
@@ -170,7 +184,7 @@ Full schema in `src/core/config.ts`.
 - **Coverage is Python-only** (via `coverage.py`), so a non-Python or mixed diff returns `UNPROVEN`, never a false `SAFE`.
 - **No Ruby / Go / Rust adapters yet**: adapter interface is locked; adding one is a follow-on.
 
-**Roadmap:** next npm release ships the verification bins. Beyond that, fleet verification across many repos and audit history are the paid tier; v1.0 lands once external usage has characterized the real bug surface.
+**Roadmap:** fleet verification across many repos and audit history are the paid tier; v1.0 lands once external usage has characterized the real bug surface.
 
 ---
 

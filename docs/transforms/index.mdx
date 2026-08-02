@@ -6,7 +6,7 @@ description: "20 deterministic transforms that both author a mechanical change a
 
 **Migration mode** is where Refactron both _authors_ a change and _verifies_ it. Each of the 20 transforms rewrites a well-known legacy pattern deterministically, then runs the result through the [same gates](/concepts/safety-model) that back [`verify-diff`](/verification/verify-diff) (syntax, imports, tests) and either lands it atomically or skips itself. They're the demonstration that the verification engine works on real, mechanical migrations.
 
-This is the CLI published as `refactron@0.2.4` on npm (`analyze`, `run`, `document`). The verification surfaces (`verify-diff`, the MCP server, and `preflight`) are a [from-source build](/quickstart#build-from-source) until the next release.
+These are the `analyze`, `run`, and `document` commands of the published CLI. Migration mode and the verification surfaces (`verify-diff`, the MCP server, and `preflight`) ship in one package: `npm install -g refactron@0.3.0`. See the [quickstart](/quickstart#install).
 
 You select transforms via the `--transforms` flag (`run --transforms=var_to_const_let,implicit_any`) or the `transforms` array in [`.refactronrc.json`](/configuration/refactronrc). The default is `['all']`.
 

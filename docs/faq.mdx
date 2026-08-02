@@ -1,7 +1,7 @@
 ---
 title: FAQ
 icon: circle-question
-description: "Frequently-asked questions about Refactron: the verification layer for AI code change."
+description: 'Frequently-asked questions about Refactron: the verification layer for AI code change.'
 ---
 
 ## What does Refactron actually do?
@@ -70,7 +70,7 @@ Each language is a full adapter: parser, gate paths, and (for coverage) a covera
 
 ## What are the transforms I keep seeing?
 
-[Migration mode](/transforms/index): 20 deterministic AST transforms that both _author_ a mechanical change and _verify_ it through the same gates before an atomic write. They're the demo of the verification engine on real migrations, and they're the published `refactron@0.2.4` CLI on npm (`analyze`, `run`, `document`). The verification surfaces (`verify-diff`, MCP, `preflight`) are a from-source build until the next release.
+[Migration mode](/transforms/index): 20 deterministic AST transforms that both _author_ a mechanical change and _verify_ it through the same gates before an atomic write. They're the demo of the verification engine on real migrations, and they're the `analyze`, `run`, and `document` commands of the CLI. Migration mode and the verification surfaces (`verify-diff`, MCP, `preflight`) ship in one package: `npm install -g refactron@0.3.0`.
 
 ---
 
@@ -80,6 +80,6 @@ Apache 2.0 gives the same permissive freedoms as MIT plus an **explicit patent g
 
 ---
 
-## Why 0.2 and not 1.0?
+## Why 0.3 and not 1.0?
 
-The engine has had limited external exercise. 1.0 lands after real-world usage of the verification surfaces has characterized the bug patterns and we've addressed them.
+The engine has had limited external exercise. 0.3.0 is the first release to publish the verification surfaces, so their real-world bug patterns are still ahead of us. 1.0 lands after that usage has characterized them and we've addressed them.

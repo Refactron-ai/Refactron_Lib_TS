@@ -1,7 +1,7 @@
 ---
 title: Preflight
 icon: clipboard-check
-description: "A coverage-aware safety report for the SQLAlchemy 1.x to 2.0 migration: which call sites are safe to automate, which are unproven, and which need a human."
+description: 'A coverage-aware safety report for the SQLAlchemy 1.x to 2.0 migration: which call sites are safe to automate, which are unproven, and which need a human.'
 ---
 
 `preflight` answers the question you should ask **before** letting anything (an agent, a codemod, or Refactron itself) migrate your code: **which changes can be proven safe, and which can't?**
@@ -14,12 +14,24 @@ It scans a codebase for the SQLAlchemy 1.x `Model.query` pattern (the 1.x→2.0 
   that question, answered before any change is made.
 </Note>
 
-## Install (from source)
+## Install
+
+Requires Node.js ≥ 18, plus Python 3.8+ with `coverage.py` for the coverage signal.
+
+```bash
+npm install -g refactron@0.3.0
+```
+
+That puts `refactron` on your `PATH`. To skip the install, run `npx refactron@0.3.0 preflight ...` instead.
 
 <Note>
-  `preflight` is unreleased; it is **not** in `refactron@0.2.4` on npm. Build from source until the
-  next release, which ships the `refactron` bin.
+  `pip install refactron==0.3.0` installs a thin `refactron` shim that shells out to the npm CLI. It
+  is not a Node-free path: you still need Node.js ≥ 18 **and** `npm install -g refactron@0.3.0`.
+  When the npm CLI is missing, the shim prints the exact matching install command and exits
+  non-zero.
 </Note>
+
+### Build from source (contributors)
 
 ```bash
 git clone https://github.com/Refactron-ai/Refactron_Lib_TS
@@ -28,16 +40,18 @@ npm install
 npm run build
 ```
 
+The CLI is then `node dist/cli/index.js <command>`. Substitute that for `refactron` in every example below.
+
 ## Run it
 
 ```bash
-node dist/cli/index.js preflight [target] [flags]
+refactron preflight [target] [flags]
 ```
 
-`target` defaults to `.`. Preflight is auth-gated: run `node dist/cli/index.js login`, or set `REFACTRON_TOKEN` in CI. An unauthenticated run exits `7`.
+`target` defaults to `.`. Preflight is auth-gated: run `refactron login`, or set `REFACTRON_TOKEN` in CI. An unauthenticated run exits `7`.
 
 ```bash
-node dist/cli/index.js preflight ./my-sqlalchemy-app
+refactron preflight ./my-sqlalchemy-app
 ```
 
 ### Flags

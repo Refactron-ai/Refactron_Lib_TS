@@ -37,3 +37,6 @@ rewraps
 verify_change
 src
 sys
+npx
+PyPI
+shim
