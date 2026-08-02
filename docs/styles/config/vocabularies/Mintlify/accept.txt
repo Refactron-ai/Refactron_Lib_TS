@@ -37,3 +37,12 @@ rewraps
 verify_change
 src
 sys
+npx
+PyPI
+shim
+monorepo
+monorepos
+config
+npm
+venv
+sdist

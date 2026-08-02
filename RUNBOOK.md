@@ -8,6 +8,15 @@ Operational playbooks. Pair with `release-manager` and `security-engineer` subag
 
 For breaking (major) releases, see "Major release" below.
 
+**Refactron ships two artifacts per release: the npm package and the PyPI
+wrapper (`refactron-py/`).** They are versioned in lockstep. **npm must be
+published first**, because the PyPI package is a thin shim that shells out to
+the npm CLI: a pip user who installs before npm is live gets a wrapper that
+correctly refuses to run. Publishing pip first is a broken window, not a
+disaster, but the ordering is not optional.
+
+### Prepare
+
 1. **Confirm clean working tree.** `git status` shows nothing uncommitted on `main`.
 2. **Pull latest.** `git checkout main && git pull origin main`.
 3. **Run the full pre-publish chain.**
@@ -15,38 +24,94 @@ For breaking (major) releases, see "Major release" below.
    npm run prepublishOnly
    ```
    Must be green. If anything fails, fix it on a branch and merge first.
-4. **Update CHANGELOG.md.** Move items from `[Unreleased]` to a new `[X.Y.Z] — YYYY-MM-DD` section. Group: Added / Changed / Fixed / Deprecated / Removed / Security. Entries must be user-facing.
-5. **Bump version.** Edit `package.json#version`. Commit:
+4. **Check dependency advisories.**
+   ```bash
+   npm audit
+   ```
+   Resolve anything high or critical before publishing. `npm audit fix --package-lock-only` handles the transitive cases without touching declared ranges; anything needing a range change is a separate PR, not a release-day edit.
+5. **Update CHANGELOG.md.** Move items from `[Unreleased]` to a new `[X.Y.Z] — YYYY-MM-DD` section. Group: Added / Changed / Fixed / Deprecated / Removed / Security. Entries must be user-facing.
+6. **Mirror the entry into `docs/changelog.mdx`.** Convert the `<Update label="Unreleased">` block into a released block: `<Update label="X.Y.Z" description="Month D, YYYY">`. The closing `</Update>` must sit at column 0 with a blank line before it, or Mintlify fails to parse the page (see PR #76).
+7. **Bump both versions.**
+   - `package.json#version`
+   - `refactron-py/refactron/__init__.py` `__version__`
+
+   That Python literal is the **single source of truth** for the wrapper: `refactron-py/pyproject.toml` reads it statically via `[tool.setuptools.dynamic]`, so there is nothing else to edit and the two cannot drift. Sync the lockfile's copy of the version with `npm install --package-lock-only`.
+
+8. **Sweep the docs for the old version.** Install commands are pinned in prose.
+   ```bash
+   grep -rn "refactron@0\.\|refactron==0\." README.md docs/ | grep -v changelog
+   ```
+   Every hit must name the version you are about to publish.
+9. **Commit.**
    ```bash
    git commit -am "chore(release): vX.Y.Z"
    ```
-6. **Tag.**
-   ```bash
-   git tag -a vX.Y.Z -m "vX.Y.Z"
-   ```
-7. **Dry-run publish.**
-   ```bash
-   npm publish --dry-run
-   ```
-   Verify the file list: no `dev-docs/`, no `playground/`, no `.refactron/`, no `tests/`, no source maps.
-8. **Push.**
-   ```bash
-   git push origin main --tags
-   ```
-9. **Publish.**
-   ```bash
-   npm publish
-   ```
-10. **GitHub Release.** Draft a release on GitHub using the new tag; copy the CHANGELOG section into the body.
-11. **Verify the install works.**
+10. **Tag.**
     ```bash
-    cd /tmp && mkdir verify-release && cd verify-release
-    npm init -y
-    npm install refactron@X.Y.Z
-    npx refactron --version    # should print X.Y.Z
+    git tag -a vX.Y.Z -m "vX.Y.Z"
     ```
 
-If any step fails after the `npm publish`, see "Rolling back a bad publish" below.
+### Dry-run both artifacts
+
+11. **npm.**
+    ```bash
+    npm publish --dry-run
+    ```
+    Verify the file list against `package.json#files`: no `dev-docs/`, no `playground/`, no `.refactron/`, no `tests/`, no `bench/`, no `docs/`. Source maps **are** shipped on purpose, so a user reading a CLI stack trace gets real line numbers; do not "fix" that. **Confirm the Python sidecars are present**: `dist/verify/checks/_py/*.py` and `dist/transform/transforms/python/_py/*.py`. They are copied by `build:copy-py`, not emitted by `tsc`, so a build-script regression drops them silently and the verification engine ships broken.
+12. **PyPI.**
+    ```bash
+    cd refactron-py
+    rm -rf dist build refactron.egg-info
+    python3 -m build                 # needs `pip install build`
+    python3 -m twine check dist/*    # needs `pip install twine`
+    ```
+    Both artifacts must report `PASSED`. Confirm the version in the filenames is the one you bumped, and that `LICENSE` and `NOTICE` are in the sdist (`tar tzf dist/refactron-X.Y.Z.tar.gz`).
+13. **Push.**
+    ```bash
+    git push origin main --tags
+    ```
+
+### Publish (order matters)
+
+14. **npm first.**
+    ```bash
+    npm publish
+    ```
+15. **PyPI second.**
+    ```bash
+    cd refactron-py && python3 -m twine upload dist/*
+    ```
+    Credentials come from a PyPI API token in `~/.pypirc` or `TWINE_USERNAME=__token__` / `TWINE_PASSWORD=pypi-...`. PyPI does not allow re-uploading a filename, so a bad upload means burning the version number and shipping X.Y.Z+1.
+16. **GitHub Release.** Draft a release on GitHub using the new tag; copy the CHANGELOG section into the body.
+
+### Verify what you published
+
+17. **npm install.**
+    ```bash
+    cd /tmp && rm -rf verify-release && mkdir verify-release && cd verify-release
+    npm init -y
+    npm install refactron@X.Y.Z
+    npx refactron --version            # should print X.Y.Z
+    ```
+18. **The sidecars survived the tarball.**
+    ```bash
+    ls node_modules/refactron/dist/verify/checks/_py/
+    ls node_modules/refactron/dist/transform/transforms/python/_py/
+    ```
+    Both must be non-empty.
+19. **The MCP bin exists.**
+    ```bash
+    ls node_modules/.bin/refactron-mcp
+    ```
+20. **The pip wrapper works.**
+    ```bash
+    cd /tmp && rm -rf verify-pip && python3 -m venv verify-pip
+    ./verify-pip/bin/pip install refactron==X.Y.Z
+    ./verify-pip/bin/refactron --version   # should print X.Y.Z via the npm CLI
+    ```
+    Then check the failure path, which is the one users actually hit. With the npm CLI off `PATH`, the wrapper must print `npm install -g refactron@X.Y.Z` and exit non-zero. It must **never** install anything and must **never** loop: inside a venv the name `refactron` resolves to the wrapper's own console script, and re-executing it is an infinite loop (fixed in 0.3.0, worth re-checking whenever `cli.py` changes).
+
+If any step fails after `npm publish` or `twine upload`, see "Rolling back a bad publish" below.
 
 ---
 
@@ -79,6 +144,10 @@ Instead:
 2. **`npm dist-tag` shenanigans** are tempting but break consumers who pinned to `latest`. Don't.
 3. **Issue a security advisory** via `gh api repos/Refactron-ai/Refactron_Lib_TS/security-advisories` if the bad publish has a security impact.
 4. **Communicate.** Pin a notice in the GitHub Discussions; mention in the next CHANGELOG entry under `Security` or `Fixed`.
+
+**PyPI differs from npm here.** You cannot re-upload a filename, ever, so the fix is always a new version, never a replacement. `twine` has no unpublish. You can **yank** a release from the PyPI web UI (Manage, then the release, then Options, then Yank), which hides it from new resolutions while leaving it installable for anyone who pinned it exactly. Yank a broken wrapper as soon as the replacement is up; a yanked release still satisfies `refactron==X.Y.Z`, which is what keeps existing lockfiles working.
+
+Because the wrapper is version-locked to npm, a bad npm publish also makes the matching pip release wrong. Ship the patch to both, in the same npm-then-pip order.
 
 ---
 
@@ -120,7 +189,7 @@ LibCST is vendored via the runtime's Python install (`pip install libcst` in CI)
    - LibCST API change (very rare for patch; check the changelog).
    - LibCST behavior change in parsing edge cases.
    - Our code relying on undocumented LibCST internals.
-   Fix in our code, not by pinning to the old LibCST.
+     Fix in our code, not by pinning to the old LibCST.
 
 ---
 

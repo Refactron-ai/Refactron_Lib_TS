@@ -1,7 +1,7 @@
 {
   "name": "refactron",
-  "version": "0.2.4",
-  "description": "Safety-first refactoring — finds, fixes, and verifies changes are safe before touching the filesystem",
+  "version": "0.3.0",
+  "description": "The verification layer for AI code change: prove a diff preserved behavior before it lands",
   "author": "Om Sherikar <omsherikar0229@gmail.com>",
   "bin": {
     "refactron": "./dist/cli/index.js",
@@ -42,6 +42,12 @@
     "prepare": "git config core.hooksPath .githooks 2>/dev/null || true"
   },
   "keywords": [
+    "verification",
+    "ai-agents",
+    "mcp",
+    "code-review",
+    "testing",
+    "ci",
     "refactoring",
     "python",
     "typescript",
@@ -49,7 +55,6 @@
     "ast",
     "cli",
     "safety",
-    "verification",
     "blast-radius",
     "autofix",
     "static-analysis"
@@ -61,6 +66,7 @@
     "dist/",
     "README.md",
     "LICENSE",
+    "NOTICE",
     "CHANGELOG.md",
     "SECURITY.md"
   ],

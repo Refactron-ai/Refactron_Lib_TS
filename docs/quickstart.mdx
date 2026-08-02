@@ -1,40 +1,41 @@
 ---
 title: Quickstart
 icon: rocket
-description: Build Refactron from source and verify your first diff end to end, then give the same gate to your AI agent over MCP.
+description: Install Refactron from npm and verify your first diff end to end, then give the same gate to your AI agent over MCP.
 ---
 
-In the next ten minutes you'll build Refactron, verify a real change against a real test suite, and read your first `SAFE` / `UNSAFE` / `UNPROVEN` verdict.
+In the next ten minutes you'll install Refactron, verify a real change against a real test suite, and read your first `SAFE` / `UNSAFE` / `UNPROVEN` verdict.
 
-<Note>
-  `verify-diff`, the MCP server, and `preflight` are unreleased; they are **not** in
-  `refactron@0.2.4` on npm yet. Build from source until the next release, which ships the
-  `refactron` and `refactron-mcp` bins. The published npm package is the [migration-mode transform
-  CLI](#migration-mode) covered at the end. If `refactron verify-diff` reports an unknown command,
-  you're on the npm package (migration mode, `0.2.4`); `verify-diff` is from-source only until then.
-</Note>
+## Install
 
-## Build from source
+Requires Node.js ≥ 18.
 
-Requires Node.js ≥ 18. To earn a `SAFE` verdict end to end you also need a Python project with a passing `pytest` suite, plus `coverage.py` for the coverage measurement:
+```bash
+npm install -g refactron@0.3.0
+```
+
+That puts two binaries on your `PATH`: `refactron` (the CLI, including `verify-diff` and `preflight`) and `refactron-mcp` (the MCP server). To skip the install, run `npx refactron@0.3.0 <command>` instead.
+
+To earn a `SAFE` verdict end to end you also need a Python project with a passing `pytest` suite, plus `coverage.py` for the coverage measurement:
 
 ```bash
 pip install pytest coverage
 ```
 
-```bash
-git clone https://github.com/Refactron-ai/Refactron_Lib_TS
-cd Refactron_Lib_TS
-npm install
-npm run build
-```
+<Note>
+  Prefer PyPI? `pip install refactron==0.3.0` installs a thin `refactron` shim that shells out to
+  the npm CLI. It is not a Node-free path: you still need Node.js ≥ 18 **and** `npm install -g
+  refactron@0.3.0`. When the npm CLI is missing, the shim prints the exact matching install command
+  and exits non-zero. The shim provides the `refactron` command only; `refactron-mcp` comes from the
+  npm package.
+</Note>
 
 ## Authenticate
 
 `verify-diff` is auth-gated. Log in once on this machine (this runs a device-code flow and opens your browser to approve a code):
 
 ```bash
-node dist/cli/index.js login
+refactron login
 ```
 
 For CI or a headless box, export a token instead of the browser flow:
@@ -61,11 +62,10 @@ Point Refactron at a repo and a unified diff. The diff can come from anywhere: a
 
   </Step>
   <Step title="Verify it">
-    You `cd`'d into your own project above, so call Refactron by the absolute path to its build (you're no longer inside the Refactron checkout):
+    Run `verify-diff` from inside the project you just captured the diff from:
 
     ```bash
-    node /path/to/Refactron_Lib_TS/dist/cli/index.js \
-      verify-diff . --diff change.diff --test-cmd "python3 -m pytest -q"
+    refactron verify-diff . --diff change.diff --test-cmd "python3 -m pytest -q"
     ```
 
     Refactron copies your project into an isolated shadow tree, applies the diff there,
@@ -121,29 +121,36 @@ Add `--json` for the full reproducible report. See [Verdicts](/verification/verd
 The same engine is available as an [MCP](https://modelcontextprotocol.io) tool, `verify_change`, so an AI agent can verify a change before it lands it. Register the stdio server with your client. For Claude Code:
 
 ```bash
-claude mcp add refactron -- node /absolute/path/to/Refactron_Lib_TS/dist/mcp/server.js
+claude mcp add refactron -- refactron-mcp
 ```
 
 The agent proposes an edit (as full-file contents or a unified diff), calls `verify_change`, and gets back the same `SAFE` / `UNSAFE` / `UNPROVEN` report, then decides whether to land it. Full setup in [MCP server](/verification/mcp-server).
 
 ## Migration mode
 
-Refactron also ships 20 deterministic AST transforms that both _author_ a change and _verify_ it through the same gates before an atomic write. This is the published npm CLI; install it directly:
+Refactron also ships 20 deterministic AST transforms that both _author_ a change and _verify_ it through the same gates before an atomic write. They live in the package you already installed:
 
 ```bash
-npm install -g refactron@0.2.4
 cd your-project && refactron login
 refactron analyze .              # findings + blast radius + tier
 refactron run --dry-run          # preview the diff (no writes)
 refactron run --apply            # gates, then atomic write
 ```
 
-<Note>
-  `refactron@0.2.4` on npm is the transform CLI only. It does **not** include `verify-diff`, the MCP
-  server, or `preflight`; those are the from-source build above until the next release.
-</Note>
-
 See [Migration mode](/transforms/index) for the transform catalog and the [CLI reference](/cli/reference) for every command and flag.
+
+## Build from source (contributors)
+
+Working on Refactron itself? Build the checkout instead of installing the published package:
+
+```bash
+git clone https://github.com/Refactron-ai/Refactron_Lib_TS
+cd Refactron_Lib_TS
+npm install
+npm run build
+```
+
+The CLI is then `node dist/cli/index.js <command>` and the MCP server is `node dist/mcp/server.js`. Every command on this page works the same way; substitute that invocation for `refactron`.
 
 ## Next steps
 

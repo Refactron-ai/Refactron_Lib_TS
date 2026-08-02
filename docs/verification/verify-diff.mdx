@@ -17,11 +17,11 @@ Refactron applies the diff in an isolated shadow tree, runs the syntax, imports,
 
 ## The verdict, in one line
 
-| Verdict    | Meaning                                                                                              | Exit |
-| ---------- | ---------------------------------------------------------------------------------------------------- | ---- |
+| Verdict    | Meaning                                                                                                   | Exit |
+| ---------- | --------------------------------------------------------------------------------------------------------- | ---- |
 | `SAFE`     | Every gate passed **and** your tests exercise the changed code (at least one changed statement per file). | `0`  |
-| `UNSAFE`   | A gate failed: the change broke something.                                                           | `1`  |
-| `UNPROVEN` | Tests pass, but the changed code isn't exercised (or coverage couldn't be assessed).                 | `0`  |
+| `UNSAFE`   | A gate failed: the change broke something.                                                                | `1`  |
+| `UNPROVEN` | Tests pass, but the changed code isn't exercised (or coverage couldn't be assessed).                      | `0`  |
 
 `UNPROVEN` is the honest verdict. "Tests pass" is not the same as "this change is proven safe": if nothing runs the lines you changed, a green suite proves nothing about them. Refactron says so out loud and tells you which test to add. See [Verdicts](/verification/verdicts) for the full model.
 
@@ -35,12 +35,24 @@ Refactron applies the diff in an isolated shadow tree, runs the syntax, imports,
 
 If your project is installed into the environment (an editable `pip install -e .` counts), your tests may import that copy instead of the one being verified, in which case the run proves nothing about your change. Put the verified tree first on `sys.path`, for example `PYTHONPATH=.` (or `PYTHONPATH=src` for a src layout). See [Make sure the tests run the code being verified](/verification/verdicts#make-sure-the-tests-run-the-code-being-verified).
 
-## Install (from source)
+## Install
+
+Requires Node.js ≥ 18, plus Python 3.8+ with `coverage.py` for the coverage half.
+
+```bash
+npm install -g refactron@0.3.0
+```
+
+That puts `refactron` (and `refactron-mcp`) on your `PATH`. To skip the install, run `npx refactron@0.3.0 verify-diff ...` instead.
 
 <Note>
-  `verify-diff` and the MCP server are unreleased; they are **not** in `refactron@0.2.4` on npm.
-  Install from source until the next release, which ships the `refactron` and `refactron-mcp` bins.
+  `pip install refactron==0.3.0` installs a thin `refactron` shim that shells out to the npm CLI. It
+  is not a Node-free path: you still need Node.js ≥ 18 **and** `npm install -g refactron@0.3.0`.
+  When the npm CLI is missing, the shim prints the exact matching install command and exits
+  non-zero.
 </Note>
+
+### Build from source (contributors)
 
 ```bash
 git clone https://github.com/Refactron-ai/Refactron_Lib_TS
@@ -49,12 +61,14 @@ npm install
 npm run build
 ```
 
+The CLI is then `node dist/cli/index.js <command>`. Substitute that for `refactron` in every example below.
+
 ## Authenticate
 
 `verify-diff` is auth-gated. Log in once on this machine:
 
 ```bash
-node dist/cli/index.js login
+refactron login
 ```
 
 In CI, skip the browser and export a token instead:
@@ -68,14 +82,14 @@ An unauthenticated run exits `7`.
 ## Run it
 
 ```bash
-node dist/cli/index.js verify-diff [repoRoot] --diff <file> [flags]
+refactron verify-diff [repoRoot] --diff <file> [flags]
 ```
 
 `repoRoot` defaults to `.`. The `--diff` file is a standard unified (git) diff.
 
 ```bash
 # A change your agent produced, saved to change.diff:
-node dist/cli/index.js verify-diff . --diff change.diff
+refactron verify-diff . --diff change.diff
 ```
 
 Output is the verdict, its reason, and (for `UNPROVEN` by lack of coverage) the uncovered lines:
@@ -178,7 +192,7 @@ Run `verify-diff` on a pull request's diff and let the exit code gate the merge.
 
 ```bash
 git diff origin/main...HEAD > pr.diff
-node dist/cli/index.js verify-diff . --diff pr.diff --test-cmd "python3 -m pytest -q"
+refactron verify-diff . --diff pr.diff --test-cmd "python3 -m pytest -q"
 ```
 
 Unlike `preflight`, `verify-diff` has no `--fail-on-unproven` flag. To fail CI on `UNPROVEN`, read the `verdict` field from `--json` output and set the exit code yourself; the process exits `0` for `UNPROVEN` by design, so a green suite on untested lines never silently blocks a merge unless you choose to.

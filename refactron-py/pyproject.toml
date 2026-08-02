@@ -4,18 +4,32 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "refactron"
-version = "0.2.4"
-description = "Safety-first refactoring CLI for Python and TypeScript (Python wrapper around the npm package)"
+dynamic = ["version"]
+description = "Verification layer for AI code change: prove a diff preserved behavior (Python wrapper for the npm CLI)"
 readme = "README.md"
 requires-python = ">=3.8"
-license = { text = "MIT" }
+license = { text = "Apache-2.0" }
 authors = [{ name = "Om Sherikar", email = "omsherikar0229@gmail.com" }]
-keywords = ["refactoring", "python", "typescript", "ast", "cli"]
+keywords = [
+  "verification",
+  "ai-agents",
+  "mcp",
+  "code-review",
+  "testing",
+  "ci",
+  "refactoring",
+  "python",
+  "typescript",
+  "ast",
+  "cli",
+]
 classifiers = [
   "Development Status :: 4 - Beta",
   "Intended Audience :: Developers",
-  "License :: OSI Approved :: MIT License",
+  "License :: OSI Approved :: Apache Software License",
   "Programming Language :: Python :: 3",
+  "Topic :: Software Development :: Quality Assurance",
+  "Topic :: Software Development :: Testing",
   "Topic :: Software Development :: Code Generators",
 ]
 dependencies = []
@@ -26,4 +40,15 @@ refactron = "refactron.cli:main"
 [project.urls]
 Homepage = "https://github.com/Refactron-ai/Refactron_Lib_TS"
 Documentation = "https://docs.refactron.dev"
+Changelog = "https://github.com/Refactron-ai/Refactron_Lib_TS/blob/main/CHANGELOG.md"
 Issues = "https://github.com/Refactron-ai/Refactron_Lib_TS/issues"
+
+# Single source of truth for the version: the literal in refactron/__init__.py.
+# setuptools reads it statically, so the packaged metadata and the runtime
+# __version__ can never disagree.
+[tool.setuptools.dynamic]
+version = { attr = "refactron.__version__" }
+
+[tool.setuptools]
+packages = ["refactron"]
+license-files = ["LICENSE", "NOTICE"]
