@@ -1,12 +1,12 @@
 ---
 title: Preflight
 icon: clipboard-check
-description: 'A coverage-aware safety report for the SQLAlchemy 1.x to 2.0 migration: which call sites are safe to automate, which are unproven, and which need a human.'
+description: 'A coverage-aware safety report for the SQLAlchemy 1.x to 2.0 migration: which call sites are safe to automate, which need a test first, and which need a human.'
 ---
 
 `preflight` answers the question you should ask **before** letting anything (an agent, a codemod, or Refactron itself) migrate your code: **which changes can be proven safe, and which can't?**
 
-It scans a codebase for the SQLAlchemy 1.x `Model.query` pattern (the 1.x→2.0 `select()` migration), checks how well your tests cover each site, and returns a per-site verdict: safe to automate, unproven, or needs review. It reports; it does not rewrite.
+It scans a codebase for the SQLAlchemy 1.x `Model.query` pattern (the 1.x→2.0 `select()` migration), checks how well your tests cover each site, and returns a per-site verdict: `safe-to-automate`, `unproven`, or `needs-review`. It reports; it does not rewrite.
 
 <Note>
   Preflight is coverage-aware by design. High-stakes migrations fail silently (wrong behavior in
@@ -59,14 +59,14 @@ refactron preflight ./my-sqlalchemy-app
 | Flag                 | Type | Default | Description                                                     |
 | -------------------- | ---- | ------- | --------------------------------------------------------------- |
 | `--json`             | bool | false   | Emit the safety report as JSON instead of the formatted report. |
-| `--fail-on-unproven` | bool | false   | Exit `1` if any site is unproven, useful as a CI guardrail.     |
+| `--fail-on-unproven` | bool | false   | Exit `1` if any site is `unproven`, useful as a CI guardrail.     |
 
 ### Exit codes
 
 | Code | Meaning                                                         |
 | ---- | --------------------------------------------------------------- |
 | `0`  | Report produced.                                                |
-| `1`  | `--fail-on-unproven` was set and at least one site is unproven. |
+| `1`  | `--fail-on-unproven` was set and at least one site is `unproven`. |
 | `2`  | Bad flags or a config error.                                    |
 | `7`  | Not authenticated.                                              |
 
@@ -74,9 +74,9 @@ refactron preflight ./my-sqlalchemy-app
 
 Every detected `Model.query` site is bucketed by how confidently it could be migrated:
 
-- **Safe to automate**: the site is covered by your tests, so a migration here can be verified end to end.
-- **Unproven**: the pattern is present, but your tests don't exercise it. A migration would be an [`UNPROVEN`](/verification/verdicts) change: possibly fine, but unproven. Add a test first.
-- **Needs review**: the site has a shape the automated path won't handle safely; a human should migrate it.
+- **`safe-to-automate`**: the site is covered by your tests, so a migration here can be verified end to end.
+- **`unproven`**: the pattern is present, but your tests do not exercise it. A migration here would verify as [`UNPROVEN`](/verification/verdicts): possibly fine, but nothing proves it. Add a test first.
+- **`needs-review`**: the site has a shape the automated path won't handle safely; a human should migrate it.
 
 <Warning>
   Coverage is measured with `coverage.py`, so preflight's coverage signal is **Python-only**. That

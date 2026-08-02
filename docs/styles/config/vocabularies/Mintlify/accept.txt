@@ -40,3 +40,9 @@ sys
 npx
 PyPI
 shim
+monorepo
+monorepos
+config
+npm
+venv
+sdist
