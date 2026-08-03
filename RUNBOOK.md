@@ -71,18 +71,32 @@ disaster, but the ordering is not optional.
     git push origin main --tags
     ```
 
-### Publish (order matters)
+### Publish: pushing the tag IS the release
 
-14. **npm first.**
+14. **Push the tag and let CI publish.**
     ```bash
-    npm publish
+    git push origin main --tags
     ```
-15. **PyPI second.**
+    `.github/workflows/release.yml` fires on `v*.*.*` and runs the whole release: it validates the tag against both versions, runs the full suite, publishes to npm and PyPI over OIDC trusted publishing, then drafts the GitHub Release. There are no tokens to paste and nothing to run by hand.
+
+    Watch it:
+
     ```bash
+    gh run watch $(gh run list --workflow Release --limit 1 --json databaseId --jq '.[0].databaseId')
+    ```
+
+    If `Validate Tag` fails, nothing publishes: every later job is skipped. Fix the mismatch on `main`, delete the tag locally and on the remote, then re-tag the new commit.
+
+15. **Manual publishing is a fallback, not the path.** Use it only when the pipeline itself is broken, and never after a tag has already published, because a second attempt at the same version errors on npm and is silently skipped on PyPI.
+
+    ```bash
+    npm publish                                              # npm first: the pip wrapper shells out to this CLI
     cd refactron-py && python3 -m twine upload dist/*
     ```
-    Credentials come from a PyPI API token in `~/.pypirc` or `TWINE_USERNAME=__token__` / `TWINE_PASSWORD=pypi-...`. PyPI does not allow re-uploading a filename, so a bad upload means burning the version number and shipping X.Y.Z+1.
-16. **GitHub Release.** Draft a release on GitHub using the new tag; copy the CHANGELOG section into the body.
+
+    PyPI credentials come from an API token in `~/.pypirc` or `TWINE_USERNAME=__token__` / `TWINE_PASSWORD=pypi-...`. PyPI does not allow re-uploading a filename, so a bad upload means burning the version number and shipping X.Y.Z+1.
+
+16. **GitHub Release.** CI drafts it from the tag. Review the body, replace the generated commit list with the CHANGELOG section, and publish it.
 
 ### Verify what you published
 
