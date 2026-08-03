@@ -69,14 +69,19 @@ python3 -m build
 python3 -m twine check dist/*
 cd ..
 
-# 5. PUBLISH NPM FIRST. The pip wrapper shells out to this.
-npm publish
+# 5. PUSH THE TAG. This IS the release: .github/workflows/release.yml
+#    validates the tag against both versions, runs the suite, then publishes
+#    to npm and PyPI over OIDC and drafts the GitHub Release. Do NOT publish
+#    by hand as well; a second attempt at the same version errors on npm.
+git push origin main --tags
 
-# 6. Then PyPI.
-cd refactron-py && python3 -m twine upload dist/* && cd ..
+# 6. Watch it. If Validate Tag fails, nothing publishes and every later job
+#    is skipped, so fix on main, delete the tag both places, and re-tag.
+gh run watch $(gh run list --workflow Release --limit 1 --json databaseId --jq '.[0].databaseId')
 
-# 7. GitHub Release on tag v0.3.0. Body = the CHANGELOG [0.3.0] section.
-#    Lead with the repositioning, not the bullet list; humans read this page.
+# 7. Review the drafted GitHub Release. Replace the generated commit list with
+#    the CHANGELOG [0.3.0] section, lead with the repositioning rather than the
+#    bullets, then publish it. Humans read this page.
 
 # 8. Verify npm.
 cd /tmp && rm -rf verify-release && mkdir verify-release && cd verify-release

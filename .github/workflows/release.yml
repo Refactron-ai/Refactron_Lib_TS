@@ -21,7 +21,14 @@ jobs:
         run: |
           TAG=${GITHUB_REF#refs/tags/v}
           PKG=$(node -p "require('./package.json').version")
-          PY=$(grep -m1 '^version' refactron-py/pyproject.toml | sed -E 's/version\s*=\s*"([^"]+)"/\1/')
+          # The wrapper declares its version once, in __init__.py, and
+          # pyproject.toml reads it dynamically via setuptools `attr:`. Grepping
+          # pyproject for a literal finds the attr expression, not a version.
+          PY=$(grep -m1 '^__version__' refactron-py/refactron/__init__.py | sed -E 's/.*"([^"]+)".*/\1/')
+          if [ -z "$PY" ]; then
+            echo "Could not read __version__ from refactron-py/refactron/__init__.py"
+            exit 1
+          fi
           if [ "$TAG" != "$PKG" ]; then
             echo "Tag $TAG does not match package.json version $PKG"
             exit 1
