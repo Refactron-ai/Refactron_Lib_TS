@@ -75,9 +75,13 @@ jobs:
           cache: 'npm'
           registry-url: 'https://registry.npmjs.org'
       - run: npm ci
-      # npm OIDC trusted-publisher auth requires npm >= 11.5.1; Node 20 ships
-      # with an older bundled npm, so upgrade before publish.
-      - run: npm install -g npm@latest
+      # npm OIDC trusted-publisher auth requires npm >= 11.5.1 and Node 20
+      # ships an older bundled npm, so this upgrade is mandatory. Pin the MAJOR
+      # rather than tracking `latest`: npm 12 dropped Node 20 (it requires
+      # ^22.22.2 || ^24.15.0 || >=26.0.0), so `latest` silently became
+      # uninstallable here and broke the release. npm 11 supports
+      # ^20.17.0 || >=22.9.0, which covers this runner either way.
+      - run: npm install -g npm@^11.5.1
       - run: npm run build
       # --ignore-scripts skips prepublishOnly (full test gate). We already
       # ran the equivalent in test-before-release; re-running here would
@@ -92,7 +96,11 @@ jobs:
       name: pypi-production
       url: https://pypi.org/p/refactron
     permissions:
+      # A job-level permissions block REPLACES the default set rather than
+      # adding to it. Without contents:read, GITHUB_TOKEN cannot read this
+      # private repo and actions/checkout fails with "Repository not found".
       id-token: write
+      contents: read
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
