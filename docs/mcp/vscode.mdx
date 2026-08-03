@@ -1,0 +1,64 @@
+---
+title: VS Code
+icon: code
+description: 'Add the Refactron MCP server to VS Code with GitHub Copilot. Note the root key: VS Code uses servers, not mcpServers.'
+---
+
+VS Code reads MCP servers for GitHub Copilot's agent mode. Its config shape differs from every other client on one point, and it is the mistake people make most often.
+
+## The root key is `servers`, not `mcpServers`
+
+Claude Desktop, Cursor, Windsurf, and Cline all use `mcpServers`. VS Code uses `servers`. A config copied from any of those clients loads nothing here, with no error: VS Code simply sees no servers.
+
+## Config location
+
+| Scope     | Path                                      | Applies to          |
+| --------- | ----------------------------------------- | ------------------- |
+| Workspace | `.vscode/mcp.json` in the repository root | This workspace only |
+| User      | `mcp.json` in your VS Code profile folder | Every workspace     |
+
+Open the user file from the Command Palette with **MCP: Open User Configuration**. For the workspace file, create `.vscode/mcp.json` yourself.
+
+## Add it
+
+```json
+{
+  "servers": {
+    "refactron": {
+      "type": "stdio",
+      "command": "refactron-mcp"
+    }
+  }
+}
+```
+
+To pin the version and skip the global install:
+
+```json
+{
+  "servers": {
+    "refactron": {
+      "type": "stdio",
+      "command": "npx",
+      "args": ["-y", "-p", "refactron@0.3.0", "refactron-mcp"]
+    }
+  }
+}
+```
+
+The `-p` flag is required. `refactron-mcp` is a second binary of the `refactron` package, not a package of its own.
+
+## Verify the connection
+
+Run **MCP: List Servers** from the Command Palette. `refactron` appears with a `Running` status; select it for **Show Output** and the start command.
+
+In the Copilot Chat pane, switch the mode selector to **Agent**, then open the tools picker. `verify_change` is listed under `refactron` with a checkbox.
+
+## Troubleshooting
+
+- **No servers listed**: check the root key. It is `servers`. A copied `mcpServers` block is the usual cause.
+- **The server sits at `Stopped`**: open **MCP: List Servers**, select `refactron`, then **Start Server**, and read **Show Output** for the launch error.
+- **`spawn refactron-mcp ENOENT`**: the binary is not on the `PATH` VS Code inherited. Run `which refactron-mcp` in a terminal and use that absolute path as `command`, or use the `npx` form.
+- **The tool never gets called**: Copilot only calls tools in **Agent** mode. Ask and Edit modes do not.
+- **GitHub Copilot CLI does not read this file**: the CLI keeps its own MCP config and expects `mcpServers`. Configuring VS Code does not configure the CLI.
+- **A verification takes minutes**: `verify_change` runs your real test suite in a shadow copy.

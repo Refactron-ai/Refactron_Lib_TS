@@ -1,0 +1,63 @@
+---
+title: Windsurf
+icon: wind
+description: Add the Refactron MCP server to Windsurf Cascade by editing ~/.codeium/windsurf/mcp_config.json.
+---
+
+Windsurf keeps MCP servers in a single file under your home directory, shared across every workspace. Cascade picks them up after a refresh.
+
+## Config location
+
+| OS           | Path                                              |
+| ------------ | ------------------------------------------------- |
+| macOS, Linux | `~/.codeium/windsurf/mcp_config.json`             |
+| Windows      | `%USERPROFILE%\.codeium\windsurf\mcp_config.json` |
+
+Windsurf can open it for you: in the Cascade panel, click the hammer icon, then **Configure**.
+
+## Add it
+
+```json
+{
+  "mcpServers": {
+    "refactron": {
+      "command": "refactron-mcp"
+    }
+  }
+}
+```
+
+To pin the version and skip the global install:
+
+```json
+{
+  "mcpServers": {
+    "refactron": {
+      "command": "npx",
+      "args": ["-y", "-p", "refactron@0.3.0", "refactron-mcp"]
+    }
+  }
+}
+```
+
+The `-p` flag is required. `refactron-mcp` is a second binary of the `refactron` package, not a package of its own.
+
+Save the file, then click **Refresh** in the Cascade MCP panel. Windsurf does not reload the file on save.
+
+## Verify the connection
+
+Click the hammer icon in the Cascade panel. `refactron` is listed with a green dot and one tool: `verify_change`.
+
+Ask Cascade to confirm:
+
+```text
+List the tools you have from the refactron MCP server.
+```
+
+## Troubleshooting
+
+- **Nothing changes after editing the file**: press **Refresh** in the MCP panel. Windsurf reads the config on refresh or restart, never on save.
+- **The server is listed but red**: the command did not launch. Run `which refactron-mcp`. If it prints nothing, run `npm install -g refactron@0.3.0`, or use the `npx` form above.
+- **Invalid JSON**: Windsurf drops the whole file when it cannot parse it, so one stray comma removes every server. Validate before refreshing.
+- **Tool call limits**: Windsurf caps the number of tools it exposes to Cascade. Refactron adds exactly one, but if you are near the cap, disable a server you are not using.
+- **A verification takes minutes**: `verify_change` runs your real test suite in a shadow copy. That is the work, not a hang.

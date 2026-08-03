@@ -1,0 +1,62 @@
+---
+title: Claude Desktop
+icon: monitor
+description: Add the Refactron MCP server to Claude Desktop by editing claude_desktop_config.json, then restart the app.
+---
+
+Claude Desktop reads one JSON file at launch. There is no CLI, and changes take effect only after a full restart.
+
+## Config location
+
+| OS      | Path                                                              |
+| ------- | ----------------------------------------------------------------- |
+| macOS   | `~/Library/Application Support/Claude/claude_desktop_config.json` |
+| Windows | `%APPDATA%\Claude\claude_desktop_config.json`                     |
+| Linux   | `~/.config/Claude/claude_desktop_config.json`                     |
+
+The app opens this file for you: **Settings** then **Developer** then **Edit Config**. If the file does not exist yet, create it with the contents below.
+
+## Add it
+
+```json
+{
+  "mcpServers": {
+    "refactron": {
+      "command": "refactron-mcp"
+    }
+  }
+}
+```
+
+If you already have servers configured, add `refactron` as another key inside the existing `mcpServers` object rather than adding a second `mcpServers` block.
+
+To pin the version and skip the global install:
+
+```json
+{
+  "mcpServers": {
+    "refactron": {
+      "command": "npx",
+      "args": ["-y", "-p", "refactron@0.3.0", "refactron-mcp"]
+    }
+  }
+}
+```
+
+The `-p` flag is required. `refactron-mcp` is a second binary of the `refactron` package, not a package of its own.
+
+Quit Claude Desktop completely and reopen it. Closing the window is not enough on macOS: use **Claude** then **Quit**, or `Cmd+Q`.
+
+## Verify the connection
+
+Open **Settings** then **Developer**. `refactron` appears in the server list with a `running` status.
+
+In a chat, the tools control below the message box lists the connected servers. Under `refactron` you should see exactly one tool: `verify_change`.
+
+## Troubleshooting
+
+- **The server does not appear at all**: the JSON is invalid. Claude Desktop skips a malformed config silently. Check it with `node -e "JSON.parse(require('fs').readFileSync('<path>','utf8'))"` and look for a trailing comma.
+- **`spawn refactron-mcp ENOENT` in the logs**: Claude Desktop launches from the desktop environment, not your shell, so it does not inherit `PATH` additions made in `.zshrc` or `.bashrc`. Use the absolute path from `which refactron-mcp` as the `command` value.
+- **Reading the logs**: macOS writes them to `~/Library/Logs/Claude/`, one `mcp-server-refactron.log` per server. Windows uses `%APPDATA%\Claude\logs\`.
+- **Edits appear to do nothing**: the config is read once at launch. Quit the app fully and reopen.
+- **A verification times out**: `verify_change` runs your whole test suite, which can take minutes. That is the work, not a hang.

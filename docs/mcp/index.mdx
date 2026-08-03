@@ -1,0 +1,116 @@
+---
+title: MCP server
+icon: plug
+description: 'Refactron over the Model Context Protocol: one tool, verify_change, that returns SAFE, UNSAFE, or UNPROVEN on a proposed change before an agent lands it.'
+---
+
+Refactron ships an [MCP](https://modelcontextprotocol.io) server that exposes exactly one tool: **`verify_change`**. An agent hands it a repository root and a proposed change, and gets back a verdict backed by your real test suite, run in an isolated shadow tree.
+
+The server speaks **stdio**, identifies itself as `refactron` version `0.3.0`, and runs entirely on your machine. It never writes to your repository: applying the change stays the agent's job, after a verdict the agent trusts.
+
+<Frame caption="An agent proposes a change, calls verify_change, and decides whether to land it based on the verdict.">
+  <img
+    src="/assets/mcp.svg"
+    alt="An AI agent calling Refactron's verify_change MCP tool and receiving a SAFE, UNSAFE, or UNPROVEN verdict before landing the change"
+  />
+</Frame>
+
+## Why an agent calls it
+
+A coding agent has no independent way to tell a change that works from a change that only looks right. `verify_change` gives it one: run the project's own tests against the proposal, in a copy, and report what that run actually proved.
+
+- **`SAFE`**: every gate passed and your tests exercised the changed code. Suite-approved, not proven correct: the verdict inherits exactly what your tests check.
+- **`UNSAFE`**: a gate failed. The change broke something.
+- **`UNPROVEN`**: the gates passed, but the evidence for `SAFE` is missing. A warning, not a rejection.
+
+The full model, including how coverage fuses with the gates and what `SAFE` does not claim, is in [Verdicts](/verification/verdicts).
+
+## Install
+
+Requires Node.js 18 or newer. For a coverage-backed `SAFE` verdict you also need Python 3.8+ with `pytest` and `coverage.py`.
+
+Install globally and get both binaries on your `PATH`:
+
+```bash
+npm install -g refactron@0.3.0
+```
+
+That gives you `refactron` (the CLI) and `refactron-mcp` (this server).
+
+To skip the install and let the client fetch the package on demand:
+
+```bash
+npx -y -p refactron@0.3.0 refactron-mcp
+```
+
+The `-p` flag is required. `refactron-mcp` is a second binary of the `refactron` package, not a package of its own, so `npx refactron-mcp` on a machine without the global install looks for a package named `refactron-mcp` and fails with a registry 404.
+
+<Note>
+  `pip install refactron==0.3.0` installs a wrapper that still requires Node.js 18+, and it provides
+  the `refactron` command only.
+</Note>
+
+The PyPI wrapper does not ship `refactron-mcp`. If you found Refactron through PyPI and want the MCP server, install the npm package as well.
+
+## Connect your client
+
+<CardGroup cols={2}>
+  <Card title="Claude Code" icon="terminal" href="/mcp/claude-code">
+    One `claude mcp add` command, or a project `.mcp.json`.
+  </Card>
+  <Card title="Claude Desktop" icon="monitor" href="/mcp/claude-desktop">
+    Edit `claude_desktop_config.json` and restart the app.
+  </Card>
+  <Card title="Cursor" icon="mouse-pointer-2" href="/mcp/cursor">
+    Project `.cursor/mcp.json` or the global `~/.cursor/mcp.json`.
+  </Card>
+  <Card title="Windsurf" icon="wind" href="/mcp/windsurf">
+    Cascade reads `~/.codeium/windsurf/mcp_config.json`.
+  </Card>
+  <Card title="VS Code" icon="code" href="/mcp/vscode">
+    `.vscode/mcp.json`, whose root key is `servers`, not `mcpServers`.
+  </Card>
+  <Card title="Cline" icon="bot" href="/mcp/cline">
+    Add it from the extension's MCP Servers panel.
+  </Card>
+  <Card title="Zed" icon="zap" href="/mcp/zed">
+    `settings.json` under `context_servers`, not `mcpServers`.
+  </Card>
+  <Card title="Any other client" icon="plug" href="/mcp/other-clients">
+    Anything that can launch a stdio MCP server can run this one.
+  </Card>
+</CardGroup>
+
+## Then use it
+
+<CardGroup cols={2}>
+  <Card title="Quickstart" icon="rocket" href="/mcp/quickstart">
+    Install, register, confirm the tool is listed, and get a first real verdict.
+  </Card>
+  <Card title="Instructions for your agent" icon="clipboard-list" href="/mcp/agent-instructions">
+    Copy-paste blocks that tell your agent to set this up and to verify before it applies.
+  </Card>
+  <Card title="Tool reference" icon="book" href="/mcp/tool-reference">
+    Every `verify_change` argument, the response shape, and the error shape.
+  </Card>
+  <Card title="Verdicts" icon="scale-balanced" href="/verification/verdicts">
+    What each verdict is allowed to claim, and what it is not.
+  </Card>
+</CardGroup>
+
+## What the server does and does not do
+
+- **It runs entirely local.** Verification happens on your machine, in a shadow tree. Nothing about your code leaves it, and the handler makes no network calls.
+- **It never mutates your repository.** `verify_change` reads your tree and applies the change in an isolated copy. Landing the change is the agent's job, after a verdict it trusts.
+- **It is deterministic.** The same repository state and the same change produce the same verdict every time.
+- **It needs no login.** The `verify-diff` CLI is auth-gated, but the MCP handler calls the local engine directly.
+
+## Limits worth knowing before you start
+
+Coverage attestation runs through `coverage.py`, so it is Python-only today. A TypeScript, JavaScript, or mixed-language change passes through the same three gates but caps at `UNPROVEN` with `coverage.tool` set to `none`, because Refactron cannot measure whether the changed statements ran. It will not guess, and a guess here would be a false `SAFE`.
+
+Coverage also cannot see code that only runs in a subprocess. A change exercised solely through `subprocess.run` or a `multiprocessing` worker reads as `UNPROVEN` unless you wire up subprocess coverage yourself.
+
+Diffs that delete, rename, or copy a file, or that change a binary file, are refused rather than partially verified. See [Unsupported operations](/verification/verify-diff#unsupported-operations).
+
+There is no hosted CI gate. Refactron runs where you run it: your machine, or your own CI job.

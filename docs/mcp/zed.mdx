@@ -1,0 +1,66 @@
+---
+title: Zed
+icon: zap
+description: 'Add the Refactron MCP server to Zed. Note the settings key: Zed uses context_servers, not mcpServers.'
+---
+
+Zed calls MCP servers "context servers" and configures them in its main `settings.json`, not a separate MCP file.
+
+## The settings key is `context_servers`, not `mcpServers`
+
+A config block copied from Claude Desktop, Cursor, or Windsurf does nothing in Zed. The key is `context_servers`, and it sits at the top level of `settings.json`.
+
+## Config location
+
+Open it from the Command Palette with **zed: open settings**, which is the reliable route on every platform.
+
+| OS           | Path                          |
+| ------------ | ----------------------------- |
+| macOS, Linux | `~/.config/zed/settings.json` |
+| Windows      | `%APPDATA%\Zed\settings.json` |
+
+## Add it
+
+```json
+{
+  "context_servers": {
+    "refactron": {
+      "command": "refactron-mcp",
+      "args": [],
+      "env": {}
+    }
+  }
+}
+```
+
+To pin the version and skip the global install:
+
+```json
+{
+  "context_servers": {
+    "refactron": {
+      "command": "npx",
+      "args": ["-y", "-p", "refactron@0.3.0", "refactron-mcp"],
+      "env": {}
+    }
+  }
+}
+```
+
+The `-p` flag is required. `refactron-mcp` is a second binary of the `refactron` package, not a package of its own.
+
+Zed restarts the context server process when you save `settings.json`, so no editor restart is needed.
+
+Some Zed builds also expect a `"source": "custom"` field on a hand-written entry. If the server does not appear after saving, add the server through **Agent Panel** then **Settings** then **Add Custom Server** instead, which writes the shape your build expects.
+
+## Verify the connection
+
+Open the **Agent Panel**, then its settings. `refactron` is listed under the context servers section with a running indicator and one tool: `verify_change`.
+
+## Troubleshooting
+
+- **The server does not appear**: check the key. It is `context_servers`, at the top level, not nested inside another object.
+- **Invalid settings**: Zed reports a parse error in the editor when `settings.json` is malformed. Fix it and save again.
+- **The process starts and dies**: run `refactron-mcp` in a terminal. It should sit and wait for input on stdin. If the shell reports "command not found", run `npm install -g refactron@0.3.0`, or use the `npx` form.
+- **Reading the logs**: open **zed: open log** from the Command Palette and look for `context server` entries.
+- **A verification takes minutes**: `verify_change` runs your real test suite in a shadow copy.

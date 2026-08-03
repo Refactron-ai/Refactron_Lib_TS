@@ -1,0 +1,108 @@
+---
+title: Any other client
+icon: plug
+description: Connect Refactron to any MCP client that can launch a stdio server, and the root keys each client family expects.
+---
+
+Refactron is an ordinary stdio MCP server. Any client that can launch a subprocess and speak JSON-RPC over its standard streams can run it.
+
+## What every client needs to know
+
+| Setting     | Value                |
+| ----------- | -------------------- |
+| Transport   | stdio                |
+| Command     | `refactron-mcp`      |
+| Arguments   | none                 |
+| Environment | none required        |
+| Server name | `refactron`          |
+| Version     | `0.3.0`              |
+| Tools       | one, `verify_change` |
+
+There is no HTTP or SSE endpoint, no API key, and no network call. The server reads your repository, runs your tests in a temporary shadow copy, and writes the verdict back over stdout.
+
+## The root key differs by client
+
+This is where most setups fail. The block is otherwise identical.
+
+| Client family                                        | Root key          |
+| ---------------------------------------------------- | ----------------- |
+| Claude Code, Claude Desktop, Cursor, Windsurf, Cline | `mcpServers`      |
+| VS Code with GitHub Copilot                          | `servers`         |
+| Zed                                                  | `context_servers` |
+
+The `mcpServers` form, which most clients accept:
+
+```json
+{
+  "mcpServers": {
+    "refactron": {
+      "command": "refactron-mcp"
+    }
+  }
+}
+```
+
+## Without a global install
+
+```json
+{
+  "mcpServers": {
+    "refactron": {
+      "command": "npx",
+      "args": ["-y", "-p", "refactron@0.3.0", "refactron-mcp"]
+    }
+  }
+}
+```
+
+The `-p` flag is required. `refactron-mcp` is a second binary of the `refactron` package, not a package of its own, so `npx refactron-mcp` looks up a package by that name and fails with a registry 404.
+
+## From a source checkout
+
+Contributors running an unpublished build point the client at the compiled server with an absolute path:
+
+```bash
+git clone https://github.com/Refactron-ai/Refactron_Lib_TS
+cd Refactron_Lib_TS
+npm install
+npm run build
+```
+
+```json
+{
+  "mcpServers": {
+    "refactron": {
+      "command": "node",
+      "args": ["/absolute/path/to/Refactron_Lib_TS/dist/mcp/server.js"]
+    }
+  }
+}
+```
+
+## Confirm it works before blaming the client
+
+Send one `initialize` request straight to the binary:
+
+```bash
+echo '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"probe","version":"1.0"}}}' | refactron-mcp
+```
+
+```json
+{
+  "result": {
+    "protocolVersion": "2024-11-05",
+    "capabilities": { "tools": { "listChanged": true } },
+    "serverInfo": { "name": "refactron", "version": "0.3.0" }
+  },
+  "jsonrpc": "2.0",
+  "id": 1
+}
+```
+
+If that works and your client still shows nothing, the problem is the client config: check the root key, the JSON validity, and whether the client inherits the `PATH` that holds `refactron-mcp`.
+
+## Client requirements that trip people up
+
+- **A test-suite run is the unit of work.** Clients with a default tool timeout under a minute will cut off a real verification. Raise the timeout where the client allows it.
+- **Absolute paths only.** `repoRoot` must be an absolute path. Clients that pass a relative working directory will not help you here.
+- **Tools need an agent mode.** Chat-only or ask-only modes in most editors do not call tools at all.

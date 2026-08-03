@@ -1,0 +1,163 @@
+---
+title: MCP quickstart
+icon: rocket
+description: Install the Refactron MCP server, register it with one client, confirm the tool is listed, and get a first real verdict on a real change.
+---
+
+Ten minutes, end to end: install the server, register it with one client, confirm the client sees `verify_change`, then verify a change and read the verdict.
+
+## 1. Install
+
+Requires Node.js 18 or newer.
+
+```bash
+npm install -g refactron@0.3.0
+```
+
+Confirm both binaries landed:
+
+```bash
+refactron --version
+refactron-mcp --help 2>/dev/null || echo "refactron-mcp is on PATH"
+```
+
+`refactron-mcp` has no help output. It is an MCP server, not a CLI: it reads JSON-RPC on stdin and writes it on stdout, and it exits when stdin closes.
+
+For a coverage-backed `SAFE` verdict, you also need Python 3.8+ with `pytest` and `coverage.py` in the environment that runs your tests:
+
+```bash
+pip install pytest coverage
+```
+
+## 2. Smoke test the server without a client
+
+Send one `initialize` request and read the identity back. This proves the binary runs before you blame a client config.
+
+```bash
+echo '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"probe","version":"1.0"}}}' | refactron-mcp
+```
+
+```json
+{
+  "result": {
+    "protocolVersion": "2024-11-05",
+    "capabilities": { "tools": { "listChanged": true } },
+    "serverInfo": { "name": "refactron", "version": "0.3.0" }
+  },
+  "jsonrpc": "2.0",
+  "id": 1
+}
+```
+
+`serverInfo.name` is `refactron` and `serverInfo.version` matches the package you installed. If this prints nothing, the problem is the install, not the client.
+
+## 3. Register it with one client
+
+Pick the client you actually use. Claude Code is the shortest path:
+
+```bash
+claude mcp add refactron -- refactron-mcp
+```
+
+Every other client is a small JSON file. The canonical block, which Claude Desktop, Cursor, Windsurf, and Cline all accept:
+
+```json
+{
+  "mcpServers": {
+    "refactron": {
+      "command": "refactron-mcp"
+    }
+  }
+}
+```
+
+VS Code uses `servers` instead of `mcpServers`, and Zed uses `context_servers`. Per-client file paths and verification steps live on the client pages: [Claude Code](/mcp/claude-code), [Claude Desktop](/mcp/claude-desktop), [Cursor](/mcp/cursor), [Windsurf](/mcp/windsurf), [VS Code](/mcp/vscode), [Cline](/mcp/cline), [Zed](/mcp/zed), [anything else](/mcp/other-clients).
+
+## 4. Confirm the tool is listed
+
+Whatever the client, you are looking for one tool named `verify_change` under a server named `refactron`. In Claude Code:
+
+```bash
+claude mcp list
+```
+
+```text
+refactron: refactron-mcp - ✔ Connected
+```
+
+Inside a session, `/mcp` shows the same thing with the tool list expanded. If the server is listed but the tool is not, the client connected and the handshake failed; re-run the smoke test in step 2.
+
+## 5. Get a first real verdict
+
+Make a change in a Python project with a passing test suite, then ask your agent to verify it instead of applying it:
+
+```text
+Use the refactron verify_change tool on this repository before you apply anything.
+Pass repoRoot as the absolute path to this project and testCmd as "python3 -m pytest -q".
+Show me the verdict and the reason, and do not write any files yet.
+```
+
+A real response on a covered change:
+
+```json
+{
+  "verdict": "SAFE",
+  "reportVersion": 1,
+  "gates": {
+    "syntax": { "passed": true, "durationMs": 96 },
+    "imports": { "passed": true, "durationMs": 47 },
+    "tests": { "passed": true, "durationMs": 1370 }
+  },
+  "changedFiles": ["calc.py"],
+  "testFilesChanged": [],
+  "coverage": {
+    "tool": "coverage.py",
+    "changedLinesCovered": true,
+    "uncovered": [],
+    "filesWithUncovered": 0,
+    "changedStatements": { "total": 1, "covered": 1 },
+    "inertOnlyFiles": []
+  },
+  "reason": "Tests pass and the changed code is covered."
+}
+```
+
+## What success looks like
+
+- `claude mcp list` (or the equivalent panel in your client) shows `refactron` connected.
+- The tool list contains exactly one entry: `verify_change`.
+- A call returns JSON with a `verdict` field and a `reportVersion` of `1`.
+- Your working tree is unchanged. Check with `git status`: verification happens in a shadow copy.
+
+## If the verdict is not what you expected
+
+An `UNPROVEN` on an all-Python change usually means one of three things, and the `reason` field tells you which.
+
+| Reason text                                                | What happened                                                         |
+| ---------------------------------------------------------- | --------------------------------------------------------------------- |
+| "the changed code is not exercised by any test"            | The suite ran and passed, but nothing executed the lines you changed. |
+| "coverage of the changed code could not be determined"     | Coverage could not be measured at all. Different problem, see below.  |
+| "no test runner detected" or "baseline tests already fail" | Refactron cannot blame the change for anything, so it proves nothing. |
+
+Those first two are different sentences on purpose. "Not exercised by any test" means the measurement happened and found nothing running your lines: write the test named in `missingTests` and re-verify. "Could not be determined" means no measurement happened at all: the diff is not all Python, or `coverage.py` is missing, or the tests never loaded the copy under verification.
+
+That last case is the one that catches people. If your project is installed into the environment, an editable `pip install -e .` included, `import yourpackage` resolves to the installed copy and your tests exercise the original code rather than the change. Put the verified tree first on `sys.path` by passing it in the test command:
+
+```text
+testCmd: "PYTHONPATH=. python3 -m pytest -q"
+```
+
+Use `PYTHONPATH=src` for a src layout. Relative paths resolve from the copy being verified, which is exactly what you want. Full detail in [Make sure the tests run the code being verified](/verification/verdicts#make-sure-the-tests-run-the-code-being-verified).
+
+A mixed-language or non-Python diff caps at `UNPROVEN` no matter what you do. Coverage is Python-only today, and no test you add moves that verdict.
+
+## Next
+
+<CardGroup cols={2}>
+  <Card title="Instructions for your agent" icon="clipboard-list" href="/mcp/agent-instructions">
+    Blocks you can paste so your agent verifies before it applies, every time.
+  </Card>
+  <Card title="Tool reference" icon="book" href="/mcp/tool-reference">
+    Arguments, request and response examples, and the error shape.
+  </Card>
+</CardGroup>

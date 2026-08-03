@@ -1,0 +1,67 @@
+---
+title: Cursor
+icon: mouse-pointer-2
+description: Add the Refactron MCP server to Cursor with a project .cursor/mcp.json or the global ~/.cursor/mcp.json.
+---
+
+Cursor reads MCP servers from a project file or a global one. The project file is the better default: it travels with the repository, so everyone on the team gets the same gate.
+
+## Config location
+
+| Scope   | Path                                                    | Applies to             |
+| ------- | ------------------------------------------------------- | ---------------------- |
+| Project | `.cursor/mcp.json` in the repository root               | This project only      |
+| Global  | `~/.cursor/mcp.json` (`%USERPROFILE%\.cursor\mcp.json`) | Every project you open |
+
+## Add it
+
+Create the file if it does not exist:
+
+```bash
+mkdir -p .cursor
+```
+
+```json
+{
+  "mcpServers": {
+    "refactron": {
+      "command": "refactron-mcp"
+    }
+  }
+}
+```
+
+To pin the version and skip the global install:
+
+```json
+{
+  "mcpServers": {
+    "refactron": {
+      "command": "npx",
+      "args": ["-y", "-p", "refactron@0.3.0", "refactron-mcp"]
+    }
+  }
+}
+```
+
+The `-p` flag is required. `refactron-mcp` is a second binary of the `refactron` package, not a package of its own.
+
+## Verify the connection
+
+Open **Cursor Settings** then **Tools & Integrations** (called **MCP** in older builds). `refactron` appears in the list with a green indicator and one tool beneath it: `verify_change`.
+
+Then ask the agent in a Chat pane, with Agent mode selected:
+
+```text
+List the tools you have from the refactron MCP server.
+```
+
+It should name `verify_change` and nothing else.
+
+## Troubleshooting
+
+- **The server shows red or `Client closed`**: Cursor could not launch the command. Run `which refactron-mcp`. If it prints nothing, run `npm install -g refactron@0.3.0`, or switch to the `npx` form above.
+- **Nothing appears after saving**: Cursor reloads servers on a toggle, not on file save. Switch the `refactron` toggle off and on in the settings pane.
+- **The tool exists but the agent never calls it**: tools are only available in Agent mode. Ask mode does not call tools. See [agent instructions](/mcp/agent-instructions) for a rule that makes the agent verify on its own.
+- **`repoRoot` errors**: the tool needs an absolute path. Tell the agent to pass the project's absolute path, not `.` and not a path relative to anything.
+- **A verification takes minutes**: `verify_change` runs your real test suite in a shadow copy. Long is expected on a large suite.

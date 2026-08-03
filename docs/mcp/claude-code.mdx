@@ -1,0 +1,78 @@
+---
+title: Claude Code
+icon: terminal
+description: Register the Refactron MCP server with Claude Code using the claude mcp add command or a project .mcp.json.
+---
+
+Claude Code has a built-in command for this, so you do not have to edit a file by hand.
+
+## Config location
+
+| Scope     | Where it is written                                            | Who sees it                      |
+| --------- | -------------------------------------------------------------- | -------------------------------- |
+| `local`   | `~/.claude.json`, under the current project path (the default) | You, in this project only        |
+| `user`    | `~/.claude.json`, at the top level                             | You, in every project            |
+| `project` | `.mcp.json` in the repository root                             | Everyone who checks out the repo |
+
+## Add it
+
+```bash
+claude mcp add refactron -- refactron-mcp
+```
+
+```text
+Added stdio MCP server refactron with command: refactron-mcp to local config
+```
+
+To share the server with your team, commit it at project scope:
+
+```bash
+claude mcp add --scope project refactron -- refactron-mcp
+```
+
+That writes `.mcp.json` in the repository root:
+
+```json
+{
+  "mcpServers": {
+    "refactron": {
+      "type": "stdio",
+      "command": "refactron-mcp",
+      "args": [],
+      "env": {}
+    }
+  }
+}
+```
+
+To pin the version without a global install, register the `npx` form instead:
+
+```bash
+claude mcp add refactron -- npx -y -p refactron@0.3.0 refactron-mcp
+```
+
+## Verify the connection
+
+```bash
+claude mcp list
+```
+
+```text
+refactron: refactron-mcp - ✔ Connected
+```
+
+For the full record, including scope and resolved command:
+
+```bash
+claude mcp get refactron
+```
+
+Inside a session, `/mcp` lists connected servers and their tools. You are looking for one tool, `verify_change`, under `refactron`.
+
+## Troubleshooting
+
+- **`⏸ Pending approval (run 'claude' to approve)`**: a project-scoped `.mcp.json` needs your approval before it runs. Start `claude` in that directory and approve the server once.
+- **`✘ Failed to connect`**: the command is not on your `PATH`. Run `which refactron-mcp`. If it prints nothing, run `npm install -g refactron@0.3.0`, or re-register with the `npx` form above.
+- **The server connects but no tool appears**: the handshake failed. Send one `initialize` request straight to the binary as in the [MCP quickstart](/mcp/quickstart#2-smoke-test-the-server-without-a-client) to see whether the server or the client is at fault.
+- **Registered in the wrong project**: local scope is keyed to the directory you ran `claude mcp add` in. Run `claude mcp list` from the project you meant, and re-add there or use `--scope user`.
+- **Removing it**: `claude mcp remove refactron`, adding `-s project` or `-s user` if you did not use the default scope.
