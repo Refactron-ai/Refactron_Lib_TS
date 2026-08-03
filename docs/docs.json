@@ -31,61 +31,94 @@
     "dark": "/logo/refactron-symbol-dark.svg"
   },
   "navigation": {
-    "groups": [
+    "tabs": [
       {
-        "group": "Getting Started",
-        "pages": ["overview", "quickstart", "faq"]
-      },
-      {
-        "group": "Verification",
-        "pages": [
-          "verification/verify-diff",
-          "verification/mcp-server",
-          "verification/verdicts",
-          "verification/preflight"
+        "tab": "Documentation",
+        "icon": "book-open",
+        "groups": [
+          {
+            "group": "Getting Started",
+            "pages": ["overview", "quickstart", "faq"]
+          },
+          {
+            "group": "Verification",
+            "pages": [
+              "verification/verify-diff",
+              "verification/mcp-server",
+              "verification/verdicts",
+              "verification/preflight"
+            ]
+          },
+          {
+            "group": "Concepts",
+            "pages": ["concepts/safety-model", "concepts/why-no-llm"]
+          },
+          {
+            "group": "CLI",
+            "pages": ["cli/reference"]
+          },
+          {
+            "group": "Configuration",
+            "pages": ["configuration", "configuration/refactronrc"]
+          },
+          {
+            "group": "Migration mode",
+            "pages": [
+              "transforms/index",
+              "transforms/callback-to-async-await",
+              "transforms/format-to-fstring",
+              "transforms/manual-typecheck-to-hints",
+              "transforms/deprecated-api-requests-to-httpx",
+              "transforms/class-to-dataclass",
+              "transforms/var-to-const-let",
+              "transforms/promise-chains-to-async",
+              "transforms/implicit-any",
+              "transforms/commonjs-to-esm",
+              "transforms/promise-constructor-to-async",
+              "transforms/super-no-args",
+              "transforms/lru-cache-to-cache",
+              "transforms/pep585-generics",
+              "transforms/pep604-optional-union",
+              "transforms/datetime-utc-alias",
+              "transforms/yield-from-for-loop",
+              "transforms/indexof-to-includes",
+              "transforms/object-assign-to-spread",
+              "transforms/string-concat-to-template-literal",
+              "transforms/vue-set-delete-to-assignment"
+            ]
+          },
+          {
+            "group": "Reference",
+            "pages": ["changelog", "reference/performance", "reference/citations"]
+          }
         ]
       },
       {
-        "group": "Concepts",
-        "pages": ["concepts/safety-model", "concepts/why-no-llm"]
-      },
-      {
-        "group": "CLI",
-        "pages": ["cli/reference"]
-      },
-      {
-        "group": "Configuration",
-        "pages": ["configuration", "configuration/refactronrc"]
-      },
-      {
-        "group": "Migration mode",
-        "pages": [
-          "transforms/index",
-          "transforms/callback-to-async-await",
-          "transforms/format-to-fstring",
-          "transforms/manual-typecheck-to-hints",
-          "transforms/deprecated-api-requests-to-httpx",
-          "transforms/class-to-dataclass",
-          "transforms/var-to-const-let",
-          "transforms/promise-chains-to-async",
-          "transforms/implicit-any",
-          "transforms/commonjs-to-esm",
-          "transforms/promise-constructor-to-async",
-          "transforms/super-no-args",
-          "transforms/lru-cache-to-cache",
-          "transforms/pep585-generics",
-          "transforms/pep604-optional-union",
-          "transforms/datetime-utc-alias",
-          "transforms/yield-from-for-loop",
-          "transforms/indexof-to-includes",
-          "transforms/object-assign-to-spread",
-          "transforms/string-concat-to-template-literal",
-          "transforms/vue-set-delete-to-assignment"
+        "tab": "MCP",
+        "icon": "plug",
+        "groups": [
+          {
+            "group": "Get started",
+            "pages": ["mcp/index", "mcp/quickstart"]
+          },
+          {
+            "group": "Connect your client",
+            "pages": [
+              "mcp/claude-code",
+              "mcp/claude-desktop",
+              "mcp/cursor",
+              "mcp/windsurf",
+              "mcp/vscode",
+              "mcp/cline",
+              "mcp/zed",
+              "mcp/other-clients"
+            ]
+          },
+          {
+            "group": "Using it",
+            "pages": ["mcp/agent-instructions", "mcp/tool-reference"]
+          }
         ]
-      },
-      {
-        "group": "Reference",
-        "pages": ["changelog", "reference/performance", "reference/citations"]
       }
     ]
   },
