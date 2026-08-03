@@ -1,0 +1,176 @@
+---
+title: verify_change reference
+icon: book
+description: 'The verify_change MCP tool contract: arguments, request and response examples, the error shape, and how it maps to verify-diff exit codes.'
+---
+
+The Refactron MCP server exposes exactly one tool. Every example below was captured from a real stdio session against `refactron` 0.3.0.
+
+## Arguments
+
+| Argument      | Type                     | Required | Description                                                                 |
+| ------------- | ------------------------ | -------- | --------------------------------------------------------------------------- |
+| `repoRoot`    | string                   | yes      | Absolute path to the repository root.                                       |
+| `edits`       | `[{ path, newContent }]` | see note | Proposed full-file contents. `path` is repo-relative.                       |
+| `unifiedDiff` | string                   | see note | A unified (git) diff to apply and verify.                                   |
+| `testCmd`     | string                   | no       | Override the test command. Drives both the tests gate and the coverage run. |
+
+`repoRoot` is the only argument the schema marks required, but the handler needs a change to verify: supply **either** `edits` **or** `unifiedDiff`. Supplying neither returns an error result, not a verdict.
+
+## Request: the `edits` form
+
+Use this when the agent already holds the full new contents of each file.
+
+```json
+{
+  "method": "tools/call",
+  "params": {
+    "name": "verify_change",
+    "arguments": {
+      "repoRoot": "/Users/you/projects/demo",
+      "edits": [
+        {
+          "path": "calc.py",
+          "newContent": "def add(a, b):\n    return b + a\n\n\ndef scale(a, factor):\n    return a * factor\n"
+        }
+      ],
+      "testCmd": "python3 -m pytest -q"
+    }
+  }
+}
+```
+
+## Request: the `unifiedDiff` form
+
+Use this when the change already exists as a patch, for example from `git diff` or a codemod.
+
+```json
+{
+  "method": "tools/call",
+  "params": {
+    "name": "verify_change",
+    "arguments": {
+      "repoRoot": "/Users/you/projects/demo",
+      "unifiedDiff": "diff --git a/calc.py b/calc.py\n--- a/calc.py\n+++ b/calc.py\n@@ -3,4 +3,4 @@ def add(a, b):\n \n \n def scale(a, factor):\n-    return a * factor\n+    return factor * a\n",
+      "testCmd": "python3 -m pytest -q"
+    }
+  }
+}
+```
+
+## Response
+
+The tool returns the same report `verify-diff --json` prints, serialized as text content. A real `UNPROVEN` response:
+
+```json
+{
+  "verdict": "UNPROVEN",
+  "reportVersion": 1,
+  "gates": {
+    "syntax": { "passed": true, "durationMs": 108 },
+    "imports": { "passed": true, "durationMs": 45 },
+    "tests": { "passed": true, "durationMs": 1423 }
+  },
+  "changedFiles": ["calc.py"],
+  "testFilesChanged": [],
+  "coverage": {
+    "tool": "coverage.py",
+    "changedLinesCovered": false,
+    "uncovered": [{ "file": "calc.py", "line": 6 }],
+    "filesWithUncovered": 1,
+    "changedStatements": { "total": 1, "covered": 0 },
+    "inertOnlyFiles": []
+  },
+  "reason": "Tests pass, but the changed code is not exercised by any test.",
+  "missingTests": [{ "file": "calc.py", "hint": "add a test exercising calc.py:6" }]
+}
+```
+
+### Field by field
+
+| Field                          | Meaning                                                                                                                               |
+| ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------- |
+| `verdict`                      | `SAFE`, `UNSAFE`, or `UNPROVEN`. See [Verdicts](/verification/verdicts).                                                              |
+| `reportVersion`                | Schema version, currently `1`. Read it before relying on any field below.                                                             |
+| `gates`                        | `syntax`, `imports`, `tests`, each with `passed` and `durationMs`. A failed gate also carries `blockingReason`.                       |
+| `changedFiles`                 | Repo-relative paths the change touches.                                                                                               |
+| `testFilesChanged`             | Subset of `changedFiles` matching test conventions. A note, never a verdict input.                                                    |
+| `coverage.tool`                | `coverage.py` when coverage was measured, `none` when it could not be.                                                                |
+| `coverage.changedLinesCovered` | `true`, `false`, or `"unknown"`. The three states are distinct and must not be collapsed.                                             |
+| `coverage.uncovered`           | One entry per unexercised statement, at the statement's first line. Populated on `SAFE` too.                                          |
+| `coverage.changedStatements`   | `{ total, covered }` across the diff, so you can read the ratio rather than only the boolean. Advisory: it does not feed the verdict. |
+| `coverage.filesWithUncovered`  | Distinct files with at least one uncovered statement, counted before any cap.                                                         |
+| `coverage.unknownReason`       | Why coverage is `"unknown"`, when Refactron knows.                                                                                    |
+| `reason`                       | One sentence explaining the verdict. Machine-stable enough to branch on by substring.                                                 |
+| `missingTests`                 | Concrete hints for `UNPROVEN` by coverage. Capped at 50.                                                                              |
+| `flakyTests`                   | Tests that failed once then passed on retry. Present only when it happened. Disqualifies `SAFE`.                                      |
+
+`coverage.removalOnlyFiles` and `coverage.inertOnlyFiles` list changed files with nothing for coverage to attest, because the change only removed lines or only touched comments and blank lines.
+
+`coverage.uncoveredTruncated` and `missingTestsTruncated` appear as `{ shown, total }` whenever a list was capped, so a truncated report never reads as a complete one. An agent must check for them before concluding a file is absent from the list because it is fine.
+
+### The two `UNPROVEN` reasons are not interchangeable
+
+`"Tests pass, but the changed code is not exercised by any test."` means the measurement ran and found nothing executing your lines. Writing the test named in `missingTests` moves the verdict.
+
+`"Tests pass, but coverage of the changed code could not be determined."` means no measurement happened. The diff was not all Python, `coverage.py` was unavailable, or the tests never loaded the copy under verification. No test you write moves this one.
+
+Treating those as the same sentence is how a reader talks themselves into trusting a verdict that proved nothing. They are reported separately on purpose.
+
+## Errors
+
+Failures come back as a normal tool result with `isError` set, so the server keeps running and the agent can read the message.
+
+```json
+{
+  "content": [
+    {
+      "type": "text",
+      "text": "verify_change failed: verifyDiff: no edits provided (pass `edits` or `unifiedDiff`)"
+    }
+  ],
+  "isError": true
+}
+```
+
+Real messages you will see:
+
+| Message                                                                                   | Cause                                          |
+| ----------------------------------------------------------------------------------------- | ---------------------------------------------- |
+| `verifyDiff: no edits provided (pass \`edits\` or \`unifiedDiff\`)`                       | Neither change argument was supplied.          |
+| `ENOENT: no such file or directory, scandir '/nope/does/not/exist'`                       | `repoRoot` does not exist, or is not absolute. |
+| `diff deletes calc.py; file deletions are not supported yet, verify that change manually` | The diff deletes a file.                       |
+| `diff renames <old> to <new>; renames are not supported yet`                              | The diff renames a file.                       |
+| `diff copies <old> to <new>; copies are not supported yet`                                | The diff copies a file.                        |
+| `diff contains only binary changes; nothing verifiable`                                   | Binary-only diff.                              |
+| `diff contains binary changes alongside text edits; binary changes cannot be verified`    | Mixed binary and text diff.                    |
+| `diff did not apply to calc.py (stale base?)`                                             | The diff does not apply to the current tree.   |
+
+Deletions, renames, copies, and binary changes are refused rather than partially verified. A diff that removed a module while making one innocuous edit once verified as safe on the half that could be checked, and applying it broke every import in the package. A partial verdict must never read as a verdict on the whole change.
+
+## How it maps to the CLI
+
+`verify_change` and `verify-diff` run the same engine and produce the same report. MCP has no exit codes, so the equivalence is with the `verdict` field:
+
+| `verdict`  | `verify-diff` exit code |
+| ---------- | ----------------------- |
+| `SAFE`     | `0`                     |
+| `UNPROVEN` | `0`                     |
+| `UNSAFE`   | `1`                     |
+
+`UNPROVEN` exiting `0` is deliberate. It is a warning that nothing was proven, not a finding that something is broken, so it never silently blocks a merge. An agent that wants stricter behavior branches on the `verdict` field itself.
+
+A tool result with `isError: true` corresponds to the CLI's exit `2`, bad input, which is an operational error rather than a verdict.
+
+<Note>
+  The `verify-diff` CLI is auth-gated and exits `7` when unauthenticated. The MCP handler calls the
+  local engine directly, so it needs no login and makes no network calls.
+</Note>
+
+## Constraints
+
+Coverage runs through `coverage.py` and is Python-only. A diff touching any non-Python file returns `UNPROVEN` with `coverage.tool` set to `none`, and cannot reach `SAFE` today. The gates still run.
+
+Coverage cannot see subprocesses. Code exercised only inside `subprocess.run`, a `multiprocessing` worker, or a spawned server does not register as covered unless you wire up subprocess coverage yourself.
+
+If the project is installed into the environment, an editable `pip install -e .` included, the tests may import the installed copy rather than the tree under verification, and the run proves nothing about the change. Pass `PYTHONPATH=.` (or `PYTHONPATH=src` for a src layout) in `testCmd` so the verified copy wins on `sys.path`.

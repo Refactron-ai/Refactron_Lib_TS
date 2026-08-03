@@ -1,0 +1,175 @@
+---
+title: Instructions for your agent
+icon: clipboard-list
+description: Copy-paste blocks that tell your AI agent to install the Refactron MCP server, verify every change before applying it, and keep doing so.
+---
+
+Every block on this page is written in second person, addressed to the agent. Copy one, paste it into your agent's chat, and it will do the work. The last section makes the behavior permanent by writing it into your project's rules file.
+
+## 1. Tell your agent to set it up
+
+Paste this and the agent installs the server and registers it with whichever client it is running inside.
+
+```text
+Set up the Refactron MCP server for yourself in this project.
+
+1. Check whether `refactron-mcp` is already on PATH by running `which refactron-mcp`
+   (or `where refactron-mcp` on Windows). If it is missing, install it with:
+   npm install -g refactron@0.3.0
+   This requires Node.js 18 or newer. If you cannot install globally, skip the
+   install and use the npx form in step 2 instead.
+
+2. Register it with the client you are running in. Work out which one you are,
+   then do exactly one of these:
+
+   - Claude Code: run `claude mcp add refactron -- refactron-mcp`
+   - Claude Desktop: add the block below to
+     ~/Library/Application Support/Claude/claude_desktop_config.json on macOS, or
+     %APPDATA%\Claude\claude_desktop_config.json on Windows, under the root key
+     "mcpServers". Tell me to fully quit and reopen the app afterwards.
+   - Cursor: add the block below to .cursor/mcp.json in the repo root, root key
+     "mcpServers".
+   - Windsurf: add the block below to ~/.codeium/windsurf/mcp_config.json, root
+     key "mcpServers". Tell me to click Refresh in the Cascade MCP panel.
+   - VS Code with GitHub Copilot: add the block below to .vscode/mcp.json, but the
+     root key is "servers", NOT "mcpServers", and each server takes "type": "stdio".
+   - Cline: add the block below to cline_mcp_settings.json, root key "mcpServers",
+     and set "timeout": 900 because verification runs the full test suite.
+   - Zed: add it to settings.json under the top-level key "context_servers", NOT
+     "mcpServers".
+
+   The block, for the mcpServers family:
+   { "mcpServers": { "refactron": { "command": "refactron-mcp" } } }
+
+   Without a global install, use this instead. The -p flag is required, because
+   refactron-mcp is a second binary of the refactron package, not its own package:
+   { "mcpServers": { "refactron": { "command": "npx",
+     "args": ["-y", "-p", "refactron@0.3.0", "refactron-mcp"] } } }
+
+3. Merge into any existing config rather than overwriting it. If a config file
+   already has servers, add "refactron" as another key inside the existing object.
+
+4. Verify: confirm a server named `refactron` is connected and exposes exactly one
+   tool, `verify_change`. If you cannot see it yet because the client needs a
+   restart, say so and tell me what to click.
+```
+
+## 2. Tell your agent to verify before it applies
+
+This is the block that changes how the agent works. It defines the loop and what to do on each verdict.
+
+```text
+From now on, in this repository, verify every code change with the Refactron
+verify_change MCP tool BEFORE you write it to disk.
+
+The loop:
+
+1. Work out the change you want to make, but do not apply it yet.
+2. Call verify_change with:
+     repoRoot: the ABSOLUTE path to this repository
+     edits: [{ path, newContent }] with the full proposed contents of each file
+            you want to change, OR unifiedDiff: a unified diff of the change
+     testCmd: the project's test command, if it is not obvious. For a Python
+            project that is installed into the environment (including
+            `pip install -e .`), prefix it with PYTHONPATH=. so the tests import
+            the copy being verified rather than the installed one. Use
+            PYTHONPATH=src for a src layout.
+3. Read the `verdict` field and act on it:
+
+   SAFE   -> Apply the change. Then tell me the verdict and quote the `reason`.
+             Also tell me what SAFE does not cover: it means every changed FILE
+             had at least one changed statement executed, not that every changed
+             statement ran. If coverage.changedStatements shows a low covered/total
+             ratio, say so rather than presenting SAFE as full coverage.
+
+   UNSAFE -> Do NOT apply anything. A gate failed, which means your change broke
+             something. Read `reason` and the failing entry in `gates`, fix YOUR
+             change, and call verify_change again. Repeat until it is not UNSAFE.
+             Never work around this by weakening or deleting a test. If you change
+             a test file, the report lists it in testFilesChanged and I will check.
+
+   UNPROVEN -> Do NOT apply yet. Read `reason` to find out which kind this is:
+
+             * "the changed code is not exercised by any test": the suite ran and
+               nothing executed your lines. Write the tests named in the
+               `missingTests` array, add them to the same verify_change call, and
+               re-verify. Aim to turn this into SAFE.
+               If a missingTests hint says a line is excluded from coverage
+               (`# pragma: no cover`, `if TYPE_CHECKING:`), do NOT try to write a
+               test for it. No test can reach it. Flag it for human review.
+
+             * "coverage of the changed code could not be determined": no coverage
+               measurement happened at all. Coverage is Python-only today, so a
+               TypeScript, JavaScript, or mixed-language change always lands here
+               and no test you write will move it. The gates still passed. Report
+               this to me plainly and let me decide; do not present it as SAFE.
+
+             * "no test runner detected" or "baseline tests already fail": nothing
+               could be proven either way. Stop and tell me, rather than guessing.
+
+4. Never describe a SAFE verdict as "verified correct", "proven correct", or
+   "guaranteed safe". It means the project's own tests ran the changed code and
+   stayed green. It inherits exactly what those tests check, and a weak test
+   suite yields a weak SAFE.
+
+5. If the tool returns an error result instead of a verdict, read the message.
+   "no edits provided" means you passed neither `edits` nor `unifiedDiff`. A
+   message about deletions, renames, copies, or binary files means the change
+   uses an operation the tool refuses to verify; tell me and verify it by hand.
+```
+
+## 3. Make it stick
+
+The blocks above last one conversation. To make verification the default for every session and everyone on the team, write it into the project's rules file.
+
+Paste this to have the agent do it:
+
+```text
+Add a Refactron verification rule to this project's agent rules file, so the
+behavior persists across sessions.
+
+Pick the right file for this repo (create it if it is missing):
+  - AGENTS.md at the repo root, the cross-tool convention
+  - CLAUDE.md at the repo root, for Claude Code
+  - .cursor/rules/refactron.mdc, or .cursorrules on older Cursor, for Cursor
+  - .windsurfrules for Windsurf
+  - .github/copilot-instructions.md for GitHub Copilot
+
+Append this section verbatim, and do not remove anything already in the file:
+
+## Verification (required)
+
+Verify every code change with the Refactron `verify_change` MCP tool before
+writing it to disk. Pass `repoRoot` as an absolute path and the change as
+`edits` or `unifiedDiff`.
+
+- `SAFE`: apply it, and report the verdict. `SAFE` means the project's tests
+  ran the changed code and stayed green. It is suite-approved, not proven
+  correct, and it is a per-file check: every changed file had at least one
+  changed statement executed, not every changed statement.
+- `UNSAFE`: do not apply. Fix the change and re-verify. Never weaken a test to
+  turn a verdict green.
+- `UNPROVEN`: do not apply yet. If the reason names uncovered code, write the
+  tests listed in `missingTests` and re-verify. If the reason is that coverage
+  could not be determined, say so and ask a human; coverage is Python-only, so
+  a non-Python change cannot reach `SAFE` today.
+```
+
+## Why the verdict wording in these blocks matters
+
+The blocks tell the agent, more than once, not to report `SAFE` as "correct". That is deliberate.
+
+`SAFE` means the gates passed and your suite exercised the changed code. It does not mean the change is right. A real example from Refactron's own hardening runs: changing `<=` to `<` in Jinja2's `truncate` filter genuinely changes behavior at the boundary, all 911 tests still pass, the changed line is covered, and the verdict is `SAFE`. The verdict is correct about what it claims and is still not a proof of correctness.
+
+An agent that reports `SAFE` as "verified correct" has laundered a test-suite result into a guarantee. That is the one failure mode this tool exists to prevent, so the instructions spend words on it.
+
+## Related
+
+<CardGroup cols={2}>
+  <Card title="Tool reference" icon="book" href="/mcp/tool-reference">
+    Every argument, the response shape, and the error shape.
+  </Card>
+  <Card title="Verdicts" icon="scale-balanced" href="/verification/verdicts">
+    The full model behind SAFE, UNSAFE, and UNPROVEN.
+  </Card>
+</CardGroup>
