@@ -397,6 +397,60 @@ describe('python-line-coverage reporter', () => {
       expect(toCoverageRunArgs('pytest -q')).toEqual({ args: ['-m', 'pytest', '-q'], env: {} });
     });
 
+    it('runs a resolvable console entry point positionally, as the gate does (issue #98)', async () => {
+      // `coverage run -m pytest` puts CWD on sys.path ahead of everything the
+      // environment supplies, while the console script the gate runs does not.
+      // On an editable install that difference made coverage measure the SHADOW
+      // tree while the gate ran the INSTALLED one, and fusing those produced a
+      // false SAFE for a change that broke the suite. Running the same file the
+      // gate runs, positionally, puts sys.path[0] in the same place for both.
+      const { toCoverageRunArgs } =
+        await import('../../src/analyze/coverage/python-line-coverage.js');
+
+      const resolves = (name: string) => `/venv/bin/${name}`;
+      expect(toCoverageRunArgs('pytest -q', resolves)).toEqual({
+        args: ['/venv/bin/pytest', '-q'],
+        env: {},
+      });
+      // The prefix is hoisted and the entry point still resolves, so this is
+      // measurable rather than declined: both spawns now agree.
+      expect(toCoverageRunArgs('PYTHONPATH=src pytest -q', resolves)).toEqual({
+        args: ['/venv/bin/pytest', '-q'],
+        env: { PYTHONPATH: 'src' },
+      });
+      // Explicit module form is already equivalent on both sides and must NOT
+      // be rewritten: the gate runs `python3 -m pytest` too.
+      expect(toCoverageRunArgs('python3 -m pytest -q', resolves)).toEqual({
+        args: ['-m', 'pytest', '-q'],
+        env: {},
+      });
+      // A script path is already positional and must not be touched.
+      expect(toCoverageRunArgs('python3 tests/runtests.py', resolves)).toEqual({
+        args: ['tests/runtests.py'],
+        env: {},
+      });
+    });
+
+    it('keeps the historical module form when an entry point cannot be resolved', async () => {
+      // Windows console scripts are `.exe` launchers, not Python files, so
+      // `coverage run pytest.exe` cannot work. Falling back to what shipped
+      // before means nothing that works today stops working; the import-affecting
+      // decline below is what keeps that fallback from being unsound.
+      const { toCoverageRunArgs } =
+        await import('../../src/analyze/coverage/python-line-coverage.js');
+
+      const resolvesNothing = () => null;
+      expect(toCoverageRunArgs('pytest -q', resolvesNothing)).toEqual({
+        args: ['-m', 'pytest', '-q'],
+        env: {},
+      });
+      // Omitting the resolver entirely is the same historical behaviour.
+      expect(toCoverageRunArgs('pytest -q')).toEqual({ args: ['-m', 'pytest', '-q'], env: {} });
+      // Unresolvable AND import-affecting stays declined, because that is the
+      // combination we cannot make equivalent.
+      expect(toCoverageRunArgs('PYTHONPATH=src pytest -q', resolvesNothing)).toBeNull();
+    });
+
     it('declines an import-affecting prefix on a console entry point', async () => {
       // The false SAFE. Rewriting a console script to module form is not
       // equivalent to the gate's spawn: `-m` puts CWD first on sys.path, ahead

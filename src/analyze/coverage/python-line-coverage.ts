@@ -1,5 +1,6 @@
 import { spawn } from 'node:child_process';
 import * as fs from 'node:fs/promises';
+import * as fsSync from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 
@@ -135,7 +136,16 @@ export interface CoverageRunPlan {
   env: Record<string, string>;
 }
 
-export function toCoverageRunArgs(testCmd: string): CoverageRunPlan | null {
+/** Resolves a console entry point (`pytest`) to the script file a shell would
+ *  execute for it, or null when it cannot be resolved to a Python script we can
+ *  hand to `coverage run` positionally. Injected so the classifier stays pure
+ *  and testable; omitting it keeps the historical module-form behaviour. */
+export type EntryPointResolver = (name: string, env: Record<string, string>) => string | null;
+
+export function toCoverageRunArgs(
+  testCmd: string,
+  resolveEntryPoint?: EntryPointResolver,
+): CoverageRunPlan | null {
   if (SHELL_COMPOSITE_RE.test(testCmd)) return null;
   const tokens = tokenizeCommand(testCmd);
   if (tokens.length === 0) return null;
@@ -183,9 +193,22 @@ export function toCoverageRunArgs(testCmd: string): CoverageRunPlan | null {
     return { args: [...rest], env };
   }
 
-  // Console entry point, rewritten to module form. This rewrite is NOT
-  // equivalent to the gate's spawn when an import-affecting variable is set,
-  // and the difference silently selects a different copy of the code:
+  // Console entry point. Prefer to run the SAME file the gate's shell would
+  // run, positionally, so sys.path[0] is the bin directory in both spawns and
+  // neither run can import a copy the other did not. This is what lets the
+  // shadow-bypass guard work: when an editable install resolves imports to the
+  // ORIGINAL tree, coverage now measures that tree too, the shadow file is
+  // absent from measuredFiles, and the guard fires as designed.
+  const resolved = resolveEntryPoint?.(head, env) ?? null;
+  if (resolved !== null) return { args: [resolved, ...rest.slice(1)], env };
+
+  // Could not resolve it (not on PATH, or a platform whose console scripts are
+  // native launchers rather than Python files, such as Windows `.exe` shims).
+  // Fall back to module form, which is what shipped before, so nothing that
+  // works today stops working.
+  //
+  // That fallback is NOT equivalent to the gate's spawn when an import-affecting
+  // variable is set, and the difference silently selects a different copy:
   //
   //   gate      sh -c "PYTHONPATH=<other> pytest -q"   console script:
   //                                                    sys.path[0] is the bin
@@ -206,6 +229,38 @@ export function toCoverageRunArgs(testCmd: string): CoverageRunPlan | null {
   // narrowing it loses soundness.
   if (Object.keys(env).some((name) => IMPORT_AFFECTING_RE.test(name))) return null;
   return { args: ['-m', ...rest], env };
+}
+
+/** Find the file a shell would execute for a console entry point, and accept it
+ *  only if it is a Python script we can hand to `coverage run` positionally.
+ *
+ *  The shebang check is the whole safety argument. A Windows console script is
+ *  an `.exe` launcher and a Unix one is a Python file with `#!.../python`;
+ *  handing the former to `coverage run` would fail, so it is rejected here and
+ *  the caller falls back to module form. Resolution uses the EFFECTIVE PATH,
+ *  including any hoisted `PATH=` prefix, so it agrees with what the gate's
+ *  shell would have resolved. */
+function resolveConsoleScript(name: string, env: Record<string, string>): string | null {
+  const search = env.PATH ?? process.env.PATH ?? '';
+  for (const dir of search.split(path.delimiter)) {
+    if (!dir) continue;
+    const candidate = path.join(dir, name);
+    try {
+      if (!fsSync.statSync(candidate).isFile()) continue;
+      const fd = fsSync.openSync(candidate, 'r');
+      try {
+        const buf = Buffer.alloc(128);
+        const read = fsSync.readSync(fd, buf, 0, 128, 0);
+        const first = buf.subarray(0, read).toString('utf8').split('\n')[0] ?? '';
+        if (first.startsWith('#!') && /python/i.test(first)) return candidate;
+      } finally {
+        fsSync.closeSync(fd);
+      }
+    } catch {
+      // unreadable or missing: try the next PATH entry
+    }
+  }
+  return null;
 }
 
 /** Probe whether `coverage.py` can actually RUN in the user's Python.
@@ -262,7 +317,7 @@ export async function reportCoverage(input: CoverageReportInput): Promise<Covera
     };
   }
 
-  const plan = toCoverageRunArgs(testCmd);
+  const plan = toCoverageRunArgs(testCmd, resolveConsoleScript);
   if (plan === null) {
     return {
       coverageToolFound: true,

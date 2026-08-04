@@ -253,10 +253,55 @@ describe('verifyDiff with a NAME=VALUE prefix on testCmd (issue #95)', () => {
       expect(viaModuleForm.verdict).toBe('UNSAFE');
       // So no command shape may call it SAFE.
       expect(viaConsoleScript.verdict).not.toBe('SAFE');
-      // And it degrades for the stated reason: the wrapper refused a command it
-      // could not run equivalently, rather than measuring the wrong tree.
+      // It degrades through the shadow-bypass guard, not through a decline.
+      // Once #98 gave the coverage run the gate's spawn shape, both runs import
+      // the same copy, so this command is measurable again: coverage measures
+      // the tree the gate actually ran, the shadow file is absent from
+      // measuredFiles, and the guard discards the measurement as unknown. The
+      // decline below it survives only for spawns we cannot make equivalent.
       expect(viaConsoleScript.coverage.tool).toBe('none');
-      expect(String(viaConsoleScript.coverage.unknownReason)).toContain('cannot wrap test command');
+      expect(viaConsoleScript.gates.tests.passed).toBe(true);
+      expect(String(viaConsoleScript.reason)).not.toContain('not exercised by any test');
+    },
+    180_000,
+  );
+
+  it.skipIf(NO_COVERAGE)(
+    'a console-script testCmd cannot read SAFE when the gate imports another copy',
+    async () => {
+      // Issue #98. The out-of-band twin of the case above: nothing is written
+      // into testCmd, so there is no prefix to inspect and decline. The
+      // environment supplies a competing copy of the package to BOTH spawns,
+      // and only the spawn SHAPE decides which one wins:
+      //
+      //   gate      sh -c "pytest -q"           console script, sys.path[0] is
+      //                                         the bin dir, so the env copy wins
+      //   coverage  coverage run -m pytest -q   `-m` puts CWD first, so the
+      //                                         shadow copy wins
+      //
+      // The gate then passes against unmodified code while coverage measures the
+      // changed code as covered, and the shadow-bypass guard cannot help: the
+      // changed file IS in measuredFiles, because coverage really did measure it.
+      //
+      // This is the shape of an ordinary `pip install -e .` project, where the
+      // editable install resolves imports to the ORIGINAL tree. PYTHONPATH is
+      // used here only because it reproduces the same resolution order without
+      // needing a venv and a real install in the test suite.
+      const root = await flatLayoutFixture();
+      const edits = [
+        { path: 'rfpkg/__init__.py', newContent: 'def add(a, b):\n    return a - b\n' },
+      ];
+
+      const saved = process.env.PYTHONPATH;
+      try {
+        process.env.PYTHONPATH = root;
+        const report = await verifyDiff({ repoRoot: root, edits, testCmd: 'pytest -q' });
+        // The edit breaks the suite; no spawn shape may call it SAFE.
+        expect(report.verdict).not.toBe('SAFE');
+      } finally {
+        if (saved === undefined) delete process.env.PYTHONPATH;
+        else process.env.PYTHONPATH = saved;
+      }
     },
     180_000,
   );
