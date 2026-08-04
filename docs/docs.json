@@ -95,7 +95,7 @@
       },
       {
         "tab": "MCP",
-        "icon": "plug",
+        "icon": "/assets/clients/mcp.svg",
         "groups": [
           {
             "group": "Get started",
@@ -104,8 +104,11 @@
           {
             "group": "Connect your client",
             "pages": [
-              "mcp/claude-code",
-              "mcp/claude-desktop",
+              {
+                "group": "Claude",
+                "icon": "/assets/clients/claude.svg",
+                "pages": ["mcp/claude-code", "mcp/claude-desktop"]
+              },
               "mcp/codex",
               "mcp/cursor",
               "mcp/vscode",
