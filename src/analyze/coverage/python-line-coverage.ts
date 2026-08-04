@@ -14,7 +14,7 @@ export function normalizePath(p: string): string {
 
 export interface CoverageReportInput {
   projectRoot: string;
-  testCmd?: string; // default: 'pytest -q'
+  testCmd?: string; // default: 'python3 -m pytest -q'
   pythonBin?: string; // default: 'python3'
   _probeOverride?: boolean; // test-only injection point
 }
@@ -341,7 +341,11 @@ function runCmd(
 export async function reportCoverage(input: CoverageReportInput): Promise<CoverageReport> {
   const t0 = performance.now();
   const pythonBin = input.pythonBin ?? 'python3';
-  const testCmd = input.testCmd ?? 'pytest -q';
+  // Module form, matching what `detect.ts` auto-detects and what every
+  // documented example teaches. It is equivalent by recognition in both
+  // spawn shapes on every platform, whereas the bare console script it used
+  // to default to can only be made equivalent where it resolves.
+  const testCmd = input.testCmd ?? 'python3 -m pytest -q';
 
   const found = input._probeOverride ?? (await probeCoverage(pythonBin, input.projectRoot));
   if (!found) {
