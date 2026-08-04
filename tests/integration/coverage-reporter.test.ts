@@ -11,15 +11,6 @@ const __dirname = path.dirname(__filename);
 
 const FIXTURE = path.resolve(__dirname, '../fixtures/coverage-mini');
 
-function pythonHasCoverage(): boolean {
-  try {
-    execSync('python3 -c "import coverage"', { stdio: 'ignore' });
-    return true;
-  } catch {
-    return false;
-  }
-}
-
 // Probes BOTH, because the tests below drive `pytest -q` under coverage: an
 // image with coverage but no pytest would fail rather than skip. Hoisted to
 // module scope so `it.skipIf` can use it. An early `return` inside a test body
@@ -46,30 +37,26 @@ describe('python-line-coverage reporter', () => {
   const RESOLVES = (n: string, env: Record<string, string>) => `${env.PATH ?? '/venv/bin'}/${n}`;
   const UNRESOLVABLE = () => null;
 
-  it('returns covered lines for a tested function and skips untested', async () => {
-    if (!pythonHasCoverage()) {
-      // eslint-disable-next-line no-console
-      console.warn('skipping: coverage.py not installed');
-      return;
-    }
-    const result = await reportCoverage({ projectRoot: FIXTURE, testCmd: 'python3 -m pytest -q' });
-    expect(result.coverageToolFound).toBe(true);
-    expect(result.coveredLines.has('svc_tested.py:2')).toBe(true); // tested_function return
-    expect(result.coveredLines.has('svc_tested.py:5')).toBe(false); // untested_function return
-    expect([...result.coveredLines].some((k) => k.startsWith('svc_untouched.py:'))).toBe(false);
-  });
+  it.skipIf(NO_COVERAGE)(
+    'returns covered lines for a tested function and skips untested',
+    async () => {
+      const result = await reportCoverage({
+        projectRoot: FIXTURE,
+        testCmd: 'python3 -m pytest -q',
+      });
+      expect(result.coverageToolFound).toBe(true);
+      expect(result.coveredLines.has('svc_tested.py:2')).toBe(true); // tested_function return
+      expect(result.coveredLines.has('svc_tested.py:5')).toBe(false); // untested_function return
+      expect([...result.coveredLines].some((k) => k.startsWith('svc_untouched.py:'))).toBe(false);
+    },
+  );
 
   // coverage.py only ever marks the FIRST line of a statement. Continuation
   // lines, closing brackets, comments and blanks are never in executed_lines, so
   // a physical-line consumer reports them all as uncovered. executed_lines UNION
   // missing_lines is the file's statement-START set, which is what lets a
   // consumer map a changed line to the statement that actually ran.
-  it('exposes the executable (statement-start) line set per file', async () => {
-    if (!pythonHasCoverage()) {
-      // eslint-disable-next-line no-console
-      console.warn('skipping: coverage.py not installed');
-      return;
-    }
+  it.skipIf(NO_COVERAGE)('exposes the executable (statement-start) line set per file', async () => {
     const result = await reportCoverage({ projectRoot: FIXTURE, testCmd: 'python3 -m pytest -q' });
     const svc = result.executableLines.get('svc_tested.py');
     expect(svc).toBeDefined();
@@ -95,27 +82,25 @@ describe('python-line-coverage reporter', () => {
   // leaving them out of the executable set makes a consumer's enclosing-statement
   // lookup skip backwards past them onto whatever covered statement precedes,
   // turning provably-unexecuted code into apparently-covered code.
-  it('counts EXCLUDED lines as executable so they cannot be attributed away', async () => {
-    if (!pythonHasCoverage()) {
-      // eslint-disable-next-line no-console
-      console.warn('skipping: coverage.py not installed');
-      return;
-    }
-    const pragma = path.resolve(__dirname, '../fixtures/verify-diff-pragma');
-    const result = await reportCoverage({ projectRoot: pragma, testCmd: 'python3 -m pytest -q' });
-    const gated = result.executableLines.get('gated.py');
-    expect(gated).toBeDefined();
-    // `return "-".join(` at line 6 opens the pragma'd body: excluded, never
-    // executed, and it must still be a statement the consumer can land on.
-    expect(gated?.has(6)).toBe(true);
-    expect(result.coveredLines.has('gated.py:6')).toBe(false);
-    // The `def dead(...)` line is excluded too, so it must also be executable.
-    // Deliberately NOT asserting that it appears in coveredLines: whether an
-    // excluded line is ALSO reported as executed varies by coverage.py and
-    // Python version (3.13 reports both, 3.11 reports excluded only), and that
-    // incidental detail is not the property this test defends.
-    expect(gated?.has(5)).toBe(true);
-  });
+  it.skipIf(NO_COVERAGE)(
+    'counts EXCLUDED lines as executable so they cannot be attributed away',
+    async () => {
+      const pragma = path.resolve(__dirname, '../fixtures/verify-diff-pragma');
+      const result = await reportCoverage({ projectRoot: pragma, testCmd: 'python3 -m pytest -q' });
+      const gated = result.executableLines.get('gated.py');
+      expect(gated).toBeDefined();
+      // `return "-".join(` at line 6 opens the pragma'd body: excluded, never
+      // executed, and it must still be a statement the consumer can land on.
+      expect(gated?.has(6)).toBe(true);
+      expect(result.coveredLines.has('gated.py:6')).toBe(false);
+      // The `def dead(...)` line is excluded too, so it must also be executable.
+      // Deliberately NOT asserting that it appears in coveredLines: whether an
+      // excluded line is ALSO reported as executed varies by coverage.py and
+      // Python version (3.13 reports both, 3.11 reports excluded only), and that
+      // incidental detail is not the property this test defends.
+      expect(gated?.has(5)).toBe(true);
+    },
+  );
 
   it('returns coverageToolFound=false when coverage.py is absent', async () => {
     // Force absence by pointing testCmd at a python that can't import coverage —
@@ -179,8 +164,7 @@ describe('python-line-coverage reporter', () => {
       return dir;
     }
 
-    it('measures coverage for a SCRIPT-form test command', async () => {
-      if (!pythonHasCoverage()) return;
+    it.skipIf(NO_COVERAGE)('measures coverage for a SCRIPT-form test command', async () => {
       const dir = await scriptRunnerFixture();
       const result = await reportCoverage({ projectRoot: dir, testCmd: 'python3 runtests.py' });
       expect(result.coverageToolFound).toBe(true);
@@ -217,17 +201,19 @@ describe('python-line-coverage reporter', () => {
       },
     );
 
-    it('reports measurementFailed when the coverage run cannot execute', async () => {
-      if (!pythonHasCoverage()) return;
-      const dir = await scriptRunnerFixture();
-      const result = await reportCoverage({
-        projectRoot: dir,
-        testCmd: 'python3 no_such_runner_qq.py',
-      });
-      // Never claim zero coverage when we could not measure at all.
-      expect(result.measurementFailed).toBe(true);
-      expect(result.coveredLines.size).toBe(0);
-    });
+    it.skipIf(NO_COVERAGE)(
+      'reports measurementFailed when the coverage run cannot execute',
+      async () => {
+        const dir = await scriptRunnerFixture();
+        const result = await reportCoverage({
+          projectRoot: dir,
+          testCmd: 'python3 no_such_runner_qq.py',
+        });
+        // Never claim zero coverage when we could not measure at all.
+        expect(result.measurementFailed).toBe(true);
+        expect(result.coveredLines.size).toBe(0);
+      },
+    );
 
     it('keeps quoted arguments intact when tokenizing', async () => {
       // The tests gate runs the command through a shell, so `-k "not slow"` is
@@ -604,38 +590,39 @@ describe('python-line-coverage reporter', () => {
       });
     });
 
-    it('reports measurementFailed when the report step fails after a good run', async () => {
-      // A shim python that satisfies the probe and the `coverage run` (writing a
-      // data file) but fails `coverage json`. The old code swallowed that and
-      // returned an empty covered set as if measured: the same lie this module
-      // exists to prevent.
-      if (process.platform === 'win32') return;
-      const shimDir = await fs.mkdtemp(path.join(os.tmpdir(), 'cov-jsonfail-'));
-      const shim = path.join(shimDir, 'python-jsonfail');
-      await fs.writeFile(
-        shim,
-        '#!/bin/sh\n' +
-          'case "$*" in\n' +
-          '  *"coverage --version"*) exit 0 ;;\n' +
-          '  *"coverage run"*)\n' +
-          '     for a in "$@"; do case "$a" in *.coverage) : > "$a" ;; esac; done\n' +
-          '     exit 0 ;;\n' +
-          '  *"coverage json"*) echo "boom" >&2; exit 1 ;;\n' +
-          '  *) exit 0 ;;\n' +
-          'esac\n',
-        { mode: 0o755 },
-      );
-      const result = await reportCoverage({
-        projectRoot: FIXTURE,
-        testCmd: 'python3 -m pytest -q',
-        pythonBin: shim,
-      });
-      expect(result.measurementFailed).toBe(true);
-      expect(result.coveredLines.size).toBe(0);
-    });
+    it.skipIf(process.platform === 'win32')(
+      'reports measurementFailed when the report step fails after a good run',
+      async () => {
+        // A shim python that satisfies the probe and the `coverage run` (writing a
+        // data file) but fails `coverage json`. The old code swallowed that and
+        // returned an empty covered set as if measured: the same lie this module
+        // exists to prevent.
+        const shimDir = await fs.mkdtemp(path.join(os.tmpdir(), 'cov-jsonfail-'));
+        const shim = path.join(shimDir, 'python-jsonfail');
+        await fs.writeFile(
+          shim,
+          '#!/bin/sh\n' +
+            'case "$*" in\n' +
+            '  *"coverage --version"*) exit 0 ;;\n' +
+            '  *"coverage run"*)\n' +
+            '     for a in "$@"; do case "$a" in *.coverage) : > "$a" ;; esac; done\n' +
+            '     exit 0 ;;\n' +
+            '  *"coverage json"*) echo "boom" >&2; exit 1 ;;\n' +
+            '  *) exit 0 ;;\n' +
+            'esac\n',
+          { mode: 0o755 },
+        );
+        const result = await reportCoverage({
+          projectRoot: FIXTURE,
+          testCmd: 'python3 -m pytest -q',
+          pythonBin: shim,
+        });
+        expect(result.measurementFailed).toBe(true);
+        expect(result.coveredLines.size).toBe(0);
+      },
+    );
 
-    it('refuses to guess at shell-composite commands', async () => {
-      if (!pythonHasCoverage()) return;
+    it.skipIf(NO_COVERAGE)('refuses to guess at shell-composite commands', async () => {
       const result = await reportCoverage({
         projectRoot: FIXTURE,
         testCmd: 'pytest -q && echo done',
@@ -645,20 +632,21 @@ describe('python-line-coverage reporter', () => {
     });
   });
 
-  it('still reports real files when the suite executes phantom-filename code', async () => {
-    // A suite that runs exec(compile(src, "string", "exec")) makes coverage.py
-    // record a measured "file" named `string` with no source on disk. Without
-    // --ignore-errors, `coverage json` exits non-zero and writes nothing, and
-    // the reporter silently degrades to zero covered lines: every SAFE verdict
-    // on such a project (e.g. Textualize/rich) falsely reads UNPROVEN.
-    if (!pythonHasCoverage()) {
-      // eslint-disable-next-line no-console
-      console.warn('skipping: coverage.py not installed');
-      return;
-    }
-    const phantom = path.resolve(__dirname, '../fixtures/coverage-phantom');
-    const result = await reportCoverage({ projectRoot: phantom, testCmd: 'python3 -m pytest -q' });
-    expect(result.coverageToolFound).toBe(true);
-    expect(result.coveredLines.has('svc.py:2')).toBe(true); // covered_function return
-  });
+  it.skipIf(NO_COVERAGE)(
+    'still reports real files when the suite executes phantom-filename code',
+    async () => {
+      // A suite that runs exec(compile(src, "string", "exec")) makes coverage.py
+      // record a measured "file" named `string` with no source on disk. Without
+      // --ignore-errors, `coverage json` exits non-zero and writes nothing, and
+      // the reporter silently degrades to zero covered lines: every SAFE verdict
+      // on such a project (e.g. Textualize/rich) falsely reads UNPROVEN.
+      const phantom = path.resolve(__dirname, '../fixtures/coverage-phantom');
+      const result = await reportCoverage({
+        projectRoot: phantom,
+        testCmd: 'python3 -m pytest -q',
+      });
+      expect(result.coverageToolFound).toBe(true);
+      expect(result.coveredLines.has('svc.py:2')).toBe(true); // covered_function return
+    },
+  );
 });
