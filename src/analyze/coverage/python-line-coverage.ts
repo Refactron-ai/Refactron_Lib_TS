@@ -92,26 +92,64 @@ function tokenizeCommand(cmd: string): string[] {
   return out;
 }
 
-export function toCoverageRunArgs(testCmd: string): string[] | null {
+/** A leading `NAME=VALUE` token, as a shell would read it. The name must be a
+ *  valid shell identifier, so `--opt=1` and `-k` are flags rather than
+ *  assignments, and an empty value is legal (`FOO= cmd` unsets FOO). */
+const ASSIGNMENT_RE = /^([A-Za-z_][A-Za-z0-9_]*)=(.*)$/s;
+
+/** What to hand `coverage run`, plus any environment the command carried.
+ *  The env is separate because `coverage run` takes argv, not a shell line. */
+export interface CoverageRunPlan {
+  args: string[];
+  env: Record<string, string>;
+}
+
+export function toCoverageRunArgs(testCmd: string): CoverageRunPlan | null {
   if (SHELL_COMPOSITE_RE.test(testCmd)) return null;
   const tokens = tokenizeCommand(testCmd);
   if (tokens.length === 0) return null;
 
+  // Hoist a leading run of `NAME=VALUE` assignments. The tests gate runs the
+  // command through `sh -c`, where these are environment assignments; this
+  // runner spawns argv directly, so without hoisting `PYTHONPATH=.` was
+  // classified as a MODULE NAME below and `coverage run -m PYTHONPATH=.` wrote
+  // no data file at all. That silently capped every project following our own
+  // shadow-bypass advice at UNPROVEN. Stop at the first non-assignment, so a
+  // real argument that merely contains `=` (`pytest -k a=b`) is never eaten.
+  const env: Record<string, string> = {};
+  let i = 0;
+  for (; i < tokens.length; i++) {
+    const m = ASSIGNMENT_RE.exec(tokens[i] ?? '');
+    if (!m) break;
+    const value = m[2] as string;
+    // `PYTHONPATH=$HOME/x` is expanded by the shell the tests gate runs under,
+    // and would be passed through literally here. The two runs would then see
+    // different paths, so the coverage numbers would describe a run that was
+    // never verified. Decline instead: unknown is honest, a mismatch is not.
+    // (Backticks and `$(` are already refused by SHELL_COMPOSITE_RE above.)
+    if (value.includes('$')) return null;
+    env[m[1] as string] = value;
+  }
+  const afterEnv = tokens.slice(i);
+  if (afterEnv.length === 0) return null;
+
   // Drop a leading interpreter: `python3 -m pytest` and `python3 script.py`
   // both describe what to run, not how to spawn it.
-  let rest = tokens;
-  if (/^python[0-9.]*$/.test(tokens[0] ?? '')) rest = tokens.slice(1);
+  let rest = afterEnv;
+  if (/^python[0-9.]*$/.test(afterEnv[0] ?? '')) rest = afterEnv.slice(1);
   if (rest.length === 0) return null;
 
   const head = rest[0] ?? '';
   if (head === '-m') {
     const mod = rest.slice(1);
-    return mod.length > 0 ? ['-m', ...mod] : null;
+    return mod.length > 0 ? { args: ['-m', ...mod], env } : null;
   }
   // A script path (ends in .py, or is a path) runs positionally; anything else
   // is a console entry point we invoke as a module (pytest, vitest).
-  if (head.endsWith('.py') || head.includes('/') || head.includes('\\')) return [...rest];
-  return ['-m', ...rest];
+  if (head.endsWith('.py') || head.includes('/') || head.includes('\\')) {
+    return { args: [...rest], env };
+  }
+  return { args: ['-m', ...rest], env };
 }
 
 /** Probe whether `coverage.py` can actually RUN in the user's Python.
@@ -168,8 +206,8 @@ export async function reportCoverage(input: CoverageReportInput): Promise<Covera
     };
   }
 
-  const cmdArgs = toCoverageRunArgs(testCmd);
-  if (cmdArgs === null) {
+  const plan = toCoverageRunArgs(testCmd);
+  if (plan === null) {
     return {
       coverageToolFound: true,
       coveredLines: new Set(),
@@ -185,7 +223,11 @@ export async function reportCoverage(input: CoverageReportInput): Promise<Covera
   const tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'refactron-cov-'));
   const dataFile = path.join(tmp, '.coverage');
   const jsonFile = path.join(tmp, 'coverage.json');
-  const env = { ...process.env, COVERAGE_FILE: dataFile };
+  // Order is deliberate. The command's own assignments override the inherited
+  // environment, which is the point of writing them; COVERAGE_FILE goes last
+  // so a test command can never redirect the data file we are about to read,
+  // which would look exactly like "coverage measured nothing".
+  const env = { ...process.env, ...plan.env, COVERAGE_FILE: dataFile };
 
   const covered = new Set<string>();
   const measured = new Set<string>();
@@ -197,7 +239,7 @@ export async function reportCoverage(input: CoverageReportInput): Promise<Covera
     // (a red suite still produces valid coverage data); what matters is whether
     // a data file was written at all. A command coverage could not launch
     // leaves nothing behind, and that must read as unknown, not zero.
-    const runArgs = ['-m', 'coverage', 'run', '--data-file', dataFile, ...cmdArgs];
+    const runArgs = ['-m', 'coverage', 'run', '--data-file', dataFile, ...plan.args];
     const run = await runCmd(pythonBin, runArgs, input.projectRoot, env);
     const wroteData = await fs
       .access(dataFile)

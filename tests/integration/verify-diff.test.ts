@@ -70,6 +70,106 @@ async function flakyFixture(): Promise<string> {
   return root;
 }
 
+// A src-layout project: `pkg` lives under src/, and pytest is given no
+// `pythonpath`, so nothing is importable unless PYTHONPATH says where to look.
+// That is what makes it a real test of the env prefix: with `PYTHONPATH=src`
+// the SHADOW copy is imported, and with an absolute PYTHONPATH into the
+// ORIGINAL tree the shadow copy is never imported at all.
+async function srcLayoutFixture(): Promise<string> {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'vd-srclayout-'));
+  await fs.mkdir(path.join(root, 'src', 'pkg'), { recursive: true });
+  await fs.mkdir(path.join(root, 'tests'), { recursive: true });
+  await fs.writeFile(
+    path.join(root, 'pyproject.toml'),
+    '[tool.pytest.ini_options]\ntestpaths = ["tests"]\n',
+  );
+  await fs.writeFile(
+    path.join(root, 'src', 'pkg', '__init__.py'),
+    'def add(a, b):\n    return a + b\n\n\ndef unused_helper(a, b):\n    return a - b\n',
+  );
+  await fs.writeFile(
+    path.join(root, 'tests', 'test_pkg.py'),
+    'from pkg import add\n\n\ndef test_add():\n    assert add(2, 3) == 5\n',
+  );
+  return root;
+}
+
+const REORDERED_PKG =
+  'def add(a, b):\n    return b + a\n\n\ndef unused_helper(a, b):\n    return a - b\n';
+
+describe('verifyDiff with a NAME=VALUE prefix on testCmd (issue #95)', () => {
+  it.skipIf(NO_COVERAGE)(
+    'PYTHONPATH= prefix still measures coverage and can reach SAFE',
+    async () => {
+      // Before the fix this reported coverage.tool "none" and UNPROVEN: the
+      // assignment was classified as a module name, `coverage run` imported
+      // nothing, and no data file was written. The tests gate passed either
+      // way, so the failure was invisible.
+      const root = await srcLayoutFixture();
+      const report = await verifyDiff({
+        repoRoot: root,
+        edits: [{ path: 'src/pkg/__init__.py', newContent: REORDERED_PKG }],
+        testCmd: 'PYTHONPATH=src python3 -m pytest -q',
+      });
+      // Assert the MEASUREMENT, not just the verdict string. A test that only
+      // checks for SAFE would also pass if SAFE were reached without coverage.
+      expect(report.coverage.tool).toBe('coverage.py');
+      expect(report.coverage.changedStatements?.covered ?? 0).toBeGreaterThan(0);
+      expect(report.verdict).toBe('SAFE');
+    },
+    180_000,
+  );
+
+  it.skipIf(NO_COVERAGE)(
+    'a PYTHONPATH pointing OUTSIDE the shadow tree must not read SAFE',
+    async () => {
+      // The adversarial half. Hoisting env vars is exactly the mechanism that
+      // could aim the suite at code the shadow tree does not contain: here the
+      // tests import the ORIGINAL package, pass against unmodified code, and
+      // never load the changed copy. The changed file is therefore never
+      // measured, the shadow-bypass guard fires, and the verdict degrades.
+      // If this ever reads SAFE, this fix has introduced a false SAFE.
+      const root = await srcLayoutFixture();
+      const edits = [{ path: 'src/pkg/__init__.py', newContent: REORDERED_PKG }];
+
+      // Run BOTH forms against the same fixture and the same edit, so the only
+      // variable is where PYTHONPATH points. Asserting the pair is what keeps
+      // this test honest: a lone UNPROVEN assertion would also pass if the
+      // coverage wrapper had simply broken again, which is the bug this branch
+      // fixes. Pinning the sibling to SAFE proves measurement works for this
+      // command shape, so the degradation is about the TARGET, not the wrapper.
+      //
+      // It deliberately does not assert WHICH mechanism degraded the verdict.
+      // Two cover this independently: the shadow-bypass guard (the changed file
+      // is absent from measuredFiles), and ordinary attribution (its statements
+      // show no coverage). Verified by disabling the guard, after which this
+      // still reads UNPROVEN. `coverage.tool` cannot separate them either,
+      // since a failed measurement and a fired guard both return
+      // unknownCoverage() and report "none". The property under test is the one
+      // that matters and the one both paths deliver: never SAFE.
+      const intoShadow = await verifyDiff({
+        repoRoot: root,
+        edits,
+        testCmd: 'PYTHONPATH=src python3 -m pytest -q',
+      });
+      const intoOriginal = await verifyDiff({
+        repoRoot: root,
+        edits,
+        testCmd: `PYTHONPATH=${path.join(root, 'src')} python3 -m pytest -q`,
+      });
+
+      // Measurement demonstrably works for this command shape...
+      expect(intoShadow.coverage.tool).toBe('coverage.py');
+      expect(intoShadow.verdict).toBe('SAFE');
+      // ...so aiming the same shape outside the shadow tree can only have been
+      // rejected by the guard, not by a broken wrapper.
+      expect(intoOriginal.verdict).not.toBe('SAFE');
+      expect(intoOriginal.verdict).toBe('UNPROVEN');
+    },
+    180_000,
+  );
+});
+
 describe('verifyDiff (python three-way, real coverage)', () => {
   it.skipIf(NO_COVERAGE)(
     'semantics-preserving edit to COVERED code → SAFE',

@@ -191,18 +191,134 @@ describe('python-line-coverage reporter', () => {
       // `slow"`, which changes which tests run and therefore what gets measured.
       const { toCoverageRunArgs } =
         await import('../../src/analyze/coverage/python-line-coverage.js');
-      expect(toCoverageRunArgs('pytest tests/ -k "not slow"')).toEqual([
-        '-m',
-        'pytest',
-        'tests/',
-        '-k',
-        'not slow',
-      ]);
-      expect(toCoverageRunArgs("pytest -k 'a or b'")).toEqual(['-m', 'pytest', '-k', 'a or b']);
-      expect(toCoverageRunArgs('python3 tests/runtests.py "my app"')).toEqual([
-        'tests/runtests.py',
-        'my app',
-      ]);
+      expect(toCoverageRunArgs('pytest tests/ -k "not slow"')).toEqual({
+        args: ['-m', 'pytest', 'tests/', '-k', 'not slow'],
+        env: {},
+      });
+      expect(toCoverageRunArgs("pytest -k 'a or b'")).toEqual({
+        args: ['-m', 'pytest', '-k', 'a or b'],
+        env: {},
+      });
+      expect(toCoverageRunArgs('python3 tests/runtests.py "my app"')).toEqual({
+        args: ['tests/runtests.py', 'my app'],
+        env: {},
+      });
+    });
+
+    it('hoists a leading NAME=VALUE prefix into the environment (issue #95)', async () => {
+      // The tests gate runs the command via `sh -c`, where `PYTHONPATH=. pytest`
+      // is an env assignment. The coverage runner spawns argv directly, so it
+      // used to classify the assignment as a MODULE NAME and emit
+      // `-m PYTHONPATH=. python3 ...`. coverage then imported nothing, wrote no
+      // data file, and every such project capped at UNPROVEN forever -- while
+      // `PYTHONPATH=` is our own documented remedy for shadow bypass.
+      const { toCoverageRunArgs } =
+        await import('../../src/analyze/coverage/python-line-coverage.js');
+
+      expect(toCoverageRunArgs('PYTHONPATH=. python3 -m pytest -q')).toEqual({
+        args: ['-m', 'pytest', '-q'],
+        env: { PYTHONPATH: '.' },
+      });
+      expect(toCoverageRunArgs('PYTHONPATH=src python3 -m pytest -q')).toEqual({
+        args: ['-m', 'pytest', '-q'],
+        env: { PYTHONPATH: 'src' },
+      });
+      // The slash used to divert this one into the script-form branch, so it
+      // failed differently but just as silently.
+      expect(toCoverageRunArgs('PYTHONPATH=./src python3 -m pytest -q')).toEqual({
+        args: ['-m', 'pytest', '-q'],
+        env: { PYTHONPATH: './src' },
+      });
+      expect(toCoverageRunArgs('COVERAGE_CORE=sysmon python3 -m pytest')).toEqual({
+        args: ['-m', 'pytest'],
+        env: { COVERAGE_CORE: 'sysmon' },
+      });
+      // Several assignments in a row, and the remainder still classifies as
+      // script form rather than module form.
+      expect(toCoverageRunArgs('A=1 B=2 python3 tests/runtests.py')).toEqual({
+        args: ['tests/runtests.py'],
+        env: { A: '1', B: '2' },
+      });
+      // An empty value is a legitimate assignment (`FOO= cmd` unsets in shell).
+      expect(toCoverageRunArgs('PYTHONPATH= python3 -m pytest')).toEqual({
+        args: ['-m', 'pytest'],
+        env: { PYTHONPATH: '' },
+      });
+    });
+
+    it('merges hoisted vars into the inherited env without losing COVERAGE_FILE', async () => {
+      // Hoisted assignments must ADD to the environment, not replace it: the
+      // child still needs the inherited PATH to find python at all. And
+      // COVERAGE_FILE is applied last on purpose, so a test command that sets
+      // it cannot redirect the data file we are about to read. If it could,
+      // the run would look exactly like "coverage measured nothing", which is
+      // the same silent UNPROVEN this issue is about.
+      if (!pythonHasCoverage()) {
+        // eslint-disable-next-line no-console
+        console.warn('skipping: coverage.py not installed');
+        return;
+      }
+      const bogus = path.join(os.tmpdir(), 'refactron-should-not-be-used.coverage');
+      await fs.rm(bogus, { force: true });
+
+      const result = await reportCoverage({
+        projectRoot: FIXTURE,
+        testCmd: `COVERAGE_FILE=${bogus} PYTHONPATH=. pytest -q`,
+      });
+
+      expect(result.coverageToolFound).toBe(true);
+      expect(result.measurementFailed).toBe(false);
+      // Real data came back, so PATH survived and our data file won.
+      expect(result.coveredLines.has('svc_tested.py:2')).toBe(true);
+      expect(
+        await fs
+          .access(bogus)
+          .then(() => true)
+          .catch(() => false),
+      ).toBe(false);
+    });
+
+    it('stops hoisting at the first token that is not an assignment', async () => {
+      // `-k a=b` is a pytest ARGUMENT that happens to contain `=`. Eating it
+      // would silently change which tests run, so the measured run would no
+      // longer be the verified run.
+      const { toCoverageRunArgs } =
+        await import('../../src/analyze/coverage/python-line-coverage.js');
+
+      expect(toCoverageRunArgs('pytest -k a=b')).toEqual({
+        args: ['-m', 'pytest', '-k', 'a=b'],
+        env: {},
+      });
+      expect(toCoverageRunArgs('PYTHONPATH=. pytest -k a=b')).toEqual({
+        args: ['-m', 'pytest', '-k', 'a=b'],
+        env: { PYTHONPATH: '.' },
+      });
+      // A leading token that is not a valid shell identifier is not an
+      // assignment: `-k=v` is a flag, and `1BAD=x` cannot be an env name.
+      expect(toCoverageRunArgs('pytest --opt=1')).toEqual({
+        args: ['-m', 'pytest', '--opt=1'],
+        env: {},
+      });
+      // Nothing left to run once the assignments are removed.
+      expect(toCoverageRunArgs('PYTHONPATH=.')).toBeNull();
+    });
+
+    it('declines a hoisted value the shell would expand', async () => {
+      // The tests gate runs under `sh -c`, which expands `$HOME`. Hoisting it
+      // literally would put a different path on sys.path for the coverage run
+      // than the run we actually verified, so the measurement would describe a
+      // run that never happened. Unknown is honest; a silent mismatch is not.
+      const { toCoverageRunArgs } =
+        await import('../../src/analyze/coverage/python-line-coverage.js');
+
+      expect(toCoverageRunArgs('PYTHONPATH=$HOME/x python3 -m pytest')).toBeNull();
+      expect(toCoverageRunArgs('PYTHONPATH=$PWD python3 -m pytest')).toBeNull();
+      // A literal `$` in an ARGUMENT is not our problem to expand and was never
+      // hoisted, so it keeps classifying as before.
+      expect(toCoverageRunArgs('pytest -k "cost$"')).toEqual({
+        args: ['-m', 'pytest', '-k', 'cost$'],
+        env: {},
+      });
     });
 
     it('reports measurementFailed when the report step fails after a good run', async () => {
