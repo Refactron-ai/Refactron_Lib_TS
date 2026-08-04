@@ -295,6 +295,15 @@ export function resolveConsoleScript(
   name: string,
   env: Record<string, string>,
 ): ResolvedEntryPoint | null {
+  // Windows declines, deliberately rather than incidentally. Console scripts
+  // there are native `.exe` launchers with no Python shebang, and `coverage
+  // run` cannot execute one. We also never consult PATHEXT, so a lookup would
+  // either find nothing or find some extensionless file the shell would not
+  // have run: `accessSync(X_OK)` is documented as having no effect on Windows
+  // and behaves as F_OK, so it cannot filter that out. Refusing here is the
+  // decision, and the caller's message names module form as the way through.
+  if (process.platform === 'win32') return null;
+
   // A name containing a separator is a path, not a PATH lookup. The shell runs
   // it relative to ITS cwd, which is the shadow root and not this process's cwd,
   // so we cannot reproduce it here.

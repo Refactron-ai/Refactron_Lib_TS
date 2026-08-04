@@ -180,7 +180,7 @@ describe('python-line-coverage reporter', () => {
       return dir;
     }
 
-    it.skipIf(NO_COVERAGE)('measures coverage for a SCRIPT-form test command', async () => {
+    it.skipIf(NO_PYTHON)('measures coverage for a SCRIPT-form test command', async () => {
       const dir = await scriptRunnerFixture();
       const result = await reportCoverage({ projectRoot: dir, testCmd: 'python3 runtests.py' });
       expect(result.coverageToolFound).toBe(true);
@@ -211,13 +211,25 @@ describe('python-line-coverage reporter', () => {
     it.skipIf(NO_COVERAGE || process.platform === 'win32')(
       'measures a console-script command by resolving it (POSIX)',
       async () => {
+        // The ambient `pytest` shebang decides which branch is correct here.
+        // Fedora and RHEL ship `-s` on packaged console scripts, which we
+        // decline, so asserting "measures" unconditionally made this red on a
+        // supported distro. Assert the shape, then what that shape must give.
+        const { resolveConsoleScript } =
+          await import('../../src/analyze/coverage/python-line-coverage.js');
+        const resolved = resolveConsoleScript('pytest', {});
         const result = await reportCoverage({ projectRoot: FIXTURE, testCmd: 'pytest -q' });
-        expect(result.measurementFailed).toBe(false);
-        expect(result.coveredLines.has('svc_tested.py:2')).toBe(true);
+        if (resolved === null) {
+          expect(result.measurementFailed).toBe(true);
+          expect(String(result.measurementFailureReason)).toContain('module form');
+        } else {
+          expect(result.measurementFailed).toBe(false);
+          expect(result.coveredLines.has('svc_tested.py:2')).toBe(true);
+        }
       },
     );
 
-    it.skipIf(NO_COVERAGE)(
+    it.skipIf(NO_PYTHON)(
       'reports measurementFailed when the coverage run cannot execute',
       async () => {
         const dir = await scriptRunnerFixture();
@@ -576,6 +588,73 @@ describe('python-line-coverage reporter', () => {
       },
     );
 
+    it('carries the interpreter as written, never normalised', async () => {
+      // Pure, so this runs on Windows too, where the end-to-end tests cannot.
+      //
+      // Identity is the path AS WRITTEN. A venv's bin/python3 is a symlink to
+      // the base interpreter, which has a DIFFERENT site-packages, so treating
+      // them as the same interpreter after a realpath would reintroduce exactly
+      // the mismatch this resolves. Case-folding is wrong for the same reason.
+      const { toCoverageRunArgs } =
+        await import('../../src/analyze/coverage/python-line-coverage.js');
+      const plan = toCoverageRunArgs('pytest -q', () => ({
+        script: '/venv/bin/pytest',
+        interpreter: '/Venv/bin/Python3',
+      }));
+      expect(plan).toEqual({
+        args: ['/venv/bin/pytest', '-q'],
+        env: {},
+        interpreter: '/Venv/bin/Python3',
+      });
+    });
+
+    it('gives a shell composite its own reason, not the console-script one', async () => {
+      // The plan-null branch is reached by five causes and only ONE is fixed by
+      // module form. Telling someone running `pytest && lint` to write
+      // `python -m pytest` sends them round the same loop: right verdict,
+      // remedy that cannot work, which is the defect class this file keeps
+      // relearning.
+      const composite = await reportCoverage({
+        projectRoot: FIXTURE,
+        testCmd: 'pytest -q && echo done',
+        _probeOverride: true,
+      });
+      expect(composite.measurementFailed).toBe(true);
+      expect(String(composite.measurementFailureReason)).toContain('combines');
+      expect(String(composite.measurementFailureReason)).not.toContain('module form');
+    });
+
+    it.skipIf(NO_PYTHON || process.platform === 'win32')(
+      'probes the interpreter with the command OWN environment',
+      async () => {
+        // The probe must see what the real run sees. A hoisted PYTHONPATH can
+        // be exactly what makes coverage importable for that interpreter, and
+        // probing without it declines a measurable command while telling the
+        // user to install something they already have.
+        const root = await fs.mkdtemp(path.join(os.tmpdir(), 'cov-probeenv-'));
+        const bin = path.join(root, 'bin');
+        await fs.mkdir(bin);
+        // Only reports coverage when the command's own PYTHONPATH reached it.
+        const shim = path.join(bin, 'python-envaware');
+        await fs.writeFile(
+          shim,
+          '#!/bin/sh\n' +
+            'if [ "$PYTHONPATH" != "sentinel-value" ]; then exit 1; fi\n' +
+            'case "$*" in *"-m coverage"*) exit 0 ;; *) exit 0 ;; esac\n',
+          { mode: 0o755 },
+        );
+        await fs.writeFile(path.join(bin, 'tool'), `#!${shim}\nprint(1)\n`, { mode: 0o755 });
+
+        const result = await reportCoverage({
+          projectRoot: FIXTURE,
+          testCmd: `PYTHONPATH=sentinel-value PATH=${bin} tool`,
+          _probeOverride: true,
+        });
+        // The probe passed, so we did NOT decline with the interpreter message.
+        expect(String(result.measurementFailureReason ?? '')).not.toContain('from its shebang');
+      },
+    );
+
     it('resolution is POSIX-only, by design (issue #100)', async () => {
       // Asserts DIFFERENT things per platform, so it cannot pass under both.
       // A test that declines everywhere for the same reason proves nothing
@@ -621,14 +700,22 @@ describe('python-line-coverage reporter', () => {
           '#!/bin/sh\n' +
             'case "$*" in\n' +
             `  *"-m coverage --version"*) exit 0 ;;\n` +
-            `  *"-m coverage run"*) echo ran > ${marker}; exit 0 ;;\n` +
+            // Writes the data file too, so the run is observed as a SUCCESS
+            // and not merely as "the shim was spawned". #99 requires that a
+            // matching interpreter still MEASURES, not just that it is chosen.
+            `  *"-m coverage run"*) printf '%s' "$0" > ${marker};\n` +
+            `     for a in "$@"; do case "$a" in *.coverage) : > "$a" ;; esac; done\n` +
+            `     exit 0 ;;\n` +
+            `  *"-m coverage json"*)\n` +
+            `     for a in "$@"; do case "$a" in *coverage.json) echo '{"files":{}}' > "$a" ;; esac; done\n` +
+            `     exit 0 ;;\n` +
             '  *) exit 0 ;;\n' +
             'esac\n',
           { mode: 0o755 },
         );
         await fs.writeFile(path.join(bin, 'tool'), `#!${shim}\nprint(1)\n`, { mode: 0o755 });
 
-        await reportCoverage({
+        const result = await reportCoverage({
           projectRoot: FIXTURE,
           testCmd: `PATH=${bin} tool`,
           _probeOverride: true,
@@ -636,11 +723,14 @@ describe('python-line-coverage reporter', () => {
 
         // The shim wrote the marker, so `coverage run` was spawned under the
         // interpreter named by the script's shebang and not under ours.
-        const invoked = await fs
-          .access(marker)
-          .then(() => true)
-          .catch(() => false);
-        expect(invoked).toBe(true);
+        // The contents, not just existence: a failure then reads
+        // "expected '<never spawned>' to be '<shim path>'" instead of
+        // "expected false to be true".
+        const ranUnder = await fs.readFile(marker, 'utf8').catch(() => '<never spawned>');
+        expect(ranUnder).toBe(shim);
+        // And the run was a SUCCESS, not a decline: both `coverage run` and
+        // `coverage json` were served by the shebang interpreter.
+        expect(result.measurementFailed).toBe(false);
       },
     );
 
@@ -823,7 +913,7 @@ describe('python-line-coverage reporter', () => {
       },
     );
 
-    it.skipIf(NO_COVERAGE)('refuses to guess at shell-composite commands', async () => {
+    it.skipIf(NO_PYTHON)('refuses to guess at shell-composite commands', async () => {
       const result = await reportCoverage({
         projectRoot: FIXTURE,
         testCmd: 'pytest -q && echo done',
