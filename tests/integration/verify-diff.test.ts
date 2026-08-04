@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, afterEach } from 'vitest';
 import { execSync } from 'node:child_process';
 import * as fs from 'node:fs/promises';
 import * as os from 'node:os';
@@ -131,6 +131,16 @@ const REORDERED_PKG =
   'def add(a, b):\n    return b + a\n\n\ndef unused_helper(a, b):\n    return a - b\n';
 
 describe('verifyDiff with a NAME=VALUE prefix on testCmd (issue #95)', () => {
+  // Restored in afterEach, NOT in a finally inside the test body. vitest marks a
+  // timed-out test failed and moves on WITHOUT waiting for the awaited call to
+  // settle, so an in-body finally never runs and the value leaks into every
+  // later test in this file. Measured: the next test observed the leaked path.
+  const ORIGINAL_PYTHONPATH = process.env.PYTHONPATH;
+  afterEach(() => {
+    if (ORIGINAL_PYTHONPATH === undefined) delete process.env.PYTHONPATH;
+    else process.env.PYTHONPATH = ORIGINAL_PYTHONPATH;
+  });
+
   it.skipIf(NO_COVERAGE)(
     'PYTHONPATH= prefix still measures coverage and can reach SAFE',
     async () => {
@@ -262,6 +272,11 @@ describe('verifyDiff with a NAME=VALUE prefix on testCmd (issue #95)', () => {
       expect(viaConsoleScript.coverage.tool).toBe('none');
       expect(viaConsoleScript.gates.tests.passed).toBe(true);
       expect(String(viaConsoleScript.reason)).not.toContain('not exercised by any test');
+      // Disclosure is not optional. An earlier revision of this test dropped
+      // the reason assertion when the degradation moved from a decline to the
+      // guard, which quietly accepted less explanation than the previous
+      // release gave. The floor must always say why and what to do about it.
+      expect(String(viaConsoleScript.coverage.unknownReason)).toContain('PYTHONPATH');
     },
     180_000,
   );
@@ -292,15 +307,31 @@ describe('verifyDiff with a NAME=VALUE prefix on testCmd (issue #95)', () => {
         { path: 'rfpkg/__init__.py', newContent: 'def add(a, b):\n    return a - b\n' },
       ];
 
-      const saved = process.env.PYTHONPATH;
-      try {
-        process.env.PYTHONPATH = root;
+      process.env.PYTHONPATH = root;
+      {
         const report = await verifyDiff({ repoRoot: root, edits, testCmd: 'pytest -q' });
-        // The edit breaks the suite; no spawn shape may call it SAFE.
-        expect(report.verdict).not.toBe('SAFE');
-      } finally {
-        if (saved === undefined) delete process.env.PYTHONPATH;
-        else process.env.PYTHONPATH = saved;
+        const control = await verifyDiff({
+          repoRoot: root,
+          edits,
+          testCmd: 'python3 -m pytest -q',
+        });
+
+        // The edit genuinely breaks the suite, so the whole case has teeth.
+        expect(control.verdict).toBe('UNSAFE');
+
+        // The gate RAN and was GREEN against the copy the environment supplied.
+        // Without this the case is satisfiable by a red baseline: deleting the
+        // PYTHONPATH line above makes the package unimportable, the baseline
+        // fails, and UNPROVEN arrives for a reason unrelated to the bug.
+        expect(report.gates.tests.passed).toBe(true);
+        // An exact verdict, not `not.toBe('SAFE')`, so a spurious UNSAFE cannot
+        // satisfy it either.
+        expect(report.verdict).toBe('UNPROVEN');
+        // Degraded through the shadow-bypass guard, carrying a reason that
+        // names the remedy rather than leaving the user with "could not be
+        // determined" and nowhere to go.
+        expect(report.coverage.tool).toBe('none');
+        expect(String(report.coverage.unknownReason)).toContain('PYTHONPATH');
       }
     },
     180_000,

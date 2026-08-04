@@ -70,6 +70,28 @@ export interface CoverageReport {
 // toCoverageRunArgs). Losing a measurement costs a verdict; losing equivalence
 // costs the truth of every verdict this module supports.
 //
+// Equivalence may be ESTABLISHED in two ways, and only two:
+//
+//   1. By RECOGNITION. The command is already equivalent in both spawn shapes
+//      (`python3 -m pytest`, `python3 tests/runtests.py`). Nothing is rebuilt.
+//
+//   2. By CONSTRUCTION. We reproduce ONE bounded shell behaviour so the two
+//      spawns agree. Today that is PATH resolution of a console entry point,
+//      so sys.path[0] is the bin directory in both. A construction is admitted
+//      only when all three hold:
+//        a. TOTAL over its input: every case the shell handles we handle
+//           identically, or we decline. No "close enough".
+//        b. CHECKABLE against an observable, not an argument. Here the
+//           shadow-bypass guard independently tests whether coverage measured
+//           the copy the gate imported.
+//        c. Its failure is a DECLINE, never a fall back to a form already
+//           known to be non-equivalent.
+//
+// Clause (c) is written in blood: falling back to module form when resolution
+// failed reintroduced the exact false SAFE the construction existed to remove,
+// on every pyenv, asdf and nix setup, because their console scripts are shell
+// shims rather than Python files.
+//
 // So: new shell features get taught to this path only when equivalence can be
 // PROVEN, not when a bug report asks for them.
 
@@ -123,12 +145,6 @@ const ASSIGNMENT_RE = /^([A-Za-z_][A-Za-z0-9_]*)=(.*)$/s;
  *  PATH-like assignment value. */
 const TILDE_EXPANDS_RE = /(^|:)~/;
 
-/** Variables that can change WHICH copy of a module Python imports. When one of
- *  these is set, the interpreter's own sys.path[0] rule decides who wins, so a
- *  spawn-shape difference between the gate and this runner stops being cosmetic
- *  and starts selecting a different tree. See the entry-point note below. */
-const IMPORT_AFFECTING_RE = /^(PYTHON[A-Z0-9_]*|PATH|VIRTUAL_ENV|CONDA_PREFIX)$/;
-
 /** What to hand `coverage run`, plus any environment the command carried.
  *  The env is separate because `coverage run` takes argv, not a shell line. */
 export interface CoverageRunPlan {
@@ -139,12 +155,13 @@ export interface CoverageRunPlan {
 /** Resolves a console entry point (`pytest`) to the script file a shell would
  *  execute for it, or null when it cannot be resolved to a Python script we can
  *  hand to `coverage run` positionally. Injected so the classifier stays pure
- *  and testable; omitting it keeps the historical module-form behaviour. */
+ *  and testable, and REQUIRED so no call site can omit it and silently select a
+ *  spawn shape the gate would not have used. */
 export type EntryPointResolver = (name: string, env: Record<string, string>) => string | null;
 
 export function toCoverageRunArgs(
   testCmd: string,
-  resolveEntryPoint?: EntryPointResolver,
+  resolveEntryPoint: EntryPointResolver,
 ): CoverageRunPlan | null {
   if (SHELL_COMPOSITE_RE.test(testCmd)) return null;
   const tokens = tokenizeCommand(testCmd);
@@ -199,36 +216,28 @@ export function toCoverageRunArgs(
   // shadow-bypass guard work: when an editable install resolves imports to the
   // ORIGINAL tree, coverage now measures that tree too, the shadow file is
   // absent from measuredFiles, and the guard fires as designed.
-  const resolved = resolveEntryPoint?.(head, env) ?? null;
+  const resolved = resolveEntryPoint(head, env);
   if (resolved !== null) return { args: [resolved, ...rest.slice(1)], env };
 
-  // Could not resolve it (not on PATH, or a platform whose console scripts are
-  // native launchers rather than Python files, such as Windows `.exe` shims).
-  // Fall back to module form, which is what shipped before, so nothing that
-  // works today stops working.
+  // Unresolvable, so decline. There is deliberately no fallback to `-m` here.
   //
-  // That fallback is NOT equivalent to the gate's spawn when an import-affecting
-  // variable is set, and the difference silently selects a different copy:
+  // Module form is what shipped before, and it is the shape that produced the
+  // false SAFE: `-m` prepends CWD to sys.path while the console script the gate
+  // runs does not, so on any project where something else supplies the package
+  // (an editable install, a plain install, PYTHONPATH) the gate ran the ORIGINAL
+  // tree while coverage measured the SHADOW tree, and fusing those two true
+  // statements produced SAFE for a change that broke the suite.
   //
-  //   gate      sh -c "PYTHONPATH=<other> pytest -q"   console script:
-  //                                                    sys.path[0] is the bin
-  //                                                    dir, so PYTHONPATH wins
-  //   this path coverage run -m pytest -q              `-m` puts CWD FIRST,
-  //                                                    ahead of PYTHONPATH, so
-  //                                                    the shadow tree wins
+  // Falling back to it would keep that hole open wherever resolution fails, and
+  // resolution fails on exactly the setups people use: pyenv and asdf install
+  // `#!/usr/bin/env bash` shims, nix wraps programs the same way, and Windows
+  // console scripts are native `.exe` launchers. That is not a corner, so the
+  // fallback is not a safety net; it is the bug with narrower reach.
   //
-  // The gate then proves the ORIGINAL tree green while coverage proves the
-  // SHADOW tree exercised, and fusing those two true statements yields SAFE for
-  // a change that breaks the suite. That is a false SAFE, reproduced on a flat
-  // layout with `PYTHONPATH=<repoRoot> pytest -q`, and it is the reason the
-  // equivalence rule at the top of this file is written as a rule.
-  //
-  // Declining costs a measurement for this shape and nothing else: the form the
-  // docs teach, `PYTHONPATH=. python3 -m pytest -q`, is module form on BOTH
-  // sides and stays equivalent. Widening the decline can only lose capability;
-  // narrowing it loses soundness.
-  if (Object.keys(env).some((name) => IMPORT_AFFECTING_RE.test(name))) return null;
-  return { args: ['-m', ...rest], env };
+  // The cost is bounded and honest. `python3 -m pytest -q`, which is what
+  // auto-detection produces and what every documented example teaches, is
+  // module form on BOTH sides and never reaches this branch.
+  return null;
 }
 
 /** Find the file a shell would execute for a console entry point, and accept it
@@ -240,25 +249,55 @@ export function toCoverageRunArgs(
  *  the caller falls back to module form. Resolution uses the EFFECTIVE PATH,
  *  including any hoisted `PATH=` prefix, so it agrees with what the gate's
  *  shell would have resolved. */
-function resolveConsoleScript(name: string, env: Record<string, string>): string | null {
+export function resolveConsoleScript(name: string, env: Record<string, string>): string | null {
+  // A name containing a separator is a path, not a PATH lookup. The shell runs
+  // it relative to ITS cwd, which is the shadow root and not this process's cwd,
+  // so we cannot reproduce it here.
+  if (name.includes('/') || name.includes('\\')) return null;
+
   const search = env.PATH ?? process.env.PATH ?? '';
   for (const dir of search.split(path.delimiter)) {
-    if (!dir) continue;
+    // An empty element means cwd to a POSIX shell, and a relative element is
+    // resolved against the SHELL's cwd. Either way the shell would search a
+    // directory we cannot identify from here, and anything we found later on
+    // PATH might be shadowed by something in it. Decline rather than guess.
+    if (dir === '' || !path.isAbsolute(dir)) return null;
+
     const candidate = path.join(dir, name);
     try {
+      // The shell skips a match it cannot execute and keeps searching, so this
+      // must too: a non-executable file earlier on PATH is invisible to it.
+      fsSync.accessSync(candidate, fsSync.constants.X_OK);
       if (!fsSync.statSync(candidate).isFile()) continue;
+    } catch {
+      continue; // missing, not executable, or a directory: keep searching
+    }
+
+    // This is the file the shell would run. It is the ONLY candidate we may
+    // consider: scanning past it to find a Python script further down would
+    // run a different program than the gate did, which is precisely the
+    // divergence this resolver exists to remove.
+    try {
       const fd = fsSync.openSync(candidate, 'r');
       try {
-        const buf = Buffer.alloc(128);
-        const read = fsSync.readSync(fd, buf, 0, 128, 0);
-        const first = buf.subarray(0, read).toString('utf8').split('\n')[0] ?? '';
+        const buf = Buffer.alloc(512);
+        const read = fsSync.readSync(fd, buf, 0, 512, 0);
+        const first = (buf.subarray(0, read).toString('utf8').split('\n')[0] ?? '').replace(
+          /\r$/,
+          '',
+        );
+        // Only a Python script can be handed to `coverage run` positionally.
+        // A shim (`#!/usr/bin/env bash`, pyenv and asdf install these), a
+        // native launcher (Windows `.exe`), or a shebang we cannot read is not
+        // one, and the caller declines rather than substituting module form.
         if (first.startsWith('#!') && /python/i.test(first)) return candidate;
       } finally {
         fsSync.closeSync(fd);
       }
     } catch {
-      // unreadable or missing: try the next PATH entry
+      // unreadable: treat as not resolvable
     }
+    return null;
   }
   return null;
 }
