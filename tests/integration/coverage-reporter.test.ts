@@ -24,6 +24,20 @@ const NO_COVERAGE = (() => {
   }
 })();
 
+// Some tests need only a python that runs, not coverage.py or pytest: they use
+// `/bin/sh` shims and `_probeOverride`, or decline before anything spawns.
+// Gating those on the full probe would silently stop them running on an image
+// that lacks pytest, and #100's whole point is a test that runs on the Windows
+// leg. Nothing here needs a prerequisite at all.
+const NO_PYTHON = (() => {
+  try {
+    execSync('python3 -c "pass"', { stdio: 'ignore' });
+    return false;
+  } catch {
+    return true;
+  }
+})();
+
 describe('python-line-coverage reporter', () => {
   // Two explicit worlds. Every classifier assertion says which one it is in,
   // because the answer differs: a console entry point that resolves runs
@@ -476,6 +490,7 @@ describe('python-line-coverage reporter', () => {
       });
       expect(resolveConsoleScript('tool', { PATH: PATHV })).toEqual({
         script: path.join(a, 'tool'),
+        interpreter: 'python3',
       });
 
       // The FIRST executable match wins, and if it is not a Python script we
@@ -511,6 +526,7 @@ describe('python-line-coverage reporter', () => {
       });
       expect(resolveConsoleScript('crlf', { PATH: PATHV })).toEqual({
         script: path.join(a, 'crlf'),
+        interpreter: 'python3',
       });
 
       // A long venv shebang beyond the old 128-byte read window.
@@ -555,11 +571,80 @@ describe('python-line-coverage reporter', () => {
         });
         expect(resolveConsoleScript('tool', { PATH: PATHV })).toEqual({
           script: path.join(b, 'tool'),
+          interpreter: 'python3',
         });
       },
     );
 
-    it.skipIf(NO_COVERAGE || process.platform === 'win32')(
+    it('resolution is POSIX-only, by design (issue #100)', async () => {
+      // Asserts DIFFERENT things per platform, so it cannot pass under both.
+      // A test that declines everywhere for the same reason proves nothing
+      // about Windows, which is what the previous version of this did.
+      const { resolveConsoleScript } =
+        await import('../../src/analyze/coverage/python-line-coverage.js');
+      const bin = await fs.mkdtemp(path.join(os.tmpdir(), 'cov-plat-'));
+      await fs.writeFile(path.join(bin, 'tool'), '#!/usr/bin/env python3\nprint(1)\n', {
+        mode: 0o755,
+      });
+
+      if (process.platform === 'win32') {
+        // No PATHEXT handling, and a Windows console script is a native `.exe`
+        // launcher with no Python shebang, so nothing can resolve. The command
+        // declines and the caller tells the user to use module form.
+        expect(resolveConsoleScript('tool', { PATH: bin })).toBeNull();
+      } else {
+        expect(resolveConsoleScript('tool', { PATH: bin })).toEqual({
+          script: path.join(bin, 'tool'),
+          interpreter: 'python3',
+        });
+      }
+    });
+
+    it.skipIf(NO_PYTHON || process.platform === 'win32')(
+      'actually RUNS coverage under the shebang interpreter (issue #99)',
+      async () => {
+        // The test that makes the fix load-bearing. Without it the whole
+        // interpreter switch could be reverted to `runner = pythonBin` and the
+        // suite stayed green, because every other test uses a machine where the
+        // shebang interpreter and the ambient python3 are the same binary.
+        //
+        // Here they are provably different: a shim that answers the coverage
+        // probe and records that IT was the one invoked.
+        const root = await fs.mkdtemp(path.join(os.tmpdir(), 'cov-runner-'));
+        const bin = path.join(root, 'bin');
+        await fs.mkdir(bin);
+        const marker = path.join(root, 'invoked-by-shebang-interpreter');
+
+        const shim = path.join(bin, 'python-marker');
+        await fs.writeFile(
+          shim,
+          '#!/bin/sh\n' +
+            'case "$*" in\n' +
+            `  *"-m coverage --version"*) exit 0 ;;\n` +
+            `  *"-m coverage run"*) echo ran > ${marker}; exit 0 ;;\n` +
+            '  *) exit 0 ;;\n' +
+            'esac\n',
+          { mode: 0o755 },
+        );
+        await fs.writeFile(path.join(bin, 'tool'), `#!${shim}\nprint(1)\n`, { mode: 0o755 });
+
+        await reportCoverage({
+          projectRoot: FIXTURE,
+          testCmd: `PATH=${bin} tool`,
+          _probeOverride: true,
+        });
+
+        // The shim wrote the marker, so `coverage run` was spawned under the
+        // interpreter named by the script's shebang and not under ours.
+        const invoked = await fs
+          .access(marker)
+          .then(() => true)
+          .catch(() => false);
+        expect(invoked).toBe(true);
+      },
+    );
+
+    it.skipIf(NO_PYTHON || process.platform === 'win32')(
       'declines when the shebang interpreter cannot run coverage (issue #99)',
       async () => {
         // Running the script under OUR python instead of its own is not parity,
@@ -595,7 +680,7 @@ describe('python-line-coverage reporter', () => {
       },
     );
 
-    it.skipIf(NO_COVERAGE)(
+    it.skipIf(NO_PYTHON)(
       'an unresolvable entry point declines and names module form (issue #100)',
       async () => {
         // Runs on EVERY platform, including the Windows leg, and distinguishes
@@ -610,7 +695,7 @@ describe('python-line-coverage reporter', () => {
           testCmd: `PATH=${empty} pytest -q`,
         });
         expect(result.measurementFailed).toBe(true);
-        expect(String(result.measurementFailureReason)).toContain('python3 -m pytest');
+        expect(String(result.measurementFailureReason)).toContain('python -m pytest');
       },
     );
 
@@ -640,9 +725,27 @@ describe('python-line-coverage reporter', () => {
       await fs.writeFile(path.join(bin, 'envtool'), '#!/usr/bin/env python3\nprint(1)\n', {
         mode: 0o755,
       });
+      // The NAME is carried, because `env python3` may be a different binary
+      // from the one we would otherwise spawn; a bare name is resolved by the
+      // spawn through the same PATH the shell would have searched.
       expect(resolveConsoleScript('envtool', { PATH: bin })).toEqual({
         script: path.join(bin, 'envtool'),
+        interpreter: 'python3',
       });
+
+      // Shapes we cannot reproduce are declined outright. A shebang carrying
+      // ARGUMENTS is the important one: `-E` makes Python ignore PYTHONPATH, so
+      // dropping it would let the gate import the installed copy while coverage
+      // imports the shadow copy and measures it as covered. Fedora and RHEL ship
+      // `-s` on packaged console scripts, so this is a real shape.
+      await fs.writeFile(path.join(bin, 'flagged'), '#!/opt/py/bin/python3 -E\nprint(1)\n', {
+        mode: 0o755,
+      });
+      expect(resolveConsoleScript('flagged', { PATH: bin })).toBeNull();
+      await fs.writeFile(path.join(bin, 'envs'), '#!/usr/bin/env -S python3 -X utf8\nprint(1)\n', {
+        mode: 0o755,
+      });
+      expect(resolveConsoleScript('envs', { PATH: bin })).toBeNull();
     });
 
     it('DECLINES an entry point it cannot resolve, never falling back (issue #98)', async () => {

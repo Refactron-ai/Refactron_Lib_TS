@@ -18,31 +18,35 @@ function pythonHasCoverage(): boolean {
   }
 }
 
-describe('preflight integration (sqlalchemy-mini)', () => {
-  it('splits covered vs uncovered query sites into safe-to-automate vs unproven', async () => {
-    if (!pythonHasCoverage()) {
-      // eslint-disable-next-line no-console
-      console.warn(
-        '[skip] coverage.py or pytest not installed in python3; skipping preflight integration',
-      );
-      return;
-    }
-    const analyzer = new RefactronAnalyzer({
-      confidence: 'medium',
-      transforms: ['sqlalchemy_query_to_select'] as unknown as TransformId[],
-    });
-    const report = await analyzer.analyzeExtended(FIXTURE);
-    const sql = report.findings.filter(
-      (f) => (f.transformId as string) === 'sqlalchemy_query_to_select',
-    );
-    const safety = buildSafetyReport(FIXTURE, 'sqlalchemy_query_to_select', sql);
+// The ninth early return. It reported PASSED while asserting nothing, and this
+// is the highest-value instance in the directory: the assertions below are
+// `coverageAvailable === true` and at least one safe-to-automate site, so on an
+// image without coverage.py the whole preflight safety report went green
+// without running.
+const NO_COVERAGE = !pythonHasCoverage();
 
-    expect(safety.coverageAvailable).toBe(true);
-    // Both queries are `safe` shape; tested_query is covered, untested_query is not.
-    expect(safety.counts['safe-to-automate']).toBeGreaterThanOrEqual(1);
-    expect(safety.counts.unproven).toBeGreaterThanOrEqual(1);
-    expect(safety.total).toBe(
-      safety.counts['safe-to-automate'] + safety.counts.unproven + safety.counts['needs-review'],
-    );
-  }, 30000);
+describe('preflight integration (sqlalchemy-mini)', () => {
+  it.skipIf(NO_COVERAGE)(
+    'splits covered vs uncovered query sites into safe-to-automate vs unproven',
+    async () => {
+      const analyzer = new RefactronAnalyzer({
+        confidence: 'medium',
+        transforms: ['sqlalchemy_query_to_select'] as unknown as TransformId[],
+      });
+      const report = await analyzer.analyzeExtended(FIXTURE);
+      const sql = report.findings.filter(
+        (f) => (f.transformId as string) === 'sqlalchemy_query_to_select',
+      );
+      const safety = buildSafetyReport(FIXTURE, 'sqlalchemy_query_to_select', sql);
+
+      expect(safety.coverageAvailable).toBe(true);
+      // Both queries are `safe` shape; tested_query is covered, untested_query is not.
+      expect(safety.counts['safe-to-automate']).toBeGreaterThanOrEqual(1);
+      expect(safety.counts.unproven).toBeGreaterThanOrEqual(1);
+      expect(safety.total).toBe(
+        safety.counts['safe-to-automate'] + safety.counts.unproven + safety.counts['needs-review'],
+      );
+    },
+    30000,
+  );
 });

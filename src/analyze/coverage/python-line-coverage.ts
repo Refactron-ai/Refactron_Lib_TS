@@ -75,10 +75,22 @@ export interface CoverageReport {
 //   1. By RECOGNITION. The command is already equivalent in both spawn shapes
 //      (`python3 -m pytest`, `python3 tests/runtests.py`). Nothing is rebuilt.
 //
-//   2. By CONSTRUCTION. We reproduce ONE bounded shell behaviour so the two
-//      spawns agree. Today that is PATH resolution of a console entry point,
-//      so sys.path[0] is the bin directory in both. A construction is admitted
-//      only when all three hold:
+//   2. By CONSTRUCTION. We reproduce a bounded shell behaviour so the two
+//      spawns agree. There are TWO today, and they compose:
+//
+//        - PATH resolution of a console entry point, so sys.path[0] is the bin
+//          directory in both spawns rather than cwd in ours.
+//        - Shebang honouring, so the script runs under the interpreter the
+//          kernel would have exec'd rather than under ours.
+//
+//      Their boundary is enumerated, not approximated. Recognised:
+//        #!/abs/path/to/python      (exactly one word)
+//        #!/usr/bin/env python3     (exactly two words)
+//      Declined: any shebang with ARGUMENTS (`-E`, `-s`, `-I` change which
+//      paths Python trusts and we do not forward them), any `env -S` form, a
+//      relative interpreter, a non-Python interpreter, and anything unreadable.
+//
+//      A construction is admitted only when all three hold:
 //        a. TOTAL over its input: every case the shell handles we handle
 //           identically, or we decline. No "close enough".
 //        b. CHECKABLE against an observable, not an argument. Here the
@@ -91,6 +103,14 @@ export interface CoverageReport {
 // failed reintroduced the exact false SAFE the construction existed to remove,
 // on every pyenv, asdf and nix setup, because their console scripts are shell
 // shims rather than Python files.
+//
+// Clause (a) is written in blood too. Honouring a shebang while DROPPING its
+// arguments looked like a partial win and was a false SAFE: `-E` makes Python
+// ignore PYTHONPATH, so the gate imported the installed copy while coverage
+// imported the shadow copy and measured it as covered. Worse, that divergence
+// had been masked on the previous release by an unrelated failure, so fixing
+// the interpreter is what would have unmasked it. Partial reproduction of a
+// shell behaviour is not a partial win; it is a confident wrong answer.
 //
 // So: new shell features get taught to this path only when equivalence can be
 // PROVEN, not when a bug report asks for them.
@@ -316,15 +336,48 @@ export function resolveConsoleScript(
         // native launcher (Windows `.exe`), or a shebang we cannot read is not
         // one, and the caller declines rather than substituting module form.
         if (first.startsWith('#!') && /python/i.test(first)) {
-          // Extract the interpreter the kernel would exec. `#!/usr/bin/env x`
-          // defers to PATH, which resolves the same way for us, so there is
-          // nothing to override; an absolute path must be honoured.
-          const words = first.slice(2).trim().split(/\s+/);
-          let interp = words[0] ?? '';
-          if (/(^|\/)env$/.test(interp)) interp = words[1] ?? '';
-          return path.isAbsolute(interp)
-            ? { script: candidate, interpreter: interp }
-            : { script: candidate };
+          // Exactly two shebang shapes are reproducible. Everything else
+          // declines, because we run `<interpreter> -m coverage run <script>`
+          // and can only claim equivalence when that is what the kernel would
+          // have done.
+          //
+          //   #!/abs/path/to/python          one word   -> run under it
+          //   #!/usr/bin/env python3         two words  -> PATH resolves the
+          //                                               same for us, so the
+          //                                               caller's python stands
+          //
+          // A shebang carrying ARGUMENTS is refused, and that is the important
+          // case rather than a tidiness rule. `-E`, `-s`, `-I` change which
+          // paths Python trusts: `-E` makes it ignore PYTHONPATH entirely. The
+          // gate execs the script so the kernel applies those flags; dropping
+          // them here would let the gate import the INSTALLED copy while
+          // coverage imports the SHADOW copy and measures it as covered, and
+          // fusing those yields SAFE for a change no test ran. Fedora and RHEL
+          // ship `#!/usr/bin/python3 -s` as their packaging default, so this is
+          // a real shape, not a hypothetical one.
+          //
+          // Forwarding a flag whitelist is deliberately NOT done. It is
+          // plausibly sound for -E and -s and definitely unsound for -S, which
+          // would break importing coverage itself, and the rule at the top of
+          // this file says features are taught here only when equivalence can
+          // be proven.
+          const words = first.slice(2).trim().split(/\s+/).filter(Boolean);
+          const head0 = words[0] ?? '';
+          if (/(^|\/)env$/.test(head0)) {
+            // `env python3` and nothing more. `env -S ...` re-splits the line
+            // and is not reproduced.
+            const named = words[1] ?? '';
+            // Carry the NAME, not nothing. `env python3.11` is a different
+            // binary from our `python3`, and running the script under ours is
+            // the very mismatch this resolves. A bare name is resolved by the
+            // spawn through the same PATH the shell would have searched.
+            return words.length === 2 && /python/i.test(named)
+              ? { script: candidate, interpreter: named }
+              : null;
+          }
+          return words.length === 1 && path.isAbsolute(head0)
+            ? { script: candidate, interpreter: head0 }
+            : null;
         }
       } finally {
         fsSync.closeSync(fd);
@@ -343,9 +396,13 @@ export function resolveConsoleScript(
  *  the cwd is the common case) imports fine as a namespace package with
  *  `__file__ = None`, but cannot be executed as a module. Probing execution
  *  in `cwd` keeps the probe honest in the same context as the real run. */
-function probeCoverage(pythonBin: string, cwd: string): Promise<boolean> {
+function probeCoverage(pythonBin: string, cwd: string, env?: NodeJS.ProcessEnv): Promise<boolean> {
   return new Promise((resolve) => {
-    const p = spawn(pythonBin, ['-m', 'coverage', '--version'], { stdio: 'ignore', cwd });
+    const p = spawn(pythonBin, ['-m', 'coverage', '--version'], {
+      stdio: 'ignore',
+      cwd,
+      ...(env ? { env } : {}),
+    });
     p.on('exit', (code) => resolve(code === 0));
     p.on('error', () => resolve(false));
   });
@@ -405,17 +462,20 @@ export async function reportCoverage(input: CoverageReportInput): Promise<Covera
       excludedLines: new Map(),
       runDurationMs: performance.now() - t0,
       measurementFailed: true,
-      // Name the remedy. The dominant reason to land here is a console entry
-      // point we could not resolve to a Python script: a Windows `.exe`
-      // launcher, or a pyenv/asdf/nix shell shim. Module form is always
-      // measurable because it is equivalent in both spawn shapes, so say so
-      // rather than leaving the user with a bare refusal.
-      measurementFailureReason:
-        `cannot run this test command under coverage: ${testCmd}. ` +
-        `If it names a console entry point (for example \`pytest\`), use module ` +
-        `form instead (\`python3 -m pytest\`), which can be measured on every ` +
-        `platform. Console scripts are native launchers on Windows and shell ` +
-        `shims under pyenv, asdf and nix, and neither can be run under coverage.`,
+      // Name the remedy that fits the CAUSE. This branch is shared by four of
+      // them, and only one is fixed by module form: telling someone whose
+      // command is `pytest && lint` to write `python -m pytest` sends them
+      // round the same loop, which is the confidently-wrong-remedy defect this
+      // module keeps having to relearn.
+      measurementFailureReason: SHELL_COMPOSITE_RE.test(testCmd)
+        ? `cannot run this test command under coverage: ${testCmd}. It combines ` +
+          `several commands, and measuring only part of the suite would describe ` +
+          `a run that never happened. Point testCmd at the test command alone.`
+        : `cannot run this test command under coverage: ${testCmd}. If it names ` +
+          `a console entry point (for example \`pytest\`), use module form ` +
+          `instead (\`python -m pytest\`), which can be measured on every ` +
+          `platform. Console scripts are native launchers on Windows and shell ` +
+          `shims under pyenv, asdf and nix, and neither can be run under coverage.`,
     };
   }
 
@@ -435,7 +495,14 @@ export async function reportCoverage(input: CoverageReportInput): Promise<Covera
     // Genuinely probed, never short-circuited by `_probeOverride`: that flag
     // describes OUR python, and the point here is that the script names a
     // different one.
-    const usable = await probeCoverage(plan.interpreter, input.projectRoot);
+    // With the command's OWN environment, exactly as the real run gets it.
+    // A hoisted PYTHONPATH can be what makes coverage importable for that
+    // interpreter, and probing without it declines a measurable command
+    // while telling the user to install something they already have.
+    const usable = await probeCoverage(plan.interpreter, input.projectRoot, {
+      ...process.env,
+      ...plan.env,
+    });
     if (!usable) {
       return {
         coverageToolFound: true,
@@ -496,8 +563,16 @@ export async function reportCoverage(input: CoverageReportInput): Promise<Covera
     // without the flag `coverage json` exits non-zero and writes NOTHING,
     // silently zeroing coverage for every real file. Phantom entries are
     // dropped; real files keep their data.
+    // The SAME interpreter that produced the data, not ours. `coverage json`
+    // re-parses every measured source to compute missing_lines, and with
+    // --ignore-errors a file the reporting interpreter cannot parse is dropped
+    // SILENTLY with exit 0. Reporting under a different version than the run
+    // therefore makes a file using newer syntax vanish from measuredFiles, and
+    // the shadow-bypass floor then blames the user's sys.path for what was
+    // really a parser mismatch: the exact wrong-remedy symptom this issue is
+    // about, reproduced through the report step.
     const emit = await runCmd(
-      pythonBin,
+      runner,
       ['-m', 'coverage', 'json', '--ignore-errors', '--data-file', dataFile, '-o', jsonFile],
       input.projectRoot,
       env,
