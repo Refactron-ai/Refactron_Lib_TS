@@ -57,3 +57,6 @@ mcp
 JSON-RPC
 globalStorage
 Jinja
+TOML
+Codex
+Gemini

@@ -106,11 +106,11 @@
             "pages": [
               "mcp/claude-code",
               "mcp/claude-desktop",
+              "mcp/codex",
               "mcp/cursor",
-              "mcp/windsurf",
               "mcp/vscode",
-              "mcp/cline",
-              "mcp/zed",
+              "mcp/gemini-cli",
+              "mcp/windsurf",
               "mcp/other-clients"
             ]
           },

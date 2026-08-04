@@ -1,0 +1,80 @@
+---
+title: Gemini CLI
+icon: bolt
+description: Add the Refactron MCP server to Gemini CLI with the gemini mcp add command or ~/.gemini/settings.json.
+---
+
+Gemini CLI reads MCP servers from `settings.json` under the root key `mcpServers`, the same shape Claude Desktop and Cursor use. There is a subcommand that writes the entry for you.
+
+## Config location
+
+| Scope   | Path                                           | Applies to        |
+| ------- | ---------------------------------------------- | ----------------- |
+| User    | `~/.gemini/settings.json`                      | Every project     |
+| Project | `.gemini/settings.json` in the repository root | This project only |
+
+`gemini mcp add` defaults to **project** scope, so it writes `.gemini/settings.json` unless you ask otherwise.
+
+## Add it
+
+```bash
+gemini mcp add refactron refactron-mcp
+```
+
+That writes the project file. For every project on the machine, use user scope:
+
+```bash
+gemini mcp add --scope user refactron refactron-mcp
+```
+
+By hand, add this to `settings.json` alongside the objects already there:
+
+```json
+{
+  "mcpServers": {
+    "refactron": {
+      "command": "refactron-mcp",
+      "timeout": 900000
+    }
+  }
+}
+```
+
+`timeout` is in **milliseconds** here, not seconds. Gemini CLI defaults to 600000 (10 minutes), which is the same order as Refactron's own 600 second test-gate default, so a suite that runs long enough to hit one will be near the other. Set it above your slowest full suite run.
+
+To pin the version and skip the global install:
+
+```json
+{
+  "mcpServers": {
+    "refactron": {
+      "command": "npx",
+      "args": ["-y", "-p", "refactron@0.3.0", "refactron-mcp"],
+      "timeout": 900000
+    }
+  }
+}
+```
+
+The `-p` flag is required. `refactron-mcp` is a second binary of the `refactron` package, not a package of its own.
+
+## Verify the connection
+
+```bash
+gemini mcp list
+```
+
+```text
+✓ refactron: command: refactron-mcp (stdio) - Connected
+```
+
+Inside a session, the `/mcp` slash command shows connected servers with their tools expanded. You are looking for one tool, `verify_change`, under `refactron`.
+
+## Troubleshooting
+
+- **The server shows `Disconnected` and the command is right**: Gemini CLI only starts a stdio server in a trusted folder. Run `gemini trust` in the project directory, then list again. This is the failure that looks like a broken install and is not one.
+- **`gemini mcp add` put it somewhere unexpected**: the default scope is project, so the entry landed in `.gemini/settings.json` in whatever directory you ran it from. Re-run with `--scope user` for a machine-wide entry.
+- **`command not found` on launch**: run `which refactron-mcp`. If it prints nothing, run `npm install -g refactron@0.3.0`, or switch to the `npx` form above.
+- **A verification is cut off partway**: `timeout` is milliseconds. `900` means 0.9 seconds, not 15 minutes, and every call fails instantly.
+- **Confirmation prompts on every call**: set `"trust": true` on the `refactron` entry to skip them. The server reads your repository and writes only to a temporary shadow copy, so this is a reasonable server to trust. It is a per-server setting, so it does not loosen anything else.
+- **The server is configured but excluded**: check the top-level `mcp` object for an `allowed` list. If `mcp.allowed` is set and does not name `refactron`, the CLI never connects to it.

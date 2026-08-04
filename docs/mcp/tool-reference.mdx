@@ -146,6 +146,8 @@ Real messages you will see:
 | `diff contains binary changes alongside text edits; binary changes cannot be verified`    | Mixed binary and text diff.                    |
 | `diff did not apply to calc.py (stale base?)`                                             | The diff does not apply to the current tree.   |
 
+The stale-base error has one cause that surprises people. The shadow tree is a copy of your **working tree**, not of `HEAD`, so a change you have already written to disk is already in the copy. Passing `git diff` of that change asks Refactron to apply it a second time, and it will not apply. Verify before you write: pass the proposal as `edits`, or revert the file first and pass the diff.
+
 Deletions, renames, copies, and binary changes are refused rather than partially verified. A diff that removed a module while making one innocuous edit once verified as safe on the half that could be checked, and applying it broke every import in the package. A partial verdict must never read as a verdict on the whole change.
 
 ## How it maps to the CLI

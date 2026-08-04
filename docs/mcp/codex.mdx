@@ -1,0 +1,87 @@
+---
+title: Codex CLI
+icon: robot
+description: 'Add the Refactron MCP server to OpenAI Codex CLI. Note the format: Codex reads TOML, not JSON.'
+---
+
+Codex CLI is the one client on this list that does not use JSON. Its MCP servers live in `~/.codex/config.toml`, under a `[mcp_servers.<name>]` table. A config block copied from Claude Desktop or Cursor is not valid here.
+
+## The format is TOML, not JSON
+
+Every other client on this list takes a JSON object keyed by server name. Codex takes a TOML table per server, and the table prefix is `mcp_servers` with an underscore, not `mcpServers`.
+
+## Config location
+
+| Scope   | Path                                        | Applies to                      |
+| ------- | ------------------------------------------- | ------------------------------- |
+| User    | `~/.codex/config.toml`                      | Every project                   |
+| Project | `.codex/config.toml` in the repository root | That project, once you trust it |
+
+## Add it
+
+The `codex mcp add` subcommand writes the entry for you and gets the TOML shape right:
+
+```bash
+codex mcp add refactron -- refactron-mcp
+```
+
+The `--` separator is required. Everything after it is the command Codex launches; everything before it is Codex's own flags.
+
+To write it by hand, add this table to `~/.codex/config.toml`:
+
+```toml
+[mcp_servers.refactron]
+command = "refactron-mcp"
+args = []
+tool_timeout_sec = 900
+```
+
+To pin the version and skip the global install:
+
+```toml
+[mcp_servers.refactron]
+command = "npx"
+args = ["-y", "-p", "refactron@0.3.0", "refactron-mcp"]
+tool_timeout_sec = 900
+```
+
+The `-p` flag is required. `refactron-mcp` is a second binary of the `refactron` package, not a package of its own.
+
+## Set `tool_timeout_sec` yourself
+
+Codex applies a per-tool timeout, and its default has changed between releases: the published config reference documents 60 seconds, while current builds use a longer one. Either number can be shorter than a real test suite, and `verify_change` runs your whole suite.
+
+Set `tool_timeout_sec` explicitly to comfortably more than a full suite run. Without it, a slow project reports a tool failure that is really a client-side timeout, and you lose a verdict you had already paid for.
+
+`startup_timeout_sec` is a separate key covering only process launch and the MCP handshake. The default is fine for this server, which starts in well under a second.
+
+## Verify the connection
+
+```bash
+codex mcp list
+```
+
+`refactron` appears in the list with its launch command. For the single entry, including the resolved config:
+
+```bash
+codex mcp get refactron
+```
+
+Both accept `--json` if you want to read the entry from a script.
+
+Then start a session and ask for the tool list. You are looking for one tool, `verify_change`, under `refactron`.
+
+## Troubleshooting
+
+- **The table name is wrong**: it is `[mcp_servers.refactron]`. A `[mcpServers.refactron]` table is silently a different, unused key. Codex does not warn you.
+- **The server is configured but never starts**: check for `enabled = false` on the table. That key disables a server without removing it, and it is easy to leave behind.
+- **`command not found` on launch**: run `which refactron-mcp`. If it prints nothing, run `npm install -g refactron@0.3.0`, or switch to the `npx` form above.
+- **A project-scoped `.codex/config.toml` is ignored**: Codex reads project config only for a trusted project. Trust the directory, or move the entry to `~/.codex/config.toml`.
+- **A verification fails after about a minute on a suite that takes longer**: that is `tool_timeout_sec`, not a verdict. Raise it.
+- **Duplicate TOML tables**: two `[mcp_servers.refactron]` tables in one file is a parse error, and Codex rejects the whole config. If you ran `codex mcp add` after hand-editing, check for both.
+
+## Remove it
+
+```bash
+codex mcp remove refactron
+```

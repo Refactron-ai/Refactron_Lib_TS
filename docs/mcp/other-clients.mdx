@@ -1,7 +1,7 @@
 ---
 title: Any other client
 icon: plug
-description: Connect Refactron to any MCP client that can launch a stdio server, and the root keys each client family expects.
+description: Connect Refactron to any MCP client that can launch a stdio server, plus the root keys and config shapes each client family expects.
 ---
 
 Refactron is an ordinary stdio MCP server. Any client that can launch a subprocess and speak JSON-RPC over its standard streams can run it.
@@ -24,11 +24,12 @@ There is no HTTP or SSE endpoint, no API key, and no network call. The server re
 
 This is where most setups fail. The block is otherwise identical.
 
-| Client family                                        | Root key          |
-| ---------------------------------------------------- | ----------------- |
-| Claude Code, Claude Desktop, Cursor, Windsurf, Cline | `mcpServers`      |
-| VS Code with GitHub Copilot                          | `servers`         |
-| Zed                                                  | `context_servers` |
+| Client family                                                    | Format | Root key          |
+| ---------------------------------------------------------------- | ------ | ----------------- |
+| Claude Code, Claude Desktop, Cursor, Windsurf, Gemini CLI, Cline | JSON   | `mcpServers`      |
+| VS Code with GitHub Copilot                                      | JSON   | `servers`         |
+| Zed                                                              | JSON   | `context_servers` |
+| Codex CLI                                                        | TOML   | `[mcp_servers.*]` |
 
 The `mcpServers` form, which most clients accept:
 
@@ -55,7 +56,56 @@ The `mcpServers` form, which most clients accept:
 }
 ```
 
-The `-p` flag is required. `refactron-mcp` is a second binary of the `refactron` package, not a package of its own, so `npx refactron-mcp` looks up a package by that name and fails with a registry 404.
+The `-p` flag is required. `refactron-mcp` is a second binary of the `refactron` package, not a package of its own, so `npx refactron-mcp` looks up a package by that name and fails with a registry 404 unless a global install already put the binary on your `PATH`.
+
+## Clients without a page of their own
+
+### Zed
+
+Zed calls MCP servers "context servers" and configures them in its main `settings.json`, at the top-level key `context_servers`. A block copied from Claude Desktop or Cursor does nothing here, with no error.
+
+| OS           | Path                          |
+| ------------ | ----------------------------- |
+| macOS, Linux | `~/.config/zed/settings.json` |
+| Windows      | `%APPDATA%\Zed\settings.json` |
+
+```json
+{
+  "context_servers": {
+    "refactron": {
+      "command": "refactron-mcp",
+      "args": [],
+      "env": {}
+    }
+  }
+}
+```
+
+Zed restarts the context server process when you save `settings.json`, so no editor restart is needed. Some builds also expect `"source": "custom"` on a hand-written entry. If the server does not appear after saving, add it through **Agent Panel** then **Settings** then **Add Custom Server**, which writes the shape your build expects.
+
+### Cline
+
+Cline manages servers from its own panel inside VS Code, backed by `cline_mcp_settings.json` in the extension's storage directory. Open it with the **MCP Servers** icon at the top of the Cline pane, then **Configure MCP Servers**.
+
+| OS      | Path                                                                                                            |
+| ------- | --------------------------------------------------------------------------------------------------------------- |
+| macOS   | `~/Library/Application Support/Code/User/globalStorage/saoudrizwan.claude-dev/settings/cline_mcp_settings.json` |
+| Windows | `%APPDATA%\Code\User\globalStorage\saoudrizwan.claude-dev\settings\cline_mcp_settings.json`                     |
+| Linux   | `~/.config/Code/User/globalStorage/saoudrizwan.claude-dev/settings/cline_mcp_settings.json`                     |
+
+```json
+{
+  "mcpServers": {
+    "refactron": {
+      "command": "refactron-mcp",
+      "disabled": false,
+      "timeout": 900
+    }
+  }
+}
+```
+
+`timeout` is in seconds here and it matters. Cline defaults to 60, and `verify_change` runs your whole test suite, so a real project blows past that and Cline reports a failure that is really a timeout. Cline stores this file separately from VS Code's own `.vscode/mcp.json`: configuring one does not configure the other.
 
 ## From a source checkout
 
@@ -99,10 +149,10 @@ echo '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":
 }
 ```
 
-If that works and your client still shows nothing, the problem is the client config: check the root key, the JSON validity, and whether the client inherits the `PATH` that holds `refactron-mcp`.
+If that works and your client still shows nothing, the problem is the client config: check the root key, the JSON or TOML validity, and whether the client inherits the `PATH` that holds `refactron-mcp`.
 
 ## Client requirements that trip people up
 
-- **A test-suite run is the unit of work.** Clients with a default tool timeout under a minute will cut off a real verification. Raise the timeout where the client allows it.
+- **A test-suite run is the unit of work.** Clients with a default tool timeout under a minute will cut off a real verification. Raise the timeout where the client allows it, and check the unit: Cline and Codex CLI count seconds, Gemini CLI counts milliseconds.
 - **Absolute paths only.** `repoRoot` must be an absolute path. Clients that pass a relative working directory will not help you here.
 - **Tools need an agent mode.** Chat-only or ask-only modes in most editors do not call tools at all.

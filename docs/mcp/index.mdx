@@ -8,6 +8,19 @@ Refactron ships an [MCP](https://modelcontextprotocol.io) server that exposes ex
 
 The server speaks **stdio**, identifies itself as `refactron` version `0.3.0`, and runs entirely on your machine. It never writes to your repository: applying the change stays the agent's job, after a verdict the agent trusts.
 
+The fastest way in is to let your agent do the setup. One prompt covers install, registration for whichever client it is running in, and a first real verification.
+
+<Card
+  title="Set it up with your agent"
+  icon="clipboard-list"
+  href="/mcp/agent-instructions"
+  horizontal
+>
+  One prompt: install, register, restart, confirm the tool, run a real verification.
+</Card>
+
+Prefer to do it by hand? Pick your client below, or follow the [MCP quickstart](/mcp/quickstart).
+
 <Frame caption="An agent proposes a change, calls verify_change, and decides whether to land it based on the verdict.">
   <img
     src="/assets/mcp.svg"
@@ -55,29 +68,33 @@ The PyPI wrapper does not ship `refactron-mcp`. If you found Refactron through P
 ## Connect your client
 
 <CardGroup cols={2}>
-  <Card title="Claude Code" icon="terminal" href="/mcp/claude-code">
+  <Card title="Claude Code" icon="/assets/clients/claude.svg" href="/mcp/claude-code">
     One `claude mcp add` command, or a project `.mcp.json`.
   </Card>
-  <Card title="Claude Desktop" icon="monitor" href="/mcp/claude-desktop">
+  <Card title="Claude Desktop" icon="/assets/clients/claude.svg" href="/mcp/claude-desktop">
     Edit `claude_desktop_config.json` and restart the app.
   </Card>
-  <Card title="Cursor" icon="mouse-pointer-2" href="/mcp/cursor">
+  <Card title="Codex CLI" icon="/assets/clients/openai.svg" href="/mcp/codex">
+    `~/.codex/config.toml`, in TOML, under `[mcp_servers.refactron]`.
+  </Card>
+  <Card title="Cursor" icon="/assets/clients/cursor.svg" href="/mcp/cursor">
     Project `.cursor/mcp.json` or the global `~/.cursor/mcp.json`.
   </Card>
-  <Card title="Windsurf" icon="wind" href="/mcp/windsurf">
-    Cascade reads `~/.codeium/windsurf/mcp_config.json`.
-  </Card>
-  <Card title="VS Code" icon="code" href="/mcp/vscode">
+  <Card
+    title="GitHub Copilot in VS Code"
+    icon="/assets/clients/githubcopilot.svg"
+    href="/mcp/vscode"
+  >
     `.vscode/mcp.json`, whose root key is `servers`, not `mcpServers`.
   </Card>
-  <Card title="Cline" icon="bot" href="/mcp/cline">
-    Add it from the extension's MCP Servers panel.
+  <Card title="Gemini CLI" icon="/assets/clients/googlegemini.svg" href="/mcp/gemini-cli">
+    One `gemini mcp add` command, or `~/.gemini/settings.json`.
   </Card>
-  <Card title="Zed" icon="zap" href="/mcp/zed">
-    `settings.json` under `context_servers`, not `mcpServers`.
+  <Card title="Windsurf" icon="/assets/clients/windsurf.svg" href="/mcp/windsurf">
+    Cascade reads `~/.codeium/windsurf/mcp_config.json`.
   </Card>
   <Card title="Any other client" icon="plug" href="/mcp/other-clients">
-    Anything that can launch a stdio MCP server can run this one.
+    Anything that can launch a stdio MCP server can run this one, Zed and Cline included.
   </Card>
 </CardGroup>
 
@@ -87,8 +104,8 @@ The PyPI wrapper does not ship `refactron-mcp`. If you found Refactron through P
   <Card title="Quickstart" icon="rocket" href="/mcp/quickstart">
     Install, register, confirm the tool is listed, and get a first real verdict.
   </Card>
-  <Card title="Instructions for your agent" icon="clipboard-list" href="/mcp/agent-instructions">
-    Copy-paste blocks that tell your agent to set this up and to verify before it applies.
+  <Card title="Prompts for your agent" icon="clipboard-list" href="/mcp/agent-instructions">
+    Set it up, then keep it verifying before it applies. Three prompts, copy-ready.
   </Card>
   <Card title="Tool reference" icon="book" href="/mcp/tool-reference">
     Every `verify_change` argument, the response shape, and the error shape.
