@@ -1,0 +1,123 @@
+/* Mintlify picks this file up automatically because it sits next to docs.json.
+   It loads after the framework styles, so plain specificity is enough and
+   nothing here needs !important. */
+
+/* ---------------------------------------------------------------------------
+   Client marks (docs/assets/clients/*.svg)
+
+   Mintlify renders a path-based `icon` as <img src="...">. An <img> loads the
+   SVG as its own document, so the mark cannot inherit the page's CSS `color`
+   and a `currentColor` fill just resolves to black and disappears on dark.
+
+   The marks therefore ship one fixed near-black fill, and dark mode inverts
+   them. Every mark is a single monochrome path, so invert(1) is exact.
+
+   Keyed to `.dark` rather than `prefers-color-scheme` on purpose: Mintlify's
+   theme toggle sets that class on <html> and its bundle contains no
+   prefers-color-scheme rules at all, so a media query would follow the
+   operating system and contradict the toggle.
+   --------------------------------------------------------------------------- */
+
+.dark img[src*='/assets/clients/'] {
+  filter: invert(1);
+}
+
+/* ---------------------------------------------------------------------------
+   Copy-only agent prompts
+
+   `<div className="agent-prompt">` around a fenced code block turns it into a
+   single copy button. The text inside is addressed to an AI agent, not to a
+   reader, so showing it costs a screen of scrolling and buys nothing.
+
+   The code body is collapsed with max-height/overflow rather than
+   `display: none` or `visibility: hidden`: those two remove an element from
+   the rendered text, so a copy handler reading `innerText` would put an empty
+   string on the clipboard. Clipped-but-rendered text still copies.
+
+   If this stylesheet ever fails to load, the block degrades to an ordinary
+   visible code block that still copies correctly.
+   --------------------------------------------------------------------------- */
+
+.agent-prompt .code-block [data-component-part='code-block-root'],
+.agent-prompt .code-block [data-fade-overlay] {
+  max-height: 0;
+  overflow: hidden;
+  padding-top: 0;
+  padding-bottom: 0;
+  border: 0;
+}
+
+.agent-prompt .code-block {
+  margin-top: 1rem;
+  margin-bottom: 1rem;
+  cursor: pointer;
+  border-color: #dcd8cd;
+  background: #f7f6f3;
+  transition:
+    background-color 0.15s ease,
+    border-color 0.15s ease;
+}
+
+.agent-prompt .code-block:hover {
+  border-color: #c4bda9;
+  background: #f1efe8;
+}
+
+.dark .agent-prompt .code-block {
+  border-color: rgba(255, 255, 255, 0.13);
+  background: rgba(255, 255, 255, 0.035);
+}
+
+.dark .agent-prompt .code-block:hover {
+  border-color: rgba(234, 231, 222, 0.32);
+  background: rgba(255, 255, 255, 0.07);
+}
+
+/* The label. `content` reads an inherited custom property so one rule serves
+   every prompt, and each block sets its own wording via a modifier class. */
+.agent-prompt .code-block::after {
+  content: var(--prompt-label, 'Copy the prompt');
+  display: block;
+  padding: 1rem 3.5rem 1rem 1.15rem;
+  font-size: 0.9375rem;
+  font-weight: 500;
+  line-height: 1.4;
+  color: #141416;
+  pointer-events: none;
+}
+
+.dark .agent-prompt .code-block::after {
+  color: #eae7de;
+}
+
+.agent-prompt {
+  --prompt-label: 'Copy the setup prompt';
+}
+.agent-prompt.is-rule {
+  --prompt-label: 'Copy the verification rule';
+}
+.agent-prompt.is-project-rule {
+  --prompt-label: 'Copy the project rule';
+}
+
+/* Stretch Mintlify's copy button over the whole bar, so the entire strip is
+   the click target rather than a 26px icon in the corner. Without this the
+   bar looks pressable and is not, which is worse than looking plain. */
+.agent-prompt .code-block [data-floating-buttons] {
+  inset: 0;
+  padding-right: 1.15rem;
+  justify-content: flex-end;
+}
+
+.agent-prompt .code-block [data-floating-buttons] > div,
+.agent-prompt .code-block [data-testid='copy-code-button'] {
+  width: 100%;
+  height: 100%;
+  justify-content: flex-end;
+}
+
+/* The button ships a `backdrop-blur` class. Harmless behind a 26px icon,
+   but stretched across the bar it blurs the label sitting behind it. */
+.agent-prompt .code-block [data-testid='copy-code-button'] {
+  backdrop-filter: none;
+}

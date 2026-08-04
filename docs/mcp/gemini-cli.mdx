@@ -1,0 +1,225 @@
+---
+title: Gemini CLI
+icon: /assets/clients/googlegemini.svg
+description: Add the Refactron MCP server to Gemini CLI with the gemini mcp add command or ~/.gemini/settings.json.
+---
+
+Gemini CLI reads MCP servers from `settings.json` under the root key `mcpServers`, the same shape Claude Desktop and Cursor use. There is a subcommand that writes the entry for you.
+
+## Set it up with your agent
+
+One prompt, written for Gemini CLI to read rather than you. It installs the
+server, registers it, reloads, and proves the tool works with a real
+verification.
+
+<div className="agent-prompt">
+
+```text
+Set up the Refactron MCP server for yourself in this repository and prove it
+works before you tell me it is done. Do the steps in order.
+
+You are running in Gemini CLI.
+
+STEP 1 - Check the prerequisites.
+
+Run `node --version`. Refactron needs Node.js 18 or newer. If it is older or
+missing, stop and tell me.
+
+Run `python3 --version`, then check that `pytest` and `coverage` are
+importable. Coverage attestation is Python-only, and it is what makes a
+coverage-backed SAFE verdict possible. Without it the server still runs and
+still gates the change, but every verdict caps at UNPROVEN.
+
+STEP 2 - Install the server.
+
+Run `which refactron-mcp`, or `where refactron-mcp` on Windows. If it prints a
+path, go to step 3. Otherwise install it:
+
+    npm install -g refactron@0.3.0
+
+That puts two binaries on PATH: `refactron` (the CLI) and `refactron-mcp` (the
+MCP server). If you cannot install globally, install nothing and use the npx
+form in step 3 instead.
+
+Do not use `pip install refactron` for this. The PyPI wrapper provides the
+`refactron` command only. It does not ship `refactron-mcp`.
+
+STEP 3 - Register the server.
+
+Run:
+
+    gemini mcp add refactron refactron-mcp
+
+That defaults to PROJECT scope and writes `.gemini/settings.json` in whatever
+directory you run it from. Add `--scope user` for ~/.gemini/settings.json
+instead.
+
+By hand, the root key is "mcpServers" and `timeout` is in MILLISECONDS:
+
+    { "mcpServers": { "refactron": { "command": "refactron-mcp",
+        "timeout": 900000 } } }
+
+900 would mean 0.9 seconds and every call would fail instantly. Gemini CLI
+defaults to 600000, the same order as Refactron's own 600 second test gate, so
+set it above the slowest full run of this suite.
+
+Without a global install, use this instead. The `-p` flag is required, because
+`refactron-mcp` is a second binary of the `refactron` package and not a package
+of its own:
+
+    { "mcpServers": { "refactron": { "command": "npx",
+        "args": ["-y", "-p", "refactron@0.3.0", "refactron-mcp"],
+        "timeout": 900000 } } }
+
+STEP 4 - Reload.
+
+Gemini CLI picks the server up on the next session. If it does not appear in
+step 5, tell me to restart `gemini`.
+
+STEP 5 - Confirm the tool is exposed.
+
+Run:
+
+    gemini mcp list
+
+`refactron` should show as Connected. Inside a session, `/mcp` shows connected
+servers with their tools expanded.
+
+If it shows Disconnected and the command is right, the folder is not trusted. A
+stdio server only starts in a trusted folder, so tell me to run `gemini trust`
+here. This is the failure that looks like a broken install and is not one.
+
+If it is configured but never connects, check the top-level `mcp` object for an
+`allowed` list that does not name `refactron`.
+
+You are looking for a server named `refactron`, version 0.3.0, exposing exactly
+ONE tool: `verify_change`.
+
+If the server is connected but no tool appears, the handshake failed. Prove the
+binary itself works by sending it one initialize request:
+
+    echo '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"probe","version":"1.0"}}}' | refactron-mcp
+
+A working server replies on one line with serverInfo.name "refactron". If that
+works and the client still shows nothing, the fault is the config: check the
+root key and check that the file parses.
+
+STEP 6 - Prove it works with one real verification.
+
+Do not skip this. A connected server is not a working server.
+
+Pick one small source file that this project's test suite exercises. Propose a
+real but behaviour-preserving edit to it: reorder the operands of a commutative
+expression, rename a local variable, that kind of thing. One or two lines.
+
+Do NOT write that edit to disk. Call verify_change with the proposal instead:
+
+    repoRoot  the ABSOLUTE path to this repository
+    edits     [{ "path": "<repo-relative path>",
+                 "newContent": "<the full proposed file contents>" }]
+    testCmd   the project's test command, if it is not obvious. For a Python
+              project installed into the environment (an editable
+              `pip install -e .` included), prefix it with PYTHONPATH=. so the
+              tests import the copy being verified rather than the installed
+              one. Use PYTHONPATH=src for a src layout.
+
+Verify the change BEFORE it exists on disk. The shadow tree is a copy of the
+working tree, so if you write the change first and then pass a `git diff` of
+it, the diff no longer applies and you get "diff did not apply (stale base?)"
+back instead of a verdict.
+
+Verification runs the whole test suite in a shadow copy, so it can take minutes
+on a real project. That is the work, not a hang.
+
+STEP 7 - Report, then stop.
+
+Tell me:
+  - which file you wrote, or which command you ran
+  - the exact `verdict` and the exact `reason` from the response
+  - the value of `coverage.tool`: "coverage.py" means coverage was measured,
+    "none" means it was not
+
+Apply nothing. The step 6 edit was a probe. Confirm with `git status` that the
+working tree is exactly as dirty as you found it, and no more.
+
+Do not describe a SAFE verdict as "correct", "proven", or "guaranteed". SAFE
+means the project's own tests ran the changed code and stayed green. It
+inherits exactly what those tests check, and a weak suite yields a weak SAFE.
+```
+
+</div>
+
+Prefer to do it yourself? The rest of this page is the same setup by hand.
+
+## Config location
+
+| Scope   | Path                                           | Applies to        |
+| ------- | ---------------------------------------------- | ----------------- |
+| User    | `~/.gemini/settings.json`                      | Every project     |
+| Project | `.gemini/settings.json` in the repository root | This project only |
+
+`gemini mcp add` defaults to **project** scope, so it writes `.gemini/settings.json` unless you ask otherwise.
+
+## Add it
+
+```bash
+gemini mcp add refactron refactron-mcp
+```
+
+That writes the project file. For every project on the machine, use user scope:
+
+```bash
+gemini mcp add --scope user refactron refactron-mcp
+```
+
+By hand, add this to `settings.json` alongside the objects already there:
+
+```json
+{
+  "mcpServers": {
+    "refactron": {
+      "command": "refactron-mcp",
+      "timeout": 900000
+    }
+  }
+}
+```
+
+`timeout` is in **milliseconds** here, not seconds. Gemini CLI defaults to 600000 (10 minutes), which is the same order as Refactron's own 600 second test-gate default, so a suite that runs long enough to hit one will be near the other. Set it above your slowest full suite run.
+
+To pin the version and skip the global install:
+
+```json
+{
+  "mcpServers": {
+    "refactron": {
+      "command": "npx",
+      "args": ["-y", "-p", "refactron@0.3.0", "refactron-mcp"],
+      "timeout": 900000
+    }
+  }
+}
+```
+
+The `-p` flag is required. `refactron-mcp` is a second binary of the `refactron` package, not a package of its own.
+
+## Verify the connection
+
+```bash
+gemini mcp list
+```
+
+```text
+✓ refactron: command: refactron-mcp (stdio) - Connected
+```
+
+Inside a session, the `/mcp` slash command shows connected servers with their tools expanded. You are looking for one tool, `verify_change`, under `refactron`.
+
+## Troubleshooting
+
+- **The server shows `Disconnected` and the command is right**: Gemini CLI only starts a stdio server in a trusted folder. Run `gemini trust` in the project directory, then list again. This is the failure that looks like a broken install and is not one.
+- **`gemini mcp add` put it somewhere unexpected**: the default scope is project, so the entry landed in `.gemini/settings.json` in whatever directory you ran it from. Re-run with `--scope user` for a machine-wide entry.
+- **`command not found` on launch**: run `which refactron-mcp`. If it prints nothing, run `npm install -g refactron@0.3.0`, or switch to the `npx` form above.
+- **A verification is cut off partway**: `timeout` is milliseconds. `900` means 0.9 seconds, not 15 minutes, and every call fails instantly.
+- **Confirmation prompts on every call**: set `"trust": true` on the `refactron` entry to skip them. The server reads your repository and writes only to a temporary shadow copy, so this is a reasonable server to trust. It is a per-server setting, so it does not loosen anything else.
+- **The server is configured but excluded**: check the top-level `mcp` object for an `allowed` list. If `mcp.allowed` is set and does not name `refactron`, the CLI never connects to it.

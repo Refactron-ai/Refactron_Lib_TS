@@ -1,0 +1,197 @@
+---
+title: Cursor
+icon: /assets/clients/cursor.svg
+description: Add the Refactron MCP server to Cursor with a project .cursor/mcp.json or the global ~/.cursor/mcp.json.
+---
+
+Cursor reads MCP servers from a project file or a global one. The project file is the better default: it travels with the repository, so everyone on the team gets the same gate.
+
+## Set it up with your agent
+
+One prompt, written for Cursor to read rather than you. It installs the
+server, registers it, reloads, and proves the tool works with a real
+verification.
+
+<div className="agent-prompt">
+
+```text
+Set up the Refactron MCP server for yourself in this repository and prove it
+works before you tell me it is done. Do the steps in order.
+
+You are running in Cursor.
+
+STEP 1 - Check the prerequisites.
+
+Run `node --version`. Refactron needs Node.js 18 or newer. If it is older or
+missing, stop and tell me.
+
+Run `python3 --version`, then check that `pytest` and `coverage` are
+importable. Coverage attestation is Python-only, and it is what makes a
+coverage-backed SAFE verdict possible. Without it the server still runs and
+still gates the change, but every verdict caps at UNPROVEN.
+
+STEP 2 - Install the server.
+
+Run `which refactron-mcp`, or `where refactron-mcp` on Windows. If it prints a
+path, go to step 3. Otherwise install it:
+
+    npm install -g refactron@0.3.0
+
+That puts two binaries on PATH: `refactron` (the CLI) and `refactron-mcp` (the
+MCP server). If you cannot install globally, install nothing and use the npx
+form in step 3 instead.
+
+Do not use `pip install refactron` for this. The PyPI wrapper provides the
+`refactron` command only. It does not ship `refactron-mcp`.
+
+STEP 3 - Register the server.
+
+Create `.cursor/mcp.json` in the repository root, root key "mcpServers". The
+project file is the better default: it travels with the repository, so the
+whole team gets the same gate. The global file is ~/.cursor/mcp.json.
+
+    { "mcpServers": { "refactron": { "command": "refactron-mcp" } } }
+
+Merge into the existing "mcpServers" object if the file already has servers.
+
+Without a global install, use this instead. The `-p` flag is required, because
+`refactron-mcp` is a second binary of the `refactron` package and not a package
+of its own:
+
+    { "mcpServers": { "refactron": { "command": "npx",
+        "args": ["-y", "-p", "refactron@0.3.0", "refactron-mcp"] } } }
+
+STEP 4 - Reload.
+
+Cursor reloads MCP servers on a toggle, not on file save.
+
+You cannot do this yourself. Tell me to open Cursor Settings, then Tools &
+Integrations, called MCP in older builds, and switch the `refactron` toggle off
+and back on. Wait for me before you continue.
+
+STEP 5 - Confirm the tool is exposed.
+
+Ask me to confirm that `refactron` shows a green indicator in Cursor Settings
+under Tools & Integrations, with one tool beneath it.
+
+Tools are only available in Agent mode. Ask mode does not call tools at all, so
+if you cannot see the tool, check the mode before you suspect the config.
+
+You are looking for a server named `refactron`, version 0.3.0, exposing exactly
+ONE tool: `verify_change`.
+
+If the server is connected but no tool appears, the handshake failed. Prove the
+binary itself works by sending it one initialize request:
+
+    echo '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"probe","version":"1.0"}}}' | refactron-mcp
+
+A working server replies on one line with serverInfo.name "refactron". If that
+works and the client still shows nothing, the fault is the config: check the
+root key and check that the file parses.
+
+STEP 6 - Prove it works with one real verification.
+
+Do not skip this. A connected server is not a working server.
+
+Pick one small source file that this project's test suite exercises. Propose a
+real but behaviour-preserving edit to it: reorder the operands of a commutative
+expression, rename a local variable, that kind of thing. One or two lines.
+
+Do NOT write that edit to disk. Call verify_change with the proposal instead:
+
+    repoRoot  the ABSOLUTE path to this repository
+    edits     [{ "path": "<repo-relative path>",
+                 "newContent": "<the full proposed file contents>" }]
+    testCmd   the project's test command, if it is not obvious. For a Python
+              project installed into the environment (an editable
+              `pip install -e .` included), prefix it with PYTHONPATH=. so the
+              tests import the copy being verified rather than the installed
+              one. Use PYTHONPATH=src for a src layout.
+
+Verify the change BEFORE it exists on disk. The shadow tree is a copy of the
+working tree, so if you write the change first and then pass a `git diff` of
+it, the diff no longer applies and you get "diff did not apply (stale base?)"
+back instead of a verdict.
+
+Verification runs the whole test suite in a shadow copy, so it can take minutes
+on a real project. That is the work, not a hang.
+
+STEP 7 - Report, then stop.
+
+Tell me:
+  - which file you wrote, or which command you ran
+  - the exact `verdict` and the exact `reason` from the response
+  - the value of `coverage.tool`: "coverage.py" means coverage was measured,
+    "none" means it was not
+
+Apply nothing. The step 6 edit was a probe. Confirm with `git status` that the
+working tree is exactly as dirty as you found it, and no more.
+
+Do not describe a SAFE verdict as "correct", "proven", or "guaranteed". SAFE
+means the project's own tests ran the changed code and stayed green. It
+inherits exactly what those tests check, and a weak suite yields a weak SAFE.
+```
+
+</div>
+
+Prefer to do it yourself? The rest of this page is the same setup by hand.
+
+## Config location
+
+| Scope   | Path                                                    | Applies to             |
+| ------- | ------------------------------------------------------- | ---------------------- |
+| Project | `.cursor/mcp.json` in the repository root               | This project only      |
+| Global  | `~/.cursor/mcp.json` (`%USERPROFILE%\.cursor\mcp.json`) | Every project you open |
+
+## Add it
+
+Create the file if it does not exist:
+
+```bash
+mkdir -p .cursor
+```
+
+```json
+{
+  "mcpServers": {
+    "refactron": {
+      "command": "refactron-mcp"
+    }
+  }
+}
+```
+
+To pin the version and skip the global install:
+
+```json
+{
+  "mcpServers": {
+    "refactron": {
+      "command": "npx",
+      "args": ["-y", "-p", "refactron@0.3.0", "refactron-mcp"]
+    }
+  }
+}
+```
+
+The `-p` flag is required. `refactron-mcp` is a second binary of the `refactron` package, not a package of its own.
+
+## Verify the connection
+
+Open **Cursor Settings** then **Tools & Integrations** (called **MCP** in older builds). `refactron` appears in the list with a green indicator and one tool beneath it: `verify_change`.
+
+Then ask the agent in a Chat pane, with Agent mode selected:
+
+```text
+List the tools you have from the refactron MCP server.
+```
+
+It should name `verify_change` and nothing else.
+
+## Troubleshooting
+
+- **The server shows red or `Client closed`**: Cursor could not launch the command. Run `which refactron-mcp`. If it prints nothing, run `npm install -g refactron@0.3.0`, or switch to the `npx` form above.
+- **Nothing appears after saving**: Cursor reloads servers on a toggle, not on file save. Switch the `refactron` toggle off and on in the settings pane.
+- **The tool exists but the agent never calls it**: tools are only available in Agent mode. Ask mode does not call tools. See [Make it verify, not just connect](/mcp/index#make-it-verify-not-just-connect) for a rule that makes the agent verify on its own.
+- **`repoRoot` errors**: the tool needs an absolute path. Tell the agent to pass the project's absolute path, not `.` and not a path relative to anything.
+- **A verification takes minutes**: `verify_change` runs your real test suite in a shadow copy. Long is expected on a large suite.

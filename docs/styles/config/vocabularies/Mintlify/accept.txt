@@ -46,3 +46,17 @@ config
 npm
 venv
 sdist
+Cline
+Windsurf
+Zed
+Codeium
+Cascade
+Copilot
+stdio
+mcp
+JSON-RPC
+globalStorage
+Jinja
+TOML
+Codex
+Gemini
