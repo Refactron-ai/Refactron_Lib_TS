@@ -34,7 +34,9 @@ describe('python-line-coverage reporter', () => {
   // environment to the resolver shows up as a wrong path rather than passing
   // silently. Without this the resolver would search the ambient PATH while the
   // gate's shell searched the prefixed one, and pick a DIFFERENT executable.
-  const RESOLVES = (n: string, env: Record<string, string>) => `${env.PATH ?? '/venv/bin'}/${n}`;
+  const RESOLVES = (n: string, env: Record<string, string>) => ({
+    script: `${env.PATH ?? '/venv/bin'}/${n}`,
+  });
   const UNRESOLVABLE = () => null;
 
   it.skipIf(NO_COVERAGE)(
@@ -427,7 +429,7 @@ describe('python-line-coverage reporter', () => {
       const { toCoverageRunArgs } =
         await import('../../src/analyze/coverage/python-line-coverage.js');
 
-      const resolves = (name: string) => `/venv/bin/${name}`;
+      const resolves = (name: string) => ({ script: `/venv/bin/${name}` });
       expect(toCoverageRunArgs('pytest -q', resolves)).toEqual({
         args: ['/venv/bin/pytest', '-q'],
         env: {},
@@ -472,7 +474,9 @@ describe('python-line-coverage reporter', () => {
       await fs.writeFile(path.join(a, 'tool'), '#!/usr/bin/env python3\nprint(1)\n', {
         mode: 0o755,
       });
-      expect(resolveConsoleScript('tool', { PATH: PATHV })).toBe(path.join(a, 'tool'));
+      expect(resolveConsoleScript('tool', { PATH: PATHV })).toEqual({
+        script: path.join(a, 'tool'),
+      });
 
       // The FIRST executable match wins, and if it is not a Python script we
       // decline instead of looking further down PATH. A pyenv or asdf shim is
@@ -505,12 +509,18 @@ describe('python-line-coverage reporter', () => {
       await fs.writeFile(path.join(a, 'crlf'), '#!/usr/bin/env python3\r\nprint(4)\r\n', {
         mode: 0o755,
       });
-      expect(resolveConsoleScript('crlf', { PATH: PATHV })).toBe(path.join(a, 'crlf'));
+      expect(resolveConsoleScript('crlf', { PATH: PATHV })).toEqual({
+        script: path.join(a, 'crlf'),
+      });
 
       // A long venv shebang beyond the old 128-byte read window.
       const deep = '/' + 'd'.repeat(200) + '/bin/python3';
       await fs.writeFile(path.join(a, 'deep'), `#!${deep}\nprint(5)\n`, { mode: 0o755 });
-      expect(resolveConsoleScript('deep', { PATH: PATHV })).toBe(path.join(a, 'deep'));
+      // An absolute shebang, so the interpreter comes back with it (issue #99).
+      expect(resolveConsoleScript('deep', { PATH: PATHV })).toEqual({
+        script: path.join(a, 'deep'),
+        interpreter: deep,
+      });
 
       // A binary with no shebang (the Windows `.exe` shape) is not runnable by
       // `coverage run`.
@@ -543,9 +553,78 @@ describe('python-line-coverage reporter', () => {
         await fs.writeFile(path.join(b, 'tool'), '#!/usr/bin/env python3\nprint(2)\n', {
           mode: 0o755,
         });
-        expect(resolveConsoleScript('tool', { PATH: PATHV })).toBe(path.join(b, 'tool'));
+        expect(resolveConsoleScript('tool', { PATH: PATHV })).toEqual({
+          script: path.join(b, 'tool'),
+        });
       },
     );
+
+    it.skipIf(NO_COVERAGE || process.platform === 'win32')(
+      'declines when the shebang interpreter cannot run coverage (issue #99)',
+      async () => {
+        // Running the script under OUR python instead of its own is not parity,
+        // and when it fails the shadow-bypass floor blamed the user's sys.path
+        // and told them to add PYTHONPATH=. -- a remedy that cannot work,
+        // because nothing was wrong with sys.path. Decline with the truth.
+        const root = await fs.mkdtemp(path.join(os.tmpdir(), 'cov-interp-'));
+        const bin = path.join(root, 'bin');
+        await fs.mkdir(bin);
+
+        // A python that exists but cannot run coverage.
+        const nocov = path.join(bin, 'python-nocov');
+        await fs.writeFile(
+          nocov,
+          '#!/bin/sh\ncase "$*" in *"-m coverage"*) exit 1;; *) exit 0;; esac\n',
+          { mode: 0o755 },
+        );
+        // A console script that names it.
+        await fs.writeFile(path.join(bin, 'tool'), `#!${nocov}\nprint(1)\n`, { mode: 0o755 });
+
+        const result = await reportCoverage({
+          projectRoot: FIXTURE,
+          // A hoisted PATH is forwarded to the resolver, so this points it at
+          // our bin without needing a new input. Our own python is fine, which
+          // is exactly why the old code sailed on and measured a run the gate
+          // never performed.
+          testCmd: `PATH=${bin} tool`,
+          _probeOverride: true,
+        });
+
+        expect(result.measurementFailed).toBe(true);
+        expect(String(result.measurementFailureReason)).toContain(nocov);
+      },
+    );
+
+    it('carries the shebang interpreter, not just the script (issue #99)', async () => {
+      // `coverage run <script>` runs the file as SOURCE in the current
+      // interpreter; it never honours the shebang, while the shell that runs
+      // the gate does. So resolving the file is only half of parity: a venv's
+      // pytest executed by the system python3 is a different program.
+      const { resolveConsoleScript } =
+        await import('../../src/analyze/coverage/python-line-coverage.js');
+
+      const root = await fs.mkdtemp(path.join(os.tmpdir(), 'cov-shebang-'));
+      const bin = path.join(root, 'bin');
+      await fs.mkdir(bin);
+
+      // An absolute shebang, which is what pip writes into a venv console script.
+      await fs.writeFile(path.join(bin, 'tool'), '#!/opt/venv/bin/python3.11\nprint(1)\n', {
+        mode: 0o755,
+      });
+      expect(resolveConsoleScript('tool', { PATH: bin })).toEqual({
+        script: path.join(bin, 'tool'),
+        interpreter: '/opt/venv/bin/python3.11',
+      });
+
+      // `#!/usr/bin/env python3` names no specific interpreter, so there is
+      // nothing to override and the caller's python stands.
+      await fs.writeFile(path.join(bin, 'envtool'), '#!/usr/bin/env python3\nprint(1)\n', {
+        mode: 0o755,
+      });
+      expect(resolveConsoleScript('envtool', { PATH: bin })).toEqual({
+        script: path.join(bin, 'envtool'),
+      });
+    });
 
     it('DECLINES an entry point it cannot resolve, never falling back (issue #98)', async () => {
       // There is deliberately no fallback to module form. `-m` prepends CWD to

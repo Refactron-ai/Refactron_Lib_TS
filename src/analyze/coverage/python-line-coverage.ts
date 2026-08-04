@@ -150,6 +150,14 @@ const TILDE_EXPANDS_RE = /(^|:)~/;
 export interface CoverageRunPlan {
   args: string[];
   env: Record<string, string>;
+  /** The interpreter named by a resolved console script's shebang, when it is
+   *  an absolute path. `coverage run <script>` runs the file as SOURCE in the
+   *  CURRENT interpreter and never honours the shebang, while the shell that
+   *  runs the tests gate does, so without this a venv's pytest would be
+   *  executed by whatever python we happened to spawn. Absent when the shebang
+   *  names no specific interpreter (`#!/usr/bin/env python3`), where the
+   *  caller's python resolves the same way the shell's would. */
+  interpreter?: string;
 }
 
 /** Resolves a console entry point (`pytest`) to the script file a shell would
@@ -157,7 +165,15 @@ export interface CoverageRunPlan {
  *  hand to `coverage run` positionally. Injected so the classifier stays pure
  *  and testable, and REQUIRED so no call site can omit it and silently select a
  *  spawn shape the gate would not have used. */
-export type EntryPointResolver = (name: string, env: Record<string, string>) => string | null;
+export interface ResolvedEntryPoint {
+  script: string;
+  interpreter?: string;
+}
+
+export type EntryPointResolver = (
+  name: string,
+  env: Record<string, string>,
+) => ResolvedEntryPoint | null;
 
 export function toCoverageRunArgs(
   testCmd: string,
@@ -217,7 +233,13 @@ export function toCoverageRunArgs(
   // ORIGINAL tree, coverage now measures that tree too, the shadow file is
   // absent from measuredFiles, and the guard fires as designed.
   const resolved = resolveEntryPoint(head, env);
-  if (resolved !== null) return { args: [resolved, ...rest.slice(1)], env };
+  if (resolved !== null) {
+    return {
+      args: [resolved.script, ...rest.slice(1)],
+      env,
+      ...(resolved.interpreter ? { interpreter: resolved.interpreter } : {}),
+    };
+  }
 
   // Unresolvable, so decline. There is deliberately no fallback to `-m` here.
   //
@@ -249,7 +271,10 @@ export function toCoverageRunArgs(
  *  the caller falls back to module form. Resolution uses the EFFECTIVE PATH,
  *  including any hoisted `PATH=` prefix, so it agrees with what the gate's
  *  shell would have resolved. */
-export function resolveConsoleScript(name: string, env: Record<string, string>): string | null {
+export function resolveConsoleScript(
+  name: string,
+  env: Record<string, string>,
+): ResolvedEntryPoint | null {
   // A name containing a separator is a path, not a PATH lookup. The shell runs
   // it relative to ITS cwd, which is the shadow root and not this process's cwd,
   // so we cannot reproduce it here.
@@ -290,7 +315,17 @@ export function resolveConsoleScript(name: string, env: Record<string, string>):
         // A shim (`#!/usr/bin/env bash`, pyenv and asdf install these), a
         // native launcher (Windows `.exe`), or a shebang we cannot read is not
         // one, and the caller declines rather than substituting module form.
-        if (first.startsWith('#!') && /python/i.test(first)) return candidate;
+        if (first.startsWith('#!') && /python/i.test(first)) {
+          // Extract the interpreter the kernel would exec. `#!/usr/bin/env x`
+          // defers to PATH, which resolves the same way for us, so there is
+          // nothing to override; an absolute path must be honoured.
+          const words = first.slice(2).trim().split(/\s+/);
+          let interp = words[0] ?? '';
+          if (/(^|\/)env$/.test(interp)) interp = words[1] ?? '';
+          return path.isAbsolute(interp)
+            ? { script: candidate, interpreter: interp }
+            : { script: candidate };
+        }
       } finally {
         fsSync.closeSync(fd);
       }
@@ -374,6 +409,41 @@ export async function reportCoverage(input: CoverageReportInput): Promise<Covera
     };
   }
 
+  // Run a resolved console script under the interpreter its shebang names, not
+  // under ours. `coverage run <script>` executes the file as source in the
+  // CURRENT interpreter, so without this a venv's pytest would run under
+  // whatever python we spawned: a different set of installed packages, and a
+  // failure the shadow-bypass floor would then blame on the user's sys.path,
+  // telling them to add PYTHONPATH=. when nothing was wrong with it.
+  //
+  // That interpreter must be able to run coverage itself. If it cannot, there
+  // is no way to measure the run the gate actually performed, so decline. The
+  // alternative -- falling back to our python -- is the unsound measurement
+  // this whole change exists to remove.
+  let runner = pythonBin;
+  if (plan.interpreter !== undefined && plan.interpreter !== pythonBin) {
+    // Genuinely probed, never short-circuited by `_probeOverride`: that flag
+    // describes OUR python, and the point here is that the script names a
+    // different one.
+    const usable = await probeCoverage(plan.interpreter, input.projectRoot);
+    if (!usable) {
+      return {
+        coverageToolFound: true,
+        coveredLines: new Set(),
+        measuredFiles: new Set(),
+        executableLines: new Map(),
+        excludedLines: new Map(),
+        runDurationMs: performance.now() - t0,
+        measurementFailed: true,
+        measurementFailureReason:
+          `the test command runs under ${plan.interpreter} (from its shebang), ` +
+          `which cannot run coverage. Install coverage for that interpreter, or use ` +
+          `a test command in module form such as \`python3 -m pytest\`.`,
+      };
+    }
+    runner = plan.interpreter;
+  }
+
   const tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'refactron-cov-'));
   const dataFile = path.join(tmp, '.coverage');
   const jsonFile = path.join(tmp, 'coverage.json');
@@ -399,7 +469,7 @@ export async function reportCoverage(input: CoverageReportInput): Promise<Covera
     // a data file was written at all. A command coverage could not launch
     // leaves nothing behind, and that must read as unknown, not zero.
     const runArgs = ['-m', 'coverage', 'run', '--data-file', dataFile, ...plan.args];
-    const run = await runCmd(pythonBin, runArgs, input.projectRoot, env);
+    const run = await runCmd(runner, runArgs, input.projectRoot, env);
     const wroteData = await fs
       .access(dataFile)
       .then(() => true)
