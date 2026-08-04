@@ -595,6 +595,25 @@ describe('python-line-coverage reporter', () => {
       },
     );
 
+    it.skipIf(NO_COVERAGE)(
+      'an unresolvable entry point declines and names module form (issue #100)',
+      async () => {
+        // Runs on EVERY platform, including the Windows leg, and distinguishes
+        // the two outcomes rather than passing under both. On Windows a console
+        // script is a native `.exe` launcher and can never resolve, so this is
+        // the permanent behaviour there; elsewhere it is what a pyenv, asdf or
+        // nix shim produces. Either way the user must be told what to do, not
+        // just that we refused.
+        const empty = await fs.mkdtemp(path.join(os.tmpdir(), 'cov-nopath-'));
+        const result = await reportCoverage({
+          projectRoot: FIXTURE,
+          testCmd: `PATH=${empty} pytest -q`,
+        });
+        expect(result.measurementFailed).toBe(true);
+        expect(String(result.measurementFailureReason)).toContain('python3 -m pytest');
+      },
+    );
+
     it('carries the shebang interpreter, not just the script (issue #99)', async () => {
       // `coverage run <script>` runs the file as SOURCE in the current
       // interpreter; it never honours the shebang, while the shell that runs

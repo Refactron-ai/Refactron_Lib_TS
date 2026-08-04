@@ -405,7 +405,17 @@ export async function reportCoverage(input: CoverageReportInput): Promise<Covera
       excludedLines: new Map(),
       runDurationMs: performance.now() - t0,
       measurementFailed: true,
-      measurementFailureReason: `cannot wrap test command for coverage: ${testCmd}`,
+      // Name the remedy. The dominant reason to land here is a console entry
+      // point we could not resolve to a Python script: a Windows `.exe`
+      // launcher, or a pyenv/asdf/nix shell shim. Module form is always
+      // measurable because it is equivalent in both spawn shapes, so say so
+      // rather than leaving the user with a bare refusal.
+      measurementFailureReason:
+        `cannot run this test command under coverage: ${testCmd}. ` +
+        `If it names a console entry point (for example \`pytest\`), use module ` +
+        `form instead (\`python3 -m pytest\`), which can be measured on every ` +
+        `platform. Console scripts are native launchers on Windows and shell ` +
+        `shims under pyenv, asdf and nix, and neither can be run under coverage.`,
     };
   }
 
