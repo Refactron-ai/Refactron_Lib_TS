@@ -52,7 +52,7 @@ describe('python-line-coverage reporter', () => {
       console.warn('skipping: coverage.py not installed');
       return;
     }
-    const result = await reportCoverage({ projectRoot: FIXTURE, testCmd: 'pytest -q' });
+    const result = await reportCoverage({ projectRoot: FIXTURE, testCmd: 'python3 -m pytest -q' });
     expect(result.coverageToolFound).toBe(true);
     expect(result.coveredLines.has('svc_tested.py:2')).toBe(true); // tested_function return
     expect(result.coveredLines.has('svc_tested.py:5')).toBe(false); // untested_function return
@@ -70,7 +70,7 @@ describe('python-line-coverage reporter', () => {
       console.warn('skipping: coverage.py not installed');
       return;
     }
-    const result = await reportCoverage({ projectRoot: FIXTURE, testCmd: 'pytest -q' });
+    const result = await reportCoverage({ projectRoot: FIXTURE, testCmd: 'python3 -m pytest -q' });
     const svc = result.executableLines.get('svc_tested.py');
     expect(svc).toBeDefined();
     // Both the executed `return 42` (line 2) and the missing `return 99` (line
@@ -102,7 +102,7 @@ describe('python-line-coverage reporter', () => {
       return;
     }
     const pragma = path.resolve(__dirname, '../fixtures/verify-diff-pragma');
-    const result = await reportCoverage({ projectRoot: pragma, testCmd: 'pytest -q' });
+    const result = await reportCoverage({ projectRoot: pragma, testCmd: 'python3 -m pytest -q' });
     const gated = result.executableLines.get('gated.py');
     expect(gated).toBeDefined();
     // `return "-".join(` at line 6 opens the pragma'd body: excluded, never
@@ -123,7 +123,7 @@ describe('python-line-coverage reporter', () => {
     // For this test we assert the shape when probe fails.
     const result = await reportCoverage({
       projectRoot: FIXTURE,
-      testCmd: 'pytest -q',
+      testCmd: 'python3 -m pytest -q',
       _probeOverride: false, // injected for test isolation
     });
     expect(result.coverageToolFound).toBe(false);
@@ -150,7 +150,7 @@ describe('python-line-coverage reporter', () => {
     await fs.writeFile(path.join(shimDir, 'python-ghost.bat'), '@echo off\r\nexit /b 1\r\n');
     const result = await reportCoverage({
       projectRoot: FIXTURE,
-      testCmd: 'pytest -q',
+      testCmd: 'python3 -m pytest -q',
       pythonBin: shim,
     });
     expect(result.coverageToolFound).toBe(false);
@@ -189,14 +189,33 @@ describe('python-line-coverage reporter', () => {
       expect(result.coveredLines.has('svc.py:6')).toBe(false); // unused() return
     });
 
-    it('still measures coverage for module-form commands (regression guard)', async () => {
-      if (!pythonHasCoverage()) return;
-      for (const testCmd of ['python3 -m pytest -q', 'pytest -q']) {
-        const result = await reportCoverage({ projectRoot: FIXTURE, testCmd });
+    it.skipIf(NO_COVERAGE)(
+      'still measures coverage for module-form commands (regression guard)',
+      async () => {
+        // Equivalent by RECOGNITION: `python3 -m pytest` is module form on both
+        // sides, so this holds on every platform and must never regress.
+        const result = await reportCoverage({
+          projectRoot: FIXTURE,
+          testCmd: 'python3 -m pytest -q',
+        });
         expect(result.measurementFailed).toBe(false);
         expect(result.coveredLines.has('svc_tested.py:2')).toBe(true);
-      }
-    });
+      },
+    );
+
+    // Equivalent by CONSTRUCTION, and only where the construction is possible.
+    // Windows console scripts are native launchers with no Python shebang, so
+    // they cannot be handed to `coverage run` positionally and are declined
+    // instead of being rewritten to the module form that caused issue #98.
+    // Tracked in #100.
+    it.skipIf(NO_COVERAGE || process.platform === 'win32')(
+      'measures a console-script command by resolving it (POSIX)',
+      async () => {
+        const result = await reportCoverage({ projectRoot: FIXTURE, testCmd: 'pytest -q' });
+        expect(result.measurementFailed).toBe(false);
+        expect(result.coveredLines.has('svc_tested.py:2')).toBe(true);
+      },
+    );
 
     it('reports measurementFailed when the coverage run cannot execute', async () => {
       if (!pythonHasCoverage()) return;
@@ -461,16 +480,13 @@ describe('python-line-coverage reporter', () => {
       await fs.mkdir(b);
       const PATHV = [a, b].join(path.delimiter);
 
-      // A shell SKIPS a match it cannot execute and keeps searching. Scanning
-      // past it and taking a later Python script would run a different program
-      // than the gate did: exactly the divergence this exists to remove.
+      // The exec-bit case lives in its own POSIX-only test below: `chmod` is a
+      // no-op on Windows, where every readable file reports executable, so the
+      // property cannot be expressed there.
       await fs.writeFile(path.join(a, 'tool'), '#!/usr/bin/env python3\nprint(1)\n', {
-        mode: 0o644,
-      });
-      await fs.writeFile(path.join(b, 'tool'), '#!/usr/bin/env python3\nprint(2)\n', {
         mode: 0o755,
       });
-      expect(resolveConsoleScript('tool', { PATH: PATHV })).toBe(path.join(b, 'tool'));
+      expect(resolveConsoleScript('tool', { PATH: PATHV })).toBe(path.join(a, 'tool'));
 
       // The FIRST executable match wins, and if it is not a Python script we
       // decline instead of looking further down PATH. A pyenv or asdf shim is
@@ -517,6 +533,33 @@ describe('python-line-coverage reporter', () => {
       });
       expect(resolveConsoleScript('native', { PATH: PATHV })).toBeNull();
     });
+
+    it.skipIf(process.platform === 'win32')(
+      'skips a PATH match it cannot execute, as a shell does (POSIX)',
+      async () => {
+        // A shell skips a non-executable match and keeps searching. Taking it
+        // anyway, or scanning past it to a Python script further down, would run
+        // a different program than the gate did. Both were real defects: the
+        // first attempt at this resolver did exactly that and reintroduced the
+        // false SAFE it was written to remove.
+        const { resolveConsoleScript } =
+          await import('../../src/analyze/coverage/python-line-coverage.js');
+        const root = await fs.mkdtemp(path.join(os.tmpdir(), 'cov-exec-'));
+        const a = path.join(root, 'a');
+        const b = path.join(root, 'b');
+        await fs.mkdir(a);
+        await fs.mkdir(b);
+        const PATHV = [a, b].join(path.delimiter);
+
+        await fs.writeFile(path.join(a, 'tool'), '#!/usr/bin/env python3\nprint(1)\n', {
+          mode: 0o644,
+        });
+        await fs.writeFile(path.join(b, 'tool'), '#!/usr/bin/env python3\nprint(2)\n', {
+          mode: 0o755,
+        });
+        expect(resolveConsoleScript('tool', { PATH: PATHV })).toBe(path.join(b, 'tool'));
+      },
+    );
 
     it('DECLINES an entry point it cannot resolve, never falling back (issue #98)', async () => {
       // There is deliberately no fallback to module form. `-m` prepends CWD to
@@ -584,7 +627,7 @@ describe('python-line-coverage reporter', () => {
       );
       const result = await reportCoverage({
         projectRoot: FIXTURE,
-        testCmd: 'pytest -q',
+        testCmd: 'python3 -m pytest -q',
         pythonBin: shim,
       });
       expect(result.measurementFailed).toBe(true);
@@ -614,7 +657,7 @@ describe('python-line-coverage reporter', () => {
       return;
     }
     const phantom = path.resolve(__dirname, '../fixtures/coverage-phantom');
-    const result = await reportCoverage({ projectRoot: phantom, testCmd: 'pytest -q' });
+    const result = await reportCoverage({ projectRoot: phantom, testCmd: 'python3 -m pytest -q' });
     expect(result.coverageToolFound).toBe(true);
     expect(result.coveredLines.has('svc.py:2')).toBe(true); // covered_function return
   });

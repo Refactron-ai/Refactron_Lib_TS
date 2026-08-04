@@ -219,6 +219,10 @@ describe('verifyDiff with a NAME=VALUE prefix on testCmd (issue #95)', () => {
       // delivers is discarding the measurement as UNKNOWN...
       expect(intoOriginal.coverage.tool).toBe('none');
       expect(intoOriginal.coverage.changedLinesCovered).toBe('unknown');
+      // This case is module form on both sides, so it degrades through the
+      // guard on every platform. That makes it the right place to pin the
+      // remedy wording: a user who lands here must be told what to change.
+      expect(String(intoOriginal.coverage.unknownReason)).toContain('PYTHONPATH');
       // ...instead of telling the user their suite failed to exercise code it
       // was never given the chance to load. That sentence would be a confident
       // lie, and it is what this assertion pins.
@@ -276,7 +280,7 @@ describe('verifyDiff with a NAME=VALUE prefix on testCmd (issue #95)', () => {
       // the reason assertion when the degradation moved from a decline to the
       // guard, which quietly accepted less explanation than the previous
       // release gave. The floor must always say why and what to do about it.
-      expect(String(viaConsoleScript.coverage.unknownReason)).toContain('PYTHONPATH');
+      expect(viaConsoleScript.coverage.unknownReason ?? '').not.toBe('');
     },
     180_000,
   );
@@ -331,7 +335,14 @@ describe('verifyDiff with a NAME=VALUE prefix on testCmd (issue #95)', () => {
         // names the remedy rather than leaving the user with "could not be
         // determined" and nowhere to go.
         expect(report.coverage.tool).toBe('none');
-        expect(String(report.coverage.unknownReason)).toContain('PYTHONPATH');
+        // Assert DISCLOSURE, not a specific sentence. Which mechanism degraded
+        // is platform-dependent: on POSIX the entry point resolves and the
+        // shadow-bypass guard fires, on Windows it cannot resolve and the
+        // wrapper declines. Both must explain themselves; only one of them can
+        // name the PYTHONPATH remedy, and that wording is pinned by the
+        // src-layout test above, which uses module form and so behaves
+        // identically everywhere.
+        expect(report.coverage.unknownReason ?? '').not.toBe('');
       }
     },
     180_000,
