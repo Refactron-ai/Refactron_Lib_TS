@@ -52,6 +52,26 @@ export interface CoverageReport {
   measurementFailureReason?: string;
 }
 
+// THE RULE THIS MODULE IS GOVERNED BY
+//
+// `toCoverageRunArgs` returns non-null only when the argv and env it produces
+// are observationally equivalent to what `sh -c <testCmd>` would have run.
+// Anything it cannot prove equivalent returns null and the verdict degrades to
+// unknown.
+//
+// This is not conservatism for its own sake. The tests gate runs the command
+// through a shell (`src/verify/runners/detect.ts`); this path rebuilds it as
+// argv because `coverage run` takes argv. If the two disagree about what runs,
+// a SAFE verdict becomes two individually-true claims about two DIFFERENT
+// executions: the gate proved one tree green, coverage proved another tree
+// exercised. That is not a weaker SAFE, it is an incoherent one, and it is how
+// this module produced a false SAFE once already (see the entry-point note in
+// toCoverageRunArgs). Losing a measurement costs a verdict; losing equivalence
+// costs the truth of every verdict this module supports.
+//
+// So: new shell features get taught to this path only when equivalence can be
+// PROVEN, not when a bug report asks for them.
+
 // Shell metacharacters mean the command is a composite the coverage wrapper
 // cannot reliably wrap (`pytest && lint`, pipes, substitutions). Guessing here
 // risks measuring only part of the suite, so we decline and report unknown.
@@ -92,26 +112,100 @@ function tokenizeCommand(cmd: string): string[] {
   return out;
 }
 
-export function toCoverageRunArgs(testCmd: string): string[] | null {
+/** A leading `NAME=VALUE` token, as a shell would read it. The name must be a
+ *  valid shell identifier, so `--opt=1` and `-k` are flags rather than
+ *  assignments, and an empty value is legal (`FOO= cmd` unsets FOO). */
+const ASSIGNMENT_RE = /^([A-Za-z_][A-Za-z0-9_]*)=(.*)$/s;
+
+/** A `~` the shell would expand: at the start of the value, or after any `:`,
+ *  since tilde expansion applies to each colon-separated segment of a
+ *  PATH-like assignment value. */
+const TILDE_EXPANDS_RE = /(^|:)~/;
+
+/** Variables that can change WHICH copy of a module Python imports. When one of
+ *  these is set, the interpreter's own sys.path[0] rule decides who wins, so a
+ *  spawn-shape difference between the gate and this runner stops being cosmetic
+ *  and starts selecting a different tree. See the entry-point note below. */
+const IMPORT_AFFECTING_RE = /^(PYTHON[A-Z0-9_]*|PATH|VIRTUAL_ENV|CONDA_PREFIX)$/;
+
+/** What to hand `coverage run`, plus any environment the command carried.
+ *  The env is separate because `coverage run` takes argv, not a shell line. */
+export interface CoverageRunPlan {
+  args: string[];
+  env: Record<string, string>;
+}
+
+export function toCoverageRunArgs(testCmd: string): CoverageRunPlan | null {
   if (SHELL_COMPOSITE_RE.test(testCmd)) return null;
   const tokens = tokenizeCommand(testCmd);
   if (tokens.length === 0) return null;
 
+  // Hoist a leading run of `NAME=VALUE` assignments. The tests gate runs the
+  // command through `sh -c`, where these are environment assignments; this
+  // runner spawns argv directly, so without hoisting `PYTHONPATH=.` was
+  // classified as a MODULE NAME below and `coverage run -m PYTHONPATH=.` wrote
+  // no data file at all. That silently capped every project following our own
+  // shadow-bypass advice at UNPROVEN. Stop at the first non-assignment, so a
+  // real argument that merely contains `=` (`pytest -k a=b`) is never eaten.
+  const env: Record<string, string> = {};
+  let i = 0;
+  for (; i < tokens.length; i++) {
+    const m = ASSIGNMENT_RE.exec(tokens[i] ?? '');
+    if (!m) break;
+    const value = m[2] as string;
+    // `PYTHONPATH=$HOME/x` and `PYTHONPATH=~/x` are expanded by the shell the
+    // tests gate runs under, and would be passed through literally here. The
+    // two runs would then see different paths, so the coverage numbers would
+    // describe a run that was never verified. Decline instead: unknown is
+    // honest, a mismatch is not. (Backticks and `$(` are already refused by
+    // SHELL_COMPOSITE_RE above. Tilde expands after each `:` in a PATH-like
+    // value, so it is refused anywhere a path segment can start.)
+    if (value.includes('$') || TILDE_EXPANDS_RE.test(value)) return null;
+    env[m[1] as string] = value;
+  }
+  const afterEnv = tokens.slice(i);
+  if (afterEnv.length === 0) return null;
+
   // Drop a leading interpreter: `python3 -m pytest` and `python3 script.py`
   // both describe what to run, not how to spawn it.
-  let rest = tokens;
-  if (/^python[0-9.]*$/.test(tokens[0] ?? '')) rest = tokens.slice(1);
+  let rest = afterEnv;
+  if (/^python[0-9.]*$/.test(afterEnv[0] ?? '')) rest = afterEnv.slice(1);
   if (rest.length === 0) return null;
 
   const head = rest[0] ?? '';
   if (head === '-m') {
     const mod = rest.slice(1);
-    return mod.length > 0 ? ['-m', ...mod] : null;
+    return mod.length > 0 ? { args: ['-m', ...mod], env } : null;
   }
   // A script path (ends in .py, or is a path) runs positionally; anything else
   // is a console entry point we invoke as a module (pytest, vitest).
-  if (head.endsWith('.py') || head.includes('/') || head.includes('\\')) return [...rest];
-  return ['-m', ...rest];
+  if (head.endsWith('.py') || head.includes('/') || head.includes('\\')) {
+    return { args: [...rest], env };
+  }
+
+  // Console entry point, rewritten to module form. This rewrite is NOT
+  // equivalent to the gate's spawn when an import-affecting variable is set,
+  // and the difference silently selects a different copy of the code:
+  //
+  //   gate      sh -c "PYTHONPATH=<other> pytest -q"   console script:
+  //                                                    sys.path[0] is the bin
+  //                                                    dir, so PYTHONPATH wins
+  //   this path coverage run -m pytest -q              `-m` puts CWD FIRST,
+  //                                                    ahead of PYTHONPATH, so
+  //                                                    the shadow tree wins
+  //
+  // The gate then proves the ORIGINAL tree green while coverage proves the
+  // SHADOW tree exercised, and fusing those two true statements yields SAFE for
+  // a change that breaks the suite. That is a false SAFE, reproduced on a flat
+  // layout with `PYTHONPATH=<repoRoot> pytest -q`, and it is the reason the
+  // equivalence rule at the top of this file is written as a rule.
+  //
+  // Declining costs a measurement for this shape and nothing else: the form the
+  // docs teach, `PYTHONPATH=. python3 -m pytest -q`, is module form on BOTH
+  // sides and stays equivalent. Widening the decline can only lose capability;
+  // narrowing it loses soundness.
+  if (Object.keys(env).some((name) => IMPORT_AFFECTING_RE.test(name))) return null;
+  return { args: ['-m', ...rest], env };
 }
 
 /** Probe whether `coverage.py` can actually RUN in the user's Python.
@@ -168,8 +262,8 @@ export async function reportCoverage(input: CoverageReportInput): Promise<Covera
     };
   }
 
-  const cmdArgs = toCoverageRunArgs(testCmd);
-  if (cmdArgs === null) {
+  const plan = toCoverageRunArgs(testCmd);
+  if (plan === null) {
     return {
       coverageToolFound: true,
       coveredLines: new Set(),
@@ -185,7 +279,16 @@ export async function reportCoverage(input: CoverageReportInput): Promise<Covera
   const tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'refactron-cov-'));
   const dataFile = path.join(tmp, '.coverage');
   const jsonFile = path.join(tmp, 'coverage.json');
-  const env = { ...process.env, COVERAGE_FILE: dataFile };
+  // Order is deliberate: the command's own assignments override the inherited
+  // environment, which is the point of writing them, and COVERAGE_FILE goes
+  // last so a test command cannot redirect the data file we are about to read.
+  //
+  // That last part is defence in depth, not the load-bearing protection. A
+  // mutation that flips the order alone changes nothing observable, because
+  // `--data-file` is passed on argv to both `coverage run` and `coverage json`
+  // below and argv beats the environment. Both are kept: the ordering states
+  // the intent, `--data-file` enforces it.
+  const env = { ...process.env, ...plan.env, COVERAGE_FILE: dataFile };
 
   const covered = new Set<string>();
   const measured = new Set<string>();
@@ -197,7 +300,7 @@ export async function reportCoverage(input: CoverageReportInput): Promise<Covera
     // (a red suite still produces valid coverage data); what matters is whether
     // a data file was written at all. A command coverage could not launch
     // leaves nothing behind, and that must read as unknown, not zero.
-    const runArgs = ['-m', 'coverage', 'run', '--data-file', dataFile, ...cmdArgs];
+    const runArgs = ['-m', 'coverage', 'run', '--data-file', dataFile, ...plan.args];
     const run = await runCmd(pythonBin, runArgs, input.projectRoot, env);
     const wroteData = await fs
       .access(dataFile)
