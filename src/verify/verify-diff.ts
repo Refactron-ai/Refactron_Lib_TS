@@ -132,7 +132,19 @@ async function assessCoverage(
       (r) => r.lines.length > 0 && !report.measuredFiles.has(normalizePath(r.path)),
     );
     if (unmeasured.length > 0) {
-      return unknownCoverage();
+      // Say WHY, and say what fixes it. This is the dominant degradation path
+      // for a project whose tests import an installed copy, and a bare "could
+      // not be determined" leaves the user with no idea that a one-line change
+      // to their test command would give them a real verdict. The remedy is
+      // documented at verdicts.mdx "Make sure the tests run the code being
+      // verified", but nobody who lands here has a reason to go read it.
+      const names = unmeasured.map((r) => r.path).join(', ');
+      return unknownCoverage(
+        `the test run never imported ${names}, so the suite exercised a different copy ` +
+          `than the one being verified (usually an installed or editable package). ` +
+          `Put the verified tree first on sys.path, for example by prefixing the test ` +
+          `command with PYTHONPATH=. (or PYTHONPATH=src for a src layout).`,
+      );
     }
     // Judge coverage on STATEMENTS, not physical lines, using real extents from
     // the Python AST. coverage.py only ever marks a statement's FIRST line, so a

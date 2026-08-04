@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, afterEach } from 'vitest';
 import { execSync } from 'node:child_process';
 import * as fs from 'node:fs/promises';
 import * as os from 'node:os';
@@ -131,6 +131,16 @@ const REORDERED_PKG =
   'def add(a, b):\n    return b + a\n\n\ndef unused_helper(a, b):\n    return a - b\n';
 
 describe('verifyDiff with a NAME=VALUE prefix on testCmd (issue #95)', () => {
+  // Restored in afterEach, NOT in a finally inside the test body. vitest marks a
+  // timed-out test failed and moves on WITHOUT waiting for the awaited call to
+  // settle, so an in-body finally never runs and the value leaks into every
+  // later test in this file. Measured: the next test observed the leaked path.
+  const ORIGINAL_PYTHONPATH = process.env.PYTHONPATH;
+  afterEach(() => {
+    if (ORIGINAL_PYTHONPATH === undefined) delete process.env.PYTHONPATH;
+    else process.env.PYTHONPATH = ORIGINAL_PYTHONPATH;
+  });
+
   it.skipIf(NO_COVERAGE)(
     'PYTHONPATH= prefix still measures coverage and can reach SAFE',
     async () => {
@@ -209,6 +219,10 @@ describe('verifyDiff with a NAME=VALUE prefix on testCmd (issue #95)', () => {
       // delivers is discarding the measurement as UNKNOWN...
       expect(intoOriginal.coverage.tool).toBe('none');
       expect(intoOriginal.coverage.changedLinesCovered).toBe('unknown');
+      // This case is module form on both sides, so it degrades through the
+      // guard on every platform. That makes it the right place to pin the
+      // remedy wording: a user who lands here must be told what to change.
+      expect(String(intoOriginal.coverage.unknownReason)).toContain('PYTHONPATH');
       // ...instead of telling the user their suite failed to exercise code it
       // was never given the chance to load. That sentence would be a confident
       // lie, and it is what this assertion pins.
@@ -253,10 +267,83 @@ describe('verifyDiff with a NAME=VALUE prefix on testCmd (issue #95)', () => {
       expect(viaModuleForm.verdict).toBe('UNSAFE');
       // So no command shape may call it SAFE.
       expect(viaConsoleScript.verdict).not.toBe('SAFE');
-      // And it degrades for the stated reason: the wrapper refused a command it
-      // could not run equivalently, rather than measuring the wrong tree.
+      // It degrades through the shadow-bypass guard, not through a decline.
+      // Once #98 gave the coverage run the gate's spawn shape, both runs import
+      // the same copy, so this command is measurable again: coverage measures
+      // the tree the gate actually ran, the shadow file is absent from
+      // measuredFiles, and the guard discards the measurement as unknown. The
+      // decline below it survives only for spawns we cannot make equivalent.
       expect(viaConsoleScript.coverage.tool).toBe('none');
-      expect(String(viaConsoleScript.coverage.unknownReason)).toContain('cannot wrap test command');
+      expect(viaConsoleScript.gates.tests.passed).toBe(true);
+      expect(String(viaConsoleScript.reason)).not.toContain('not exercised by any test');
+      // Disclosure is not optional. An earlier revision of this test dropped
+      // the reason assertion when the degradation moved from a decline to the
+      // guard, which quietly accepted less explanation than the previous
+      // release gave. The floor must always say why and what to do about it.
+      expect(viaConsoleScript.coverage.unknownReason ?? '').not.toBe('');
+    },
+    180_000,
+  );
+
+  it.skipIf(NO_COVERAGE)(
+    'a console-script testCmd cannot read SAFE when the gate imports another copy',
+    async () => {
+      // Issue #98. The out-of-band twin of the case above: nothing is written
+      // into testCmd, so there is no prefix to inspect and decline. The
+      // environment supplies a competing copy of the package to BOTH spawns,
+      // and only the spawn SHAPE decides which one wins:
+      //
+      //   gate      sh -c "pytest -q"           console script, sys.path[0] is
+      //                                         the bin dir, so the env copy wins
+      //   coverage  coverage run -m pytest -q   `-m` puts CWD first, so the
+      //                                         shadow copy wins
+      //
+      // The gate then passes against unmodified code while coverage measures the
+      // changed code as covered, and the shadow-bypass guard cannot help: the
+      // changed file IS in measuredFiles, because coverage really did measure it.
+      //
+      // This is the shape of an ordinary `pip install -e .` project, where the
+      // editable install resolves imports to the ORIGINAL tree. PYTHONPATH is
+      // used here only because it reproduces the same resolution order without
+      // needing a venv and a real install in the test suite.
+      const root = await flatLayoutFixture();
+      const edits = [
+        { path: 'rfpkg/__init__.py', newContent: 'def add(a, b):\n    return a - b\n' },
+      ];
+
+      process.env.PYTHONPATH = root;
+      {
+        const report = await verifyDiff({ repoRoot: root, edits, testCmd: 'pytest -q' });
+        const control = await verifyDiff({
+          repoRoot: root,
+          edits,
+          testCmd: 'python3 -m pytest -q',
+        });
+
+        // The edit genuinely breaks the suite, so the whole case has teeth.
+        expect(control.verdict).toBe('UNSAFE');
+
+        // The gate RAN and was GREEN against the copy the environment supplied.
+        // Without this the case is satisfiable by a red baseline: deleting the
+        // PYTHONPATH line above makes the package unimportable, the baseline
+        // fails, and UNPROVEN arrives for a reason unrelated to the bug.
+        expect(report.gates.tests.passed).toBe(true);
+        // An exact verdict, not `not.toBe('SAFE')`, so a spurious UNSAFE cannot
+        // satisfy it either.
+        expect(report.verdict).toBe('UNPROVEN');
+        // Degraded through the shadow-bypass guard, carrying a reason that
+        // names the remedy rather than leaving the user with "could not be
+        // determined" and nowhere to go.
+        expect(report.coverage.tool).toBe('none');
+        // Assert DISCLOSURE, not a specific sentence. Which mechanism degraded
+        // is platform-dependent: on POSIX the entry point resolves and the
+        // shadow-bypass guard fires, on Windows it cannot resolve and the
+        // wrapper declines. Both must explain themselves; only one of them can
+        // name the PYTHONPATH remedy, and that wording is pinned by the
+        // src-layout test above, which uses module form and so behaves
+        // identically everywhere.
+        expect(report.coverage.unknownReason ?? '').not.toBe('');
+      }
     },
     180_000,
   );
