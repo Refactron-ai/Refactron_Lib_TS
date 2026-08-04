@@ -110,7 +110,14 @@ async function assessCoverage(
     // same thing: coverage is UNKNOWN. Reporting an unmeasured empty set as
     // "not exercised by any test" would be a confident lie about the suite.
     if (!report.coverageToolFound || report.measurementFailed) {
-      return unknownCoverage();
+      // Carry the reason. `reportCoverage` knows exactly why it could not
+      // measure ("cannot wrap test command for coverage: ..."), and
+      // tool-reference.mdx promises agents that `coverage.unknownReason` says
+      // why coverage is unknown when we know. Dropping it here reproduced the
+      // very failure this file guards against: a silent UNPROVEN that looks
+      // identical whether the wrapper declined the command or the suite simply
+      // never touched the code. Absent when we genuinely have no reason.
+      return unknownCoverage(report.measurementFailureReason);
     }
     const ranges = await changedLinesForEdits(input.repoRoot, pyEdits);
     // Shadow-bypass guard. If a changed file was never MEASURED at all, the
