@@ -479,84 +479,89 @@ describe('python-line-coverage reporter', () => {
       });
     });
 
-    it('resolves an entry point exactly as a shell would (issue #98)', async () => {
-      // The real resolver, not a stub. Everything the safety argument rests on
-      // lives here: once a console entry point resolves, the classifier stops
-      // consulting anything else, so a resolution that disagrees with the shell
-      // IS a wrong verdict rather than a wrong measurement.
-      const { resolveConsoleScript } =
-        await import('../../src/analyze/coverage/python-line-coverage.js');
+    // POSIX-only by design: resolution declines outright on Windows, which the
+    // platform test below asserts. These build real files and expect a hit.
+    it.skipIf(process.platform === 'win32')(
+      'resolves an entry point exactly as a shell would (issue #98)',
+      async () => {
+        // The real resolver, not a stub. Everything the safety argument rests on
+        // lives here: once a console entry point resolves, the classifier stops
+        // consulting anything else, so a resolution that disagrees with the shell
+        // IS a wrong verdict rather than a wrong measurement.
+        const { resolveConsoleScript } =
+          await import('../../src/analyze/coverage/python-line-coverage.js');
 
-      const root = await fs.mkdtemp(path.join(os.tmpdir(), 'cov-path-'));
-      const a = path.join(root, 'a');
-      const b = path.join(root, 'b');
-      await fs.mkdir(a);
-      await fs.mkdir(b);
-      const PATHV = [a, b].join(path.delimiter);
+        const root = await fs.mkdtemp(path.join(os.tmpdir(), 'cov-path-'));
+        const a = path.join(root, 'a');
+        const b = path.join(root, 'b');
+        await fs.mkdir(a);
+        await fs.mkdir(b);
+        const PATHV = [a, b].join(path.delimiter);
 
-      // The exec-bit case lives in its own POSIX-only test below: `chmod` is a
-      // no-op on Windows, where every readable file reports executable, so the
-      // property cannot be expressed there.
-      await fs.writeFile(path.join(a, 'tool'), '#!/usr/bin/env python3\nprint(1)\n', {
-        mode: 0o755,
-      });
-      expect(resolveConsoleScript('tool', { PATH: PATHV })).toEqual({
-        script: path.join(a, 'tool'),
-        interpreter: 'python3',
-      });
+        // The exec-bit case lives in its own POSIX-only test below: `chmod` is a
+        // no-op on Windows, where every readable file reports executable, so the
+        // property cannot be expressed there.
+        await fs.writeFile(path.join(a, 'tool'), '#!/usr/bin/env python3\nprint(1)\n', {
+          mode: 0o755,
+        });
+        expect(resolveConsoleScript('tool', { PATH: PATHV })).toEqual({
+          script: path.join(a, 'tool'),
+          interpreter: 'python3',
+        });
 
-      // The FIRST executable match wins, and if it is not a Python script we
-      // decline instead of looking further down PATH. A pyenv or asdf shim is
-      // exactly this shape.
-      await fs.writeFile(path.join(a, 'shim'), '#!/usr/bin/env bash\nexec real "$@"\n', {
-        mode: 0o755,
-      });
-      await fs.writeFile(path.join(b, 'shim'), '#!/usr/bin/env python3\nprint(3)\n', {
-        mode: 0o755,
-      });
-      expect(resolveConsoleScript('shim', { PATH: PATHV })).toBeNull();
+        // The FIRST executable match wins, and if it is not a Python script we
+        // decline instead of looking further down PATH. A pyenv or asdf shim is
+        // exactly this shape.
+        await fs.writeFile(path.join(a, 'shim'), '#!/usr/bin/env bash\nexec real "$@"\n', {
+          mode: 0o755,
+        });
+        await fs.writeFile(path.join(b, 'shim'), '#!/usr/bin/env python3\nprint(3)\n', {
+          mode: 0o755,
+        });
+        expect(resolveConsoleScript('shim', { PATH: PATHV })).toBeNull();
 
-      // A directory named like the entry point is not a match.
-      await fs.mkdir(path.join(a, 'adir'));
-      expect(resolveConsoleScript('adir', { PATH: PATHV })).toBeNull();
+        // A directory named like the entry point is not a match.
+        await fs.mkdir(path.join(a, 'adir'));
+        expect(resolveConsoleScript('adir', { PATH: PATHV })).toBeNull();
 
-      // A relative or empty PATH element is resolved against the SHELL's cwd,
-      // which is the shadow root and not this process's cwd. We cannot know
-      // what it holds, and it could shadow a later match, so decline.
-      expect(resolveConsoleScript('tool', { PATH: `relative${path.delimiter}${b}` })).toBeNull();
-      expect(resolveConsoleScript('tool', { PATH: `${path.delimiter}${b}` })).toBeNull();
+        // A relative or empty PATH element is resolved against the SHELL's cwd,
+        // which is the shadow root and not this process's cwd. We cannot know
+        // what it holds, and it could shadow a later match, so decline.
+        expect(resolveConsoleScript('tool', { PATH: `relative${path.delimiter}${b}` })).toBeNull();
+        expect(resolveConsoleScript('tool', { PATH: `${path.delimiter}${b}` })).toBeNull();
 
-      // A name with a separator is a path, run relative to the shell's cwd.
-      expect(resolveConsoleScript('bin/tool', { PATH: PATHV })).toBeNull();
+        // A name with a separator is a path, run relative to the shell's cwd.
+        expect(resolveConsoleScript('bin/tool', { PATH: PATHV })).toBeNull();
 
-      // Nothing on PATH at all.
-      expect(resolveConsoleScript('absent', { PATH: PATHV })).toBeNull();
+        // Nothing on PATH at all.
+        expect(resolveConsoleScript('absent', { PATH: PATHV })).toBeNull();
 
-      // A CRLF shebang still names python.
-      await fs.writeFile(path.join(a, 'crlf'), '#!/usr/bin/env python3\r\nprint(4)\r\n', {
-        mode: 0o755,
-      });
-      expect(resolveConsoleScript('crlf', { PATH: PATHV })).toEqual({
-        script: path.join(a, 'crlf'),
-        interpreter: 'python3',
-      });
+        // A CRLF shebang still names python.
+        await fs.writeFile(path.join(a, 'crlf'), '#!/usr/bin/env python3\r\nprint(4)\r\n', {
+          mode: 0o755,
+        });
+        expect(resolveConsoleScript('crlf', { PATH: PATHV })).toEqual({
+          script: path.join(a, 'crlf'),
+          interpreter: 'python3',
+        });
 
-      // A long venv shebang beyond the old 128-byte read window.
-      const deep = '/' + 'd'.repeat(200) + '/bin/python3';
-      await fs.writeFile(path.join(a, 'deep'), `#!${deep}\nprint(5)\n`, { mode: 0o755 });
-      // An absolute shebang, so the interpreter comes back with it (issue #99).
-      expect(resolveConsoleScript('deep', { PATH: PATHV })).toEqual({
-        script: path.join(a, 'deep'),
-        interpreter: deep,
-      });
+        // A long venv shebang beyond the old 128-byte read window.
+        const deep = '/' + 'd'.repeat(200) + '/bin/python3';
+        await fs.writeFile(path.join(a, 'deep'), `#!${deep}\nprint(5)\n`, { mode: 0o755 });
+        // An absolute shebang, so the interpreter comes back with it (issue #99).
+        expect(resolveConsoleScript('deep', { PATH: PATHV })).toEqual({
+          script: path.join(a, 'deep'),
+          interpreter: deep,
+        });
 
-      // A binary with no shebang (the Windows `.exe` shape) is not runnable by
-      // `coverage run`.
-      await fs.writeFile(path.join(a, 'native'), Buffer.from([0x4d, 0x5a, 0x90, 0x00]), {
-        mode: 0o755,
-      });
-      expect(resolveConsoleScript('native', { PATH: PATHV })).toBeNull();
-    });
+        // A binary with no shebang (the Windows `.exe` shape) is not runnable by
+        // `coverage run`.
+        await fs.writeFile(path.join(a, 'native'), Buffer.from([0x4d, 0x5a, 0x90, 0x00]), {
+          mode: 0o755,
+        });
+        expect(resolveConsoleScript('native', { PATH: PATHV })).toBeNull();
+      },
+    );
 
     it.skipIf(process.platform === 'win32')(
       'skips a PATH match it cannot execute, as a shell does (POSIX)',
@@ -789,54 +794,61 @@ describe('python-line-coverage reporter', () => {
       },
     );
 
-    it('carries the shebang interpreter, not just the script (issue #99)', async () => {
-      // `coverage run <script>` runs the file as SOURCE in the current
-      // interpreter; it never honours the shebang, while the shell that runs
-      // the gate does. So resolving the file is only half of parity: a venv's
-      // pytest executed by the system python3 is a different program.
-      const { resolveConsoleScript } =
-        await import('../../src/analyze/coverage/python-line-coverage.js');
+    it.skipIf(process.platform === 'win32')(
+      'carries the shebang interpreter, not just the script (issue #99)',
+      async () => {
+        // `coverage run <script>` runs the file as SOURCE in the current
+        // interpreter; it never honours the shebang, while the shell that runs
+        // the gate does. So resolving the file is only half of parity: a venv's
+        // pytest executed by the system python3 is a different program.
+        const { resolveConsoleScript } =
+          await import('../../src/analyze/coverage/python-line-coverage.js');
 
-      const root = await fs.mkdtemp(path.join(os.tmpdir(), 'cov-shebang-'));
-      const bin = path.join(root, 'bin');
-      await fs.mkdir(bin);
+        const root = await fs.mkdtemp(path.join(os.tmpdir(), 'cov-shebang-'));
+        const bin = path.join(root, 'bin');
+        await fs.mkdir(bin);
 
-      // An absolute shebang, which is what pip writes into a venv console script.
-      await fs.writeFile(path.join(bin, 'tool'), '#!/opt/venv/bin/python3.11\nprint(1)\n', {
-        mode: 0o755,
-      });
-      expect(resolveConsoleScript('tool', { PATH: bin })).toEqual({
-        script: path.join(bin, 'tool'),
-        interpreter: '/opt/venv/bin/python3.11',
-      });
+        // An absolute shebang, which is what pip writes into a venv console script.
+        await fs.writeFile(path.join(bin, 'tool'), '#!/opt/venv/bin/python3.11\nprint(1)\n', {
+          mode: 0o755,
+        });
+        expect(resolveConsoleScript('tool', { PATH: bin })).toEqual({
+          script: path.join(bin, 'tool'),
+          interpreter: '/opt/venv/bin/python3.11',
+        });
 
-      // `#!/usr/bin/env python3` names no specific interpreter, so there is
-      // nothing to override and the caller's python stands.
-      await fs.writeFile(path.join(bin, 'envtool'), '#!/usr/bin/env python3\nprint(1)\n', {
-        mode: 0o755,
-      });
-      // The NAME is carried, because `env python3` may be a different binary
-      // from the one we would otherwise spawn; a bare name is resolved by the
-      // spawn through the same PATH the shell would have searched.
-      expect(resolveConsoleScript('envtool', { PATH: bin })).toEqual({
-        script: path.join(bin, 'envtool'),
-        interpreter: 'python3',
-      });
+        // `#!/usr/bin/env python3` names no specific interpreter, so there is
+        // nothing to override and the caller's python stands.
+        await fs.writeFile(path.join(bin, 'envtool'), '#!/usr/bin/env python3\nprint(1)\n', {
+          mode: 0o755,
+        });
+        // The NAME is carried, because `env python3` may be a different binary
+        // from the one we would otherwise spawn; a bare name is resolved by the
+        // spawn through the same PATH the shell would have searched.
+        expect(resolveConsoleScript('envtool', { PATH: bin })).toEqual({
+          script: path.join(bin, 'envtool'),
+          interpreter: 'python3',
+        });
 
-      // Shapes we cannot reproduce are declined outright. A shebang carrying
-      // ARGUMENTS is the important one: `-E` makes Python ignore PYTHONPATH, so
-      // dropping it would let the gate import the installed copy while coverage
-      // imports the shadow copy and measures it as covered. Fedora and RHEL ship
-      // `-s` on packaged console scripts, so this is a real shape.
-      await fs.writeFile(path.join(bin, 'flagged'), '#!/opt/py/bin/python3 -E\nprint(1)\n', {
-        mode: 0o755,
-      });
-      expect(resolveConsoleScript('flagged', { PATH: bin })).toBeNull();
-      await fs.writeFile(path.join(bin, 'envs'), '#!/usr/bin/env -S python3 -X utf8\nprint(1)\n', {
-        mode: 0o755,
-      });
-      expect(resolveConsoleScript('envs', { PATH: bin })).toBeNull();
-    });
+        // Shapes we cannot reproduce are declined outright. A shebang carrying
+        // ARGUMENTS is the important one: `-E` makes Python ignore PYTHONPATH, so
+        // dropping it would let the gate import the installed copy while coverage
+        // imports the shadow copy and measures it as covered. Fedora and RHEL ship
+        // `-s` on packaged console scripts, so this is a real shape.
+        await fs.writeFile(path.join(bin, 'flagged'), '#!/opt/py/bin/python3 -E\nprint(1)\n', {
+          mode: 0o755,
+        });
+        expect(resolveConsoleScript('flagged', { PATH: bin })).toBeNull();
+        await fs.writeFile(
+          path.join(bin, 'envs'),
+          '#!/usr/bin/env -S python3 -X utf8\nprint(1)\n',
+          {
+            mode: 0o755,
+          },
+        );
+        expect(resolveConsoleScript('envs', { PATH: bin })).toBeNull();
+      },
+    );
 
     it('DECLINES an entry point it cannot resolve, never falling back (issue #98)', async () => {
       // There is deliberately no fallback to module form. `-m` prepends CWD to
