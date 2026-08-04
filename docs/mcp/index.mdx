@@ -8,16 +8,7 @@ Refactron ships an [MCP](https://modelcontextprotocol.io) server that exposes ex
 
 The server speaks **stdio**, identifies itself as `refactron` version `0.3.0`, and runs entirely on your machine. It never writes to your repository: applying the change stays the agent's job, after a verdict the agent trusts.
 
-The fastest way in is to let your agent do the setup. One prompt covers install, registration for whichever client it is running in, and a first real verification.
-
-<Card
-  title="Set it up with your agent"
-  icon="clipboard-list"
-  href="/mcp/agent-instructions"
-  horizontal
->
-  One prompt: install, register, restart, confirm the tool, run a real verification.
-</Card>
+The fastest way in is to let your agent do the setup. Every client page below opens with a copy-only prompt that installs the server, registers it, reloads the client, and gets a first real verdict, written for that client specifically.
 
 Prefer to do it by hand? Pick your client below, or follow the [MCP quickstart](/mcp/quickstart).
 
@@ -98,14 +89,141 @@ The PyPI wrapper does not ship `refactron-mcp`. If you found Refactron through P
   </Card>
 </CardGroup>
 
+## Make it verify, not just connect
+
+Registering the server only adds a tool the agent may never reach for. These two prompts are what turn it into a habit. Both are written for the agent, not for you.
+
+### Verify before you apply
+
+Defines the loop: propose, verify, then act on the verdict. Lasts the current conversation.
+
+<div className="agent-prompt is-rule">
+
+```text
+From now on, in this repository, verify every code change with the Refactron
+verify_change MCP tool BEFORE you write it to disk.
+
+The loop:
+
+1. Work out the change you want to make. Do not apply it yet.
+
+2. Call verify_change with:
+     repoRoot  the ABSOLUTE path to this repository
+     edits     [{ path, newContent }] with the full proposed contents of each
+               file you want to change, OR unifiedDiff, a unified diff of the
+               change against the CURRENT working tree
+     testCmd   the project's test command, if it is not obvious. For a Python
+               project installed into the environment (an editable
+               `pip install -e .` included), prefix it with PYTHONPATH=. so the
+               tests import the copy being verified. Use PYTHONPATH=src for a
+               src layout.
+
+3. Read the `verdict` field and act on it.
+
+   SAFE     Apply the change. Report the verdict and quote the `reason`. Also
+            say what SAFE does not cover: every changed FILE had at least one
+            changed statement executed, not every changed statement. If
+            coverage.changedStatements shows a low covered/total ratio, say so
+            rather than presenting SAFE as full coverage.
+
+   UNSAFE   Do NOT apply anything. A gate failed, which means your change broke
+            something. Read `reason` and the failing entry in `gates`, fix YOUR
+            change, and call verify_change again. Repeat until it is not UNSAFE.
+            Never work around this by weakening or deleting a test. If you touch
+            a test file, the report lists it in testFilesChanged and I will check.
+
+   UNPROVEN Do NOT apply yet. Read `reason` to find out which kind this is:
+
+            "the changed code is not exercised by any test" means the suite ran
+            and nothing executed your lines. Write the tests named in the
+            `missingTests` array, add them to the same verify_change call, and
+            re-verify. Aim to turn this into SAFE. If a missingTests hint says a
+            line is excluded from coverage (`# pragma: no cover`, `if
+            TYPE_CHECKING:`), do NOT try to write a test for it. No test can
+            reach it. Flag it for human review.
+
+            "coverage of the changed code could not be determined" means no
+            measurement happened at all. Coverage is Python-only today, so a
+            TypeScript, JavaScript, or mixed-language change always lands here
+            and no test you write moves it. The gates still passed. Report this
+            plainly and let me decide. Do not present it as SAFE.
+
+            "no test runner detected" or "baseline tests already fail" means
+            nothing could be proven either way. Stop and tell me.
+
+4. Never describe a SAFE verdict as "verified correct", "proven correct", or
+   "guaranteed safe". It means the project's own tests ran the changed code and
+   stayed green. It inherits exactly what those tests check.
+
+5. If the tool returns an error instead of a verdict, read the message. "no
+   edits provided" means you passed neither `edits` nor `unifiedDiff`. "diff did
+   not apply (stale base?)" means you already wrote the change to disk, so the
+   diff no longer applies to the tree being copied: pass `edits` instead, or
+   revert first. A message about deletions, renames, copies, or binary files
+   means the change uses an operation the tool refuses to verify, so tell me and
+   verify that part by hand.
+```
+
+</div>
+
+### Make it stick across sessions
+
+Writes that rule into the project, so every session and every teammate inherits it.
+
+<div className="agent-prompt is-project-rule">
+
+```text
+Add a Refactron verification rule to this project's agent rules file, so the
+behavior persists across sessions.
+
+Pick the right file for this repo, and create it if it is missing:
+  - AGENTS.md at the repo root, the cross-tool convention
+  - CLAUDE.md at the repo root, for Claude Code
+  - .cursor/rules/refactron.mdc, or .cursorrules on older Cursor, for Cursor
+  - .windsurfrules for Windsurf
+  - .github/copilot-instructions.md for GitHub Copilot
+  - GEMINI.md at the repo root, for Gemini CLI
+
+Append this section verbatim. Do not remove anything already in the file.
+
+## Verification (required)
+
+Verify every code change with the Refactron `verify_change` MCP tool before
+writing it to disk. Pass `repoRoot` as an absolute path and the change as
+`edits` or `unifiedDiff`. Verify before the change exists on disk: the shadow
+tree copies the working tree, so a diff of an already-written change will not
+apply.
+
+- `SAFE`: apply it, and report the verdict. `SAFE` means the project's tests ran
+  the changed code and stayed green. It is suite-approved, not proven correct,
+  and it is a per-file check: every changed file had at least one changed
+  statement executed, not every changed statement.
+- `UNSAFE`: do not apply. Fix the change and re-verify. Never weaken a test to
+  turn a verdict green.
+- `UNPROVEN`: do not apply yet. If the reason names uncovered code, write the
+  tests listed in `missingTests` and re-verify. If the reason is that coverage
+  could not be determined, say so and ask a human. Coverage is Python-only, so a
+  non-Python change cannot reach `SAFE` today.
+```
+
+</div>
+
+### Why the wording in these prompts matters
+
+Every prompt tells the agent, more than once, not to report `SAFE` as "correct". That is deliberate.
+
+`SAFE` means the gates passed and your suite exercised the changed code. It does not mean the change is right. A real example from Refactron's own hardening runs: changing `<=` to `<` in Jinja2's `truncate` filter genuinely changes behavior at the boundary, all 911 tests still pass, the changed line is covered, and the verdict is `SAFE`. The verdict is correct about what it claims and is still not a proof of correctness.
+
+An agent that reports `SAFE` as "verified correct" has laundered a test-suite result into a guarantee. That is the one failure mode this tool exists to prevent, so the prompts spend words on it.
+
 ## Then use it
 
 <CardGroup cols={2}>
   <Card title="Quickstart" icon="rocket" href="/mcp/quickstart">
     Install, register, confirm the tool is listed, and get a first real verdict.
   </Card>
-  <Card title="Prompts for your agent" icon="clipboard-list" href="/mcp/agent-instructions">
-    Set it up, then keep it verifying before it applies. Three prompts, copy-ready.
+  <Card title="Verify before you apply" icon="clipboard-list" href="#verify-before-you-apply">
+    The standing rule that makes your agent verify instead of guess.
   </Card>
   <Card title="Tool reference" icon="book" href="/mcp/tool-reference">
     Every `verify_change` argument, the response shape, and the error shape.

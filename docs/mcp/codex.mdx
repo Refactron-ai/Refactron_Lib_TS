@@ -6,6 +6,156 @@ description: 'Add the Refactron MCP server to OpenAI Codex CLI. Note the format:
 
 Codex CLI is the one client on this list that does not use JSON. Its MCP servers live in `~/.codex/config.toml`, under a `[mcp_servers.<name>]` table. A config block copied from Claude Desktop or Cursor is not valid here.
 
+## Set it up with your agent
+
+One prompt, written for Codex CLI to read rather than you. It installs the
+server, registers it, reloads, and proves the tool works with a real
+verification.
+
+<div className="agent-prompt">
+
+```text
+Set up the Refactron MCP server for yourself in this repository and prove it
+works before you tell me it is done. Do the steps in order.
+
+You are running in Codex CLI.
+
+STEP 1 - Check the prerequisites.
+
+Run `node --version`. Refactron needs Node.js 18 or newer. If it is older or
+missing, stop and tell me.
+
+Run `python3 --version`, then check that `pytest` and `coverage` are
+importable. Coverage attestation is Python-only, and it is what makes a
+coverage-backed SAFE verdict possible. Without it the server still runs and
+still gates the change, but every verdict caps at UNPROVEN.
+
+STEP 2 - Install the server.
+
+Run `which refactron-mcp`, or `where refactron-mcp` on Windows. If it prints a
+path, go to step 3. Otherwise install it:
+
+    npm install -g refactron@0.3.0
+
+That puts two binaries on PATH: `refactron` (the CLI) and `refactron-mcp` (the
+MCP server). If you cannot install globally, install nothing and use the npx
+form in step 3 instead.
+
+Do not use `pip install refactron` for this. The PyPI wrapper provides the
+`refactron` command only. It does not ship `refactron-mcp`.
+
+STEP 3 - Register the server.
+
+Run:
+
+    codex mcp add refactron -- refactron-mcp
+
+The `--` separator is required. Everything after it is the command Codex
+launches; everything before it is Codex's own flags.
+
+Codex uses TOML, not JSON. If you edit ~/.codex/config.toml by hand, the entry
+is a table, and the prefix is `mcp_servers` with an underscore, not
+`mcpServers`:
+
+    [mcp_servers.refactron]
+    command = "refactron-mcp"
+    args = []
+    tool_timeout_sec = 900
+
+Set `tool_timeout_sec` either way, editing the table afterwards if you used
+`codex mcp add`. Codex's default per-tool timeout has changed between releases,
+and either value can be shorter than a real suite run. When it fires you get a
+tool failure rather than the verdict you already paid for.
+
+Without a global install, use this instead. The `-p` flag is required, because
+`refactron-mcp` is a second binary of the `refactron` package and not a package
+of its own:
+
+    [mcp_servers.refactron]
+    command = "npx"
+    args = ["-y", "-p", "refactron@0.3.0", "refactron-mcp"]
+    tool_timeout_sec = 900
+
+Check for a duplicate [mcp_servers.refactron] table before you finish. Two of
+them is a parse error, and Codex rejects the whole config.
+
+STEP 4 - Reload.
+
+Codex CLI picks the server up on the next session. If it does not appear in
+step 5, tell me to restart `codex`.
+
+STEP 5 - Confirm the tool is exposed.
+
+Run:
+
+    codex mcp list
+
+`refactron` appears with its launch command. `codex mcp get refactron` prints
+the resolved entry, and both accept --json. Then start a session and ask for
+the tool list.
+
+If it is configured but never starts, check for `enabled = false` on the table.
+That key disables a server without removing it.
+
+You are looking for a server named `refactron`, version 0.3.0, exposing exactly
+ONE tool: `verify_change`.
+
+If the server is connected but no tool appears, the handshake failed. Prove the
+binary itself works by sending it one initialize request:
+
+    echo '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"probe","version":"1.0"}}}' | refactron-mcp
+
+A working server replies on one line with serverInfo.name "refactron". If that
+works and the client still shows nothing, the fault is the config: check the
+root key and check that the file parses.
+
+STEP 6 - Prove it works with one real verification.
+
+Do not skip this. A connected server is not a working server.
+
+Pick one small source file that this project's test suite exercises. Propose a
+real but behaviour-preserving edit to it: reorder the operands of a commutative
+expression, rename a local variable, that kind of thing. One or two lines.
+
+Do NOT write that edit to disk. Call verify_change with the proposal instead:
+
+    repoRoot  the ABSOLUTE path to this repository
+    edits     [{ "path": "<repo-relative path>",
+                 "newContent": "<the full proposed file contents>" }]
+    testCmd   the project's test command, if it is not obvious. For a Python
+              project installed into the environment (an editable
+              `pip install -e .` included), prefix it with PYTHONPATH=. so the
+              tests import the copy being verified rather than the installed
+              one. Use PYTHONPATH=src for a src layout.
+
+Verify the change BEFORE it exists on disk. The shadow tree is a copy of the
+working tree, so if you write the change first and then pass a `git diff` of
+it, the diff no longer applies and you get "diff did not apply (stale base?)"
+back instead of a verdict.
+
+Verification runs the whole test suite in a shadow copy, so it can take minutes
+on a real project. That is the work, not a hang.
+
+STEP 7 - Report, then stop.
+
+Tell me:
+  - which file you wrote, or which command you ran
+  - the exact `verdict` and the exact `reason` from the response
+  - the value of `coverage.tool`: "coverage.py" means coverage was measured,
+    "none" means it was not
+
+Apply nothing. The step 6 edit was a probe. Confirm with `git status` that the
+working tree is exactly as dirty as you found it, and no more.
+
+Do not describe a SAFE verdict as "correct", "proven", or "guaranteed". SAFE
+means the project's own tests ran the changed code and stayed green. It
+inherits exactly what those tests check, and a weak suite yields a weak SAFE.
+```
+
+</div>
+
+Prefer to do it yourself? The rest of this page is the same setup by hand.
+
 ## The format is TOML, not JSON
 
 Every other client on this list takes a JSON object keyed by server name. Codex takes a TOML table per server, and the table prefix is `mcp_servers` with an underscore, not `mcpServers`.

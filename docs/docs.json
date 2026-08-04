@@ -118,8 +118,8 @@
             ]
           },
           {
-            "group": "Using it",
-            "pages": ["mcp/agent-instructions", "mcp/tool-reference"]
+            "group": "Reference",
+            "pages": ["mcp/tool-reference"]
           }
         ]
       }

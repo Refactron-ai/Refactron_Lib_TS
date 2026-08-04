@@ -6,6 +6,137 @@ description: Add the Refactron MCP server to Windsurf Cascade by editing ~/.code
 
 Windsurf keeps MCP servers in a single file under your home directory, shared across every workspace. Cascade picks them up after a refresh.
 
+## Set it up with your agent
+
+One prompt, written for Windsurf to read rather than you. It installs the
+server, registers it, reloads, and proves the tool works with a real
+verification.
+
+<div className="agent-prompt">
+
+```text
+Set up the Refactron MCP server for yourself in this repository and prove it
+works before you tell me it is done. Do the steps in order.
+
+You are running in Windsurf.
+
+STEP 1 - Check the prerequisites.
+
+Run `node --version`. Refactron needs Node.js 18 or newer. If it is older or
+missing, stop and tell me.
+
+Run `python3 --version`, then check that `pytest` and `coverage` are
+importable. Coverage attestation is Python-only, and it is what makes a
+coverage-backed SAFE verdict possible. Without it the server still runs and
+still gates the change, but every verdict caps at UNPROVEN.
+
+STEP 2 - Install the server.
+
+Run `which refactron-mcp`, or `where refactron-mcp` on Windows. If it prints a
+path, go to step 3. Otherwise install it:
+
+    npm install -g refactron@0.3.0
+
+That puts two binaries on PATH: `refactron` (the CLI) and `refactron-mcp` (the
+MCP server). If you cannot install globally, install nothing and use the npx
+form in step 3 instead.
+
+Do not use `pip install refactron` for this. The PyPI wrapper provides the
+`refactron` command only. It does not ship `refactron-mcp`.
+
+STEP 3 - Register the server.
+
+Edit `~/.codeium/windsurf/mcp_config.json`, or
+%USERPROFILE%\.codeium\windsurf\mcp_config.json on Windows, root key
+"mcpServers". This one file is shared across every workspace.
+
+    { "mcpServers": { "refactron": { "command": "refactron-mcp" } } }
+
+Merge into the existing object if the file already has servers, and validate
+the JSON. Windsurf drops the whole file when it cannot parse it, so one stray
+comma removes every server I have.
+
+Without a global install, use this instead. The `-p` flag is required, because
+`refactron-mcp` is a second binary of the `refactron` package and not a package
+of its own:
+
+    { "mcpServers": { "refactron": { "command": "npx",
+        "args": ["-y", "-p", "refactron@0.3.0", "refactron-mcp"] } } }
+
+STEP 4 - Reload.
+
+Windsurf reads the config on refresh or restart, never on save.
+
+You cannot do this yourself. Tell me to click Refresh in the Cascade MCP panel,
+under the hammer icon, and wait for me before you continue.
+
+STEP 5 - Confirm the tool is exposed.
+
+Ask me to confirm that `refactron` is listed with a green dot under the hammer
+icon in the Cascade panel, with one tool beneath it.
+
+Windsurf caps how many tools it exposes to Cascade. Refactron adds exactly one,
+but if I am near the cap, tell me which server to disable.
+
+You are looking for a server named `refactron`, version 0.3.0, exposing exactly
+ONE tool: `verify_change`.
+
+If the server is connected but no tool appears, the handshake failed. Prove the
+binary itself works by sending it one initialize request:
+
+    echo '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"probe","version":"1.0"}}}' | refactron-mcp
+
+A working server replies on one line with serverInfo.name "refactron". If that
+works and the client still shows nothing, the fault is the config: check the
+root key and check that the file parses.
+
+STEP 6 - Prove it works with one real verification.
+
+Do not skip this. A connected server is not a working server.
+
+Pick one small source file that this project's test suite exercises. Propose a
+real but behaviour-preserving edit to it: reorder the operands of a commutative
+expression, rename a local variable, that kind of thing. One or two lines.
+
+Do NOT write that edit to disk. Call verify_change with the proposal instead:
+
+    repoRoot  the ABSOLUTE path to this repository
+    edits     [{ "path": "<repo-relative path>",
+                 "newContent": "<the full proposed file contents>" }]
+    testCmd   the project's test command, if it is not obvious. For a Python
+              project installed into the environment (an editable
+              `pip install -e .` included), prefix it with PYTHONPATH=. so the
+              tests import the copy being verified rather than the installed
+              one. Use PYTHONPATH=src for a src layout.
+
+Verify the change BEFORE it exists on disk. The shadow tree is a copy of the
+working tree, so if you write the change first and then pass a `git diff` of
+it, the diff no longer applies and you get "diff did not apply (stale base?)"
+back instead of a verdict.
+
+Verification runs the whole test suite in a shadow copy, so it can take minutes
+on a real project. That is the work, not a hang.
+
+STEP 7 - Report, then stop.
+
+Tell me:
+  - which file you wrote, or which command you ran
+  - the exact `verdict` and the exact `reason` from the response
+  - the value of `coverage.tool`: "coverage.py" means coverage was measured,
+    "none" means it was not
+
+Apply nothing. The step 6 edit was a probe. Confirm with `git status` that the
+working tree is exactly as dirty as you found it, and no more.
+
+Do not describe a SAFE verdict as "correct", "proven", or "guaranteed". SAFE
+means the project's own tests ran the changed code and stayed green. It
+inherits exactly what those tests check, and a weak suite yields a weak SAFE.
+```
+
+</div>
+
+Prefer to do it yourself? The rest of this page is the same setup by hand.
+
 ## Config location
 
 | OS           | Path                                              |
