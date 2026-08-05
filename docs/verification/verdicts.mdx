@@ -212,7 +212,17 @@ Refactron verifies a change in an isolated copy of your project. If your tests i
 
 The common cause is a project installed into the environment, including an editable install (`pip install -e .`), because `import yourpackage` then resolves to the installed location rather than the copy under verification. We hit this on Django: the same diff read `UNPROVEN` when the tests loaded the installed copy, and `UNSAFE` (correctly, since the auth suite catches the change) once the verified copy came first on `sys.path`.
 
-Refactron detects the case rather than guessing: if a changed file is never even measured by coverage, the verdict reports that coverage could not be determined instead of claiming the code is untested. To get a real verdict, make the verified tree win on `sys.path`, for example by exporting `PYTHONPATH=.` (or `PYTHONPATH=src` for a src layout) alongside your test command. Relative paths are resolved from the copy being verified, which is what you want here.
+Refactron detects the case rather than guessing: if a changed file is never even measured by coverage, the verdict reports that coverage could not be determined instead of claiming the code is untested, and the report carries the reason and this remedy in `coverage.unknownReason`.
+
+To get a real verdict, make the verified tree win on `sys.path`. Either export `PYTHONPATH=.` before you run Refactron, or prefix the test command itself:
+
+```bash
+PYTHONPATH=. python3 -m pytest -q      # or PYTHONPATH=src for a src layout
+```
+
+Both forms work from the CLI. Over MCP only the prefix form is available, because the client spawns `refactron-mcp` itself and there is no shell of yours to export into. Relative paths are resolved from the copy being verified, which is what you want here.
+
+Write the command in **module form** (`python3 -m pytest`) rather than as a bare console script (`pytest`). Coverage has to run the same program the test gate ran, and a console script is only runnable under coverage when it resolves to a Python file. It does not on Windows, where console scripts are native `.exe` launchers, nor under pyenv, asdf or nix, which install shell shims. Refactron declines to measure rather than measure a different program, so a bare console script reports that coverage could not be determined on those setups. Module form is measurable everywhere.
 
 ## Exit codes
 

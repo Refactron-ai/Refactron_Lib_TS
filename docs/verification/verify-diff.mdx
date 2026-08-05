@@ -33,7 +33,7 @@ Refactron applies the diff in an isolated shadow tree, runs the syntax, imports,
   a `multiprocessing` worker reads as `UNPROVEN` until in-process subprocess coverage lands.
 </Warning>
 
-If your project is installed into the environment (an editable `pip install -e .` counts), your tests may import that copy instead of the one being verified, in which case the run proves nothing about your change. Put the verified tree first on `sys.path`, for example `PYTHONPATH=.` (or `PYTHONPATH=src` for a src layout). See [Make sure the tests run the code being verified](/verification/verdicts#make-sure-the-tests-run-the-code-being-verified).
+If your project is installed into the environment (an editable `pip install -e .` counts), your tests may import that copy instead of the one being verified, in which case the run proves nothing about your change. Put the verified tree first on `sys.path` by prefixing the test command: `PYTHONPATH=. python3 -m pytest -q`, or `PYTHONPATH=src` for a src layout. Use module form rather than a bare `pytest`, which cannot always be measured. See [Make sure the tests run the code being verified](/verification/verdicts#make-sure-the-tests-run-the-code-being-verified).
 
 ## Install
 

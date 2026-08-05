@@ -116,7 +116,10 @@ The loop:
                project installed into the environment (an editable
                `pip install -e .` included), prefix it with PYTHONPATH=. so the
                tests import the copy being verified. Use PYTHONPATH=src for a
-               src layout.
+               src layout. Write the command in module form (`python3 -m
+               pytest`), NOT as a bare console script (`pytest`): a console
+               script cannot be measured on Windows or under pyenv, asdf and
+               nix, and coverage then reports that it could not be determined.
 
 3. Read the `verdict` field and act on it.
 

@@ -120,6 +120,10 @@ Do NOT write that edit to disk. Call verify_change with the proposal instead:
               `pip install -e .` included), prefix it with PYTHONPATH=. so the
               tests import the copy being verified rather than the installed
               one. Use PYTHONPATH=src for a src layout.
+              Write the command in module form (`python3 -m pytest`), NOT as a
+              bare console script (`pytest`): a console script cannot be measured
+              on Windows or under pyenv, asdf and nix, and coverage then reports
+              that it could not be determined.
 
 Verify the change BEFORE it exists on disk. The shadow tree is a copy of the
 working tree, so if you write the change first and then pass a `git diff` of
