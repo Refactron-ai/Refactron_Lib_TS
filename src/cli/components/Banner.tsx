@@ -5,7 +5,7 @@
 import React from 'react';
 import { Box, Text, useStdout } from 'ink';
 import { theme } from '../../ui/theme.js';
-import { getMascotRows } from './Mascot.js';
+import { getMascotRows, MascotLine } from './Mascot.js';
 
 interface BannerProps {
   version: string;
@@ -28,7 +28,7 @@ export function Banner({ version, adapterName, email, plan }: BannerProps): Reac
   const ruleWidth = Math.min(cols, 80);
   const rule = '─'.repeat(ruleWidth);
 
-  const mascot = getMascotRows('default');
+  const mascot = getMascotRows();
   const cwd = truncateCwd(process.cwd(), 45);
   const subtitle =
     plan != null && plan !== '' ? `${adapterName} · ${plan.toUpperCase()}` : adapterName;
@@ -37,12 +37,13 @@ export function Banner({ version, adapterName, email, plan }: BannerProps): Reac
     <Box flexDirection="column" paddingBottom={1}>
       <Text color={theme.colors.border}>{rule}</Text>
 
-      <Box flexDirection="row" gap={2} paddingTop={0} alignItems="flex-start">
-        {/* Mascot — foreground only, no backgroundColor */}
+      <Box flexDirection="row" gap={2} paddingTop={0} alignItems="center">
+        {/* Tabslot — foreground only, no backgroundColor. 7 rows, so the info
+            column beside it is centred rather than top-aligned. */}
         <Box flexDirection="column">
-          <Text color={theme.colors.brand}>{mascot[0]}</Text>
-          <Text color={theme.colors.brand}>{mascot[1]}</Text>
-          <Text color={theme.colors.brand}>{mascot[2]}</Text>
+          {mascot.map((row, i) => (
+            <MascotLine key={i} row={row} />
+          ))}
         </Box>
 
         {/* Info column */}

@@ -4,6 +4,7 @@
 import React from 'react';
 import { Box, Text } from 'ink';
 import { theme } from '../../ui/theme.js';
+import { getMascotRows, MascotLine } from './Mascot.js';
 
 const WELCOME_WIDTH = 58; // matches YRC WELCOME_V2_WIDTH
 
@@ -22,14 +23,10 @@ const ART_ROWS_PLAIN = [
   '                                  \u2591\u2593\u2593\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2593\u2591             ',
 ];
 
-// Mascot rows (rendered in brand color)  — "Refactron Bot" design
-const MASCOT_ROW_0 = '      \u2597\u2584\u2588\u2588\u2588\u2588\u2584\u2596 '; // "▗▄████▄▖" padded
-const MASCOT_ROW_1 = '      \u2590\u258c \u2584\u2584 \u2590\u258c'; // "▐▌ ▄▄ ▐▌"
-const MASCOT_ROW_2 = '       \u259d\u2518  \u259d\u2518  '; // " ▝▘  ▝▘ "
-
-// Bottom separator: mascot body embedded in ellipsis dots
-const BOT_SEP =
-  '\u2026\u2026\u2026 \u2597\u2584\u2588\u2588\u2588\u2588\u2584\u2596 \u2026\u2026\u2026\u2026\u2026\u2026\u2026\u2026\u2026\u2026\u2026\u2026\u2026\u2026\u2026\u2026\u2026\u2026\u2026\u2026\u2591\u2026\u2026\u2026\u2026\u2026\u2026\u2026\u2026\u2026\u2026\u2591\u2026\u2026\u2026\u2026\u2026\u2026\u2026\u2026\u2026\u2026';
+// The mascot is NOT redeclared here. This file used to carry its own copy of
+// the sprite in three constants, plus a fourth embedded in the bottom rule, and
+// that is how a mascot drifts away from its brand definition. It now comes from
+// Mascot.tsx, which a test pins to brand/tabslot-terminal.json.
 
 interface WelcomeSplashProps {
   version: string;
@@ -56,16 +53,15 @@ export function WelcomeSplash({ version }: WelcomeSplashProps): React.ReactEleme
         <Text key={i}>{row}</Text>
       ))}
 
-      {/* Mascot rows (brand color) */}
-      <Text color={theme.colors.brand}>{MASCOT_ROW_0}</Text>
-      <Text color={theme.colors.brand}>{MASCOT_ROW_1}</Text>
-      <Text color={theme.colors.brand}>{MASCOT_ROW_2}</Text>
+      {/* Tabslot, indented to sit under the art above */}
+      <Box flexDirection="column" marginLeft={5}>
+        {getMascotRows().map((row, i) => (
+          <MascotLine key={i} row={row} />
+        ))}
+      </Box>
 
       {/* Bottom separator */}
       <Text>{SEP}</Text>
-
-      {/* Bottom row: mascot feet embedded in ellipsis */}
-      <Text color={theme.colors.brand}>{BOT_SEP}</Text>
     </Box>
   );
 }

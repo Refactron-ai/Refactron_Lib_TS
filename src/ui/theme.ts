@@ -29,8 +29,12 @@ export const theme = {
     userMessageBg: '#1e2430', // user-turn block background
 
     // ── Mascot ───────────────────────────────────────────────────────────
-    mascot: '#4a9eff', // body foreground (no backgroundColor — avoids glitch)
-    clawd_body: '#4a9eff', // YRC parity: color="clawd_body" on Clawd segments
+    // Tabslot is one hue at two values, the same system the Refactron mark
+    // uses: a solid cream square plus the same cream at 42 percent behind it.
+    // See brand/README.md. These are deliberately NOT `brand`, so the mascot
+    // keeps its own colour if the rest of the CLI palette ever moves.
+    mascot: '#EAE7DE', // body — brand cream (no backgroundColor, avoids glitch)
+    mascotSocket: '#6E6D6A', // socket — the same cream at 42% over ink #141416
 
     // ── Semantic states ───────────────────────────────────────────────────
     success: '#3fb950',
