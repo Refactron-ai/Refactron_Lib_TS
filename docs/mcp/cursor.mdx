@@ -196,6 +196,6 @@ It should name `verify_change` and nothing else.
 
 - **The server shows red or `Client closed`**: Cursor could not launch the command. Run `which refactron-mcp`. If it prints nothing, run `npm install -g refactron`, or switch to the `npx` form above.
 - **Nothing appears after saving**: Cursor reloads servers on a toggle, not on file save. Switch the `refactron` toggle off and on in the settings pane.
-- **The tool exists but the agent never calls it**: tools are only available in Agent mode. Ask mode does not call tools. See [Make it verify, not just connect](/mcp/index#make-it-verify-not-just-connect) for a rule that makes the agent verify on its own.
+- **The tool exists but the agent never calls it**: tools are only available in Agent mode. Ask mode does not call tools. See [Make it verify, not just connect](/mcp/overview#make-it-verify-not-just-connect) for a rule that makes the agent verify on its own.
 - **`repoRoot` errors**: the tool needs an absolute path. Tell the agent to pass the project's absolute path, not `.` and not a path relative to anything.
 - **A verification takes minutes**: `verify_change` runs your real test suite in a shadow copy. Long is expected on a large suite.

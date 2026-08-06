@@ -83,7 +83,7 @@
           {
             "group": "Get started",
             "pages": [
-              "mcp/index",
+              "mcp/overview",
               "mcp/quickstart"
             ]
           },
