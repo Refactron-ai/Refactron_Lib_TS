@@ -75,6 +75,20 @@ Everything here is a fix. No command, flag, contract or report field changed.
   monochrome cream so the only colours on screen are verdicts, severities and
   diffs. Cosmetic; no output contract changed.
 
+### Docs
+
+- **An MCP tab, with per-client setup for nine clients.** Claude Code, Claude
+  Desktop, Codex, Cursor, Gemini CLI, VS Code, Windsurf and the generic case each
+  get their own page with a copy-only prompt block you hand straight to the
+  agent. (PR #94)
+
+- **One canonical answer for the `PYTHONPATH` question.** `verdicts.mdx` said to
+  export it, `verify-diff.mdx` gave no form at all, and nine agent prompts said
+  to prefix the test command without saying what the command should look like.
+  All of them now name module form, which is not a style preference: coverage
+  has to run the same program the gate ran, and a bare console script is only
+  runnable under coverage when it resolves to a Python file. (#96)
+
 ---
 
 ## [0.3.0] — 2026-08-02
