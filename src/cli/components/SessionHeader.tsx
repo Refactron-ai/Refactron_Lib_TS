@@ -18,6 +18,7 @@
 // so the extra rows cost nothing after the first screen.
 import React from 'react';
 import { Box, Text, useStdout } from 'ink';
+import { theme } from '../../ui/theme.js';
 import { getMascotRows, MascotLine } from './Mascot.js';
 
 interface SessionHeaderProps {
@@ -61,7 +62,12 @@ export function SessionHeader({
       <Box flexDirection="column">
         {/* Row 1: product name (bold) + version (dim) */}
         <Text>
-          <Text bold>{'Refactron'}</Text>
+          {/* Explicit, not bare `bold`: bold alone inherits the terminal's own
+              foreground, so the product name was whatever colour the user's
+              theme happened to be rather than the brightest step of ours. */}
+          <Text color={theme.colors.brand} bold>
+            {'Refactron'}
+          </Text>
           {'  '}
           <Text dimColor>
             {'v'}
