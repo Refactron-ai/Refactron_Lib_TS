@@ -13,8 +13,6 @@ FP="$(jq -r '.tool_input.file_path // empty' 2>/dev/null || true)"
 # Strip absolute prefix; compare basename + suffix to handle both abs and rel paths.
 case "$FP" in
   */src/contracts.ts|src/contracts.ts) LOCKED="src/contracts.ts" ;;
-  */src/core/models.ts|src/core/models.ts) LOCKED="src/core/models.ts" ;;
-  */src/adapters/interface.ts|src/adapters/interface.ts) LOCKED="src/adapters/interface.ts" ;;
   *) exit 0 ;;
 esac
 

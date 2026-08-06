@@ -23,11 +23,7 @@
     ],
     "deny": [
       "Edit(src/contracts.ts)",
-      "Edit(src/core/models.ts)",
-      "Edit(src/adapters/interface.ts)",
       "Write(src/contracts.ts)",
-      "Write(src/core/models.ts)",
-      "Write(src/adapters/interface.ts)",
       "Edit(playground/**)",
       "Write(playground/**)"
     ],
