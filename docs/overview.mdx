@@ -77,12 +77,6 @@ refactron verify-diff . --diff change.diff --test-cmd "python3 -m pytest -q"
 
 The verification engine is 100% deterministic: no model, no temperature, no statistical inference decides whether your change is safe. Read the same repo state and the same diff twice, get the same verdict. That determinism is exactly what makes Refactron the gate an LLM agent can _call_: the agent proposes, Refactron proves. See [Deterministic by design](/concepts/why-no-llm).
 
-## Migration mode
-
-Refactron also ships deterministic transforms (20 AST rewrites for Python and TypeScript) that both _author_ a change and _verify_ it through the same gates before an atomic write. They are the demo of the gate on real, mechanical migrations, and remain fully supported.
-
-Migration mode (`analyze`, `run`, `document`) ships in the same package as the verification surfaces: `npm install -g refactron@0.3.0` gives you both. See [Migration mode](/transforms/index) for the catalog.
-
 ## Next steps
 
 <CardGroup cols={2}>

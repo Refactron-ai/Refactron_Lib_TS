@@ -126,19 +126,6 @@ claude mcp add refactron -- refactron-mcp
 
 The agent proposes an edit (as full-file contents or a unified diff), calls `verify_change`, and gets back the same `SAFE` / `UNSAFE` / `UNPROVEN` report, then decides whether to land it. Full setup, for every client, in the [MCP tab](/mcp/index).
 
-## Migration mode
-
-Refactron also ships 20 deterministic AST transforms that both _author_ a change and _verify_ it through the same gates before an atomic write. They live in the package you already installed:
-
-```bash
-cd your-project && refactron login
-refactron analyze .              # findings + blast radius + tier
-refactron run --dry-run          # preview the diff (no writes)
-refactron run --apply            # gates, then atomic write
-```
-
-See [Migration mode](/transforms/index) for the transform catalog and the [CLI reference](/cli/reference) for every command and flag.
-
 ## Build from source (contributors)
 
 Working on Refactron itself? Build the checkout instead of installing the published package:

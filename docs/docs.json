@@ -20,7 +20,16 @@
     "eyebrows": "breadcrumbs"
   },
   "contextual": {
-    "options": ["copy", "view", "chatgpt", "claude", "perplexity", "mcp", "cursor", "vscode"]
+    "options": [
+      "copy",
+      "view",
+      "chatgpt",
+      "claude",
+      "perplexity",
+      "mcp",
+      "cursor",
+      "vscode"
+    ]
   },
   "logo": {
     "light": "/logo/refactron-wordmark-dark.svg",
@@ -38,58 +47,32 @@
         "groups": [
           {
             "group": "Getting Started",
-            "pages": ["overview", "quickstart", "faq"]
+            "pages": [
+              "overview",
+              "quickstart",
+              "faq"
+            ]
           },
           {
             "group": "Verification",
             "pages": [
               "verification/verify-diff",
               "verification/mcp-server",
-              "verification/verdicts",
-              "verification/preflight"
+              "verification/verdicts"
             ]
           },
           {
             "group": "Concepts",
-            "pages": ["concepts/safety-model", "concepts/why-no-llm"]
-          },
-          {
-            "group": "CLI",
-            "pages": ["cli/reference"]
-          },
-          {
-            "group": "Configuration",
-            "pages": ["configuration", "configuration/refactronrc"]
-          },
-          {
-            "group": "Migration mode",
             "pages": [
-              "transforms/index",
-              "transforms/callback-to-async-await",
-              "transforms/format-to-fstring",
-              "transforms/manual-typecheck-to-hints",
-              "transforms/deprecated-api-requests-to-httpx",
-              "transforms/class-to-dataclass",
-              "transforms/var-to-const-let",
-              "transforms/promise-chains-to-async",
-              "transforms/implicit-any",
-              "transforms/commonjs-to-esm",
-              "transforms/promise-constructor-to-async",
-              "transforms/super-no-args",
-              "transforms/lru-cache-to-cache",
-              "transforms/pep585-generics",
-              "transforms/pep604-optional-union",
-              "transforms/datetime-utc-alias",
-              "transforms/yield-from-for-loop",
-              "transforms/indexof-to-includes",
-              "transforms/object-assign-to-spread",
-              "transforms/string-concat-to-template-literal",
-              "transforms/vue-set-delete-to-assignment"
+              "concepts/safety-model",
+              "concepts/why-no-llm"
             ]
           },
           {
             "group": "Reference",
-            "pages": ["changelog", "reference/performance", "reference/citations"]
+            "pages": [
+              "changelog"
+            ]
           }
         ]
       },
@@ -99,7 +82,10 @@
         "groups": [
           {
             "group": "Get started",
-            "pages": ["mcp/index", "mcp/quickstart"]
+            "pages": [
+              "mcp/index",
+              "mcp/quickstart"
+            ]
           },
           {
             "group": "Connect your client",
@@ -107,7 +93,10 @@
               {
                 "group": "Claude",
                 "icon": "/assets/clients/claude.svg",
-                "pages": ["mcp/claude-code", "mcp/claude-desktop"]
+                "pages": [
+                  "mcp/claude-code",
+                  "mcp/claude-desktop"
+                ]
               },
               "mcp/codex",
               "mcp/cursor",
@@ -119,7 +108,9 @@
           },
           {
             "group": "Reference",
-            "pages": ["mcp/tool-reference"]
+            "pages": [
+              "mcp/tool-reference"
+            ]
           }
         ]
       }
