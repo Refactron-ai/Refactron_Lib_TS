@@ -25,8 +25,7 @@
     "url": "https://github.com/Refactron-ai/Refactron_Lib_TS/issues"
   },
   "scripts": {
-    "build": "tsc --project tsconfig.build.json && chmod +x dist/cli/index.js && chmod +x dist/mcp/server.js && npm run build:copy-py && npm run build:verify-sidecars",
-    "build:copy-py": "mkdir -p dist/verify/checks/_py && cp src/verify/checks/_py/*.py dist/verify/checks/_py/",
+    "build": "tsc --project tsconfig.build.json && node scripts/postbuild.mjs",
     "build:watch": "tsc --project tsconfig.build.json --watch",
     "typecheck": "tsc --noEmit",
     "lint": "eslint src/ tests/ --ext .ts,.tsx --max-warnings 0",
@@ -37,8 +36,7 @@
     "test:coverage": "vitest run --coverage",
     "clean": "rimraf dist",
     "prepublishOnly": "npm run clean && npm run build && npm run typecheck && npm run lint && npm test",
-    "prepare": "git config core.hooksPath .githooks 2>/dev/null || true",
-    "build:verify-sidecars": "node -e \"const f=['syntax_check','imports_check','statement_map'];const m=f.filter(n=>!require('fs').existsSync('dist/verify/checks/_py/'+n+'.py'));if(m.length){console.error('missing sidecars in dist: '+m.join(', '));process.exit(1)}\""
+    "prepare": "git config core.hooksPath .githooks 2>/dev/null || true"
   },
   "keywords": [
     "verification",
