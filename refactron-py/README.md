@@ -23,7 +23,7 @@ CLI.
 
 ```bash
 pip install refactron==0.3.0
-npm install -g refactron@0.3.0
+npm install -g refactron
 ```
 
 Both lines matter. The pip package gives you the `refactron` entry point; the
@@ -37,7 +37,7 @@ you pinned. If the Node CLI is missing, the wrapper tells you the exact command
 to run and exits non-zero.
 
 Prefer not to install globally? Skip the pip package and use
-`npx refactron@0.3.0 <command>` directly.
+`npx refactron <command>` directly.
 
 ## Usage
 
