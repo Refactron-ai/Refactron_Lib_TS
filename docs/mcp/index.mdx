@@ -36,7 +36,7 @@ Requires Node.js 18 or newer. For a coverage-backed `SAFE` verdict you also need
 Install globally and get both binaries on your `PATH`:
 
 ```bash
-npm install -g refactron@0.3.0
+npm install -g refactron
 ```
 
 That gives you `refactron` (the CLI) and `refactron-mcp` (this server).
@@ -44,7 +44,7 @@ That gives you `refactron` (the CLI) and `refactron-mcp` (this server).
 To skip the install and let the client fetch the package on demand:
 
 ```bash
-npx -y -p refactron@0.3.0 refactron-mcp
+npx -y -p refactron refactron-mcp
 ```
 
 The `-p` flag is required. `refactron-mcp` is a second binary of the `refactron` package, not a package of its own, so `npx refactron-mcp` on a machine without the global install looks for a package named `refactron-mcp` and fails with a registry 404.

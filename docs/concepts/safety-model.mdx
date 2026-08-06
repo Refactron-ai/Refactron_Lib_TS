@@ -69,7 +69,7 @@ The most expensive gate, and the only one that runs **your** code.
    - `vitest.config.ts` or `vitest.config.js` → `vitest run`
    - `jest.config.js` or `jest.config.ts` → `jest`
    - any of `pyproject.toml`, `pytest.ini`, or `setup.cfg` present → `pytest`
-   - Override with `--test-cmd` (CLI / MCP) or `.refactronrc.json` `testCmd`.
+   - Override with `--test-cmd` (CLI) or the `testCmd` argument (MCP).
 2. **Run the baseline first**: the runner against the _unchanged_ copy. If the baseline already fails, Refactron won't blame the change: the tests gate reports an already-red baseline, and the verdict becomes [`UNPROVEN`](/verification/verdicts), not `UNSAFE`.
 3. **Run the mutated tree**: same runner, with the change in place. A non-zero exit fails the gate.
 

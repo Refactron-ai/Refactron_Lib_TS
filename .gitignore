@@ -44,3 +44,7 @@ refactron-py/**/*.egg-info/
 refactron-py/*.whl
 refactron-py/*.tar.gz
 *.tgz
+
+# Internal planning material, not published docs
+docs/plans/
+docs/superpowers/

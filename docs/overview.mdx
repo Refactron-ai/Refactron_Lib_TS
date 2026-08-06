@@ -41,7 +41,7 @@ It applies the change in an isolated **shadow tree**, runs three gates against i
 Install the CLI and `login` first (both are in the [quickstart](/quickstart); an unauthenticated run exits `7`):
 
 ```bash
-npm install -g refactron@0.3.0
+npm install -g refactron
 refactron verify-diff . --diff change.diff --test-cmd "python3 -m pytest -q"
 ```
 
@@ -61,9 +61,6 @@ refactron verify-diff . --diff change.diff --test-cmd "python3 -m pytest -q"
   </Card>
   <Card title="Verdicts" icon="scale-balanced" href="/verification/verdicts">
     SAFE, UNSAFE, UNPROVEN: coverage fusion and the Python-only limitation, in depth.
-  </Card>
-  <Card title="Preflight" icon="clipboard-check" href="/verification/preflight">
-    A coverage-aware safety report for the SQLAlchemy 1.x to 2.0 migration.
   </Card>
 </CardGroup>
 

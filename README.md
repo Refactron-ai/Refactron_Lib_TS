@@ -19,10 +19,10 @@ It plugs in where change happens: a `verify-diff` CLI (and CI gate), and an MCP 
 Requires Node.js ≥ 18, and Python 3.8+ with `coverage.py` for Python coverage.
 
 ```bash
-npm install -g refactron@0.3.0
+npm install -g refactron
 ```
 
-That puts two binaries on your `PATH`: `refactron` (the CLI) and `refactron-mcp` (the MCP server). To skip the install, run `npx refactron@0.3.0 <command>` instead.
+That puts two binaries on your `PATH`: `refactron` (the CLI) and `refactron-mcp` (the MCP server). To skip the install, run `npx refactron <command>` instead.
 
 Authenticate once (`refactron login`, or `REFACTRON_TOKEN` in CI; unauthenticated exits `7`), then verify a diff:
 
@@ -40,7 +40,7 @@ Refactron copies the repo into an isolated shadow tree, applies the diff there, 
 
 ### Installing from PyPI
 
-`pip install refactron==0.3.0` installs a thin `refactron` shim that shells out to the npm CLI. It is not a Node-free path: you still need Node.js ≥ 18 **and** the npm package (`npm install -g refactron@0.3.0`). If the npm CLI is missing, the shim prints the exact matching install command and exits non-zero rather than installing anything for you. The shim provides the `refactron` command only; `refactron-mcp` comes from the npm package.
+`pip install refactron==0.3.0` installs a thin `refactron` shim that shells out to the npm CLI. It is not a Node-free path: you still need Node.js ≥ 18 **and** the npm package (`npm install -g refactron`). If the npm CLI is missing, the shim prints the exact matching install command and exits non-zero rather than installing anything for you. The shim provides the `refactron` command only; `refactron-mcp` comes from the npm package.
 
 ### Build from source (contributors)
 
@@ -77,7 +77,7 @@ Refactron ships a stdio [MCP](https://modelcontextprotocol.io) server exposing o
 claude mcp add refactron -- refactron-mcp
 ```
 
-`refactron-mcp` is installed by `npm install -g refactron@0.3.0`. Working from a source checkout instead? Point the client at `node /absolute/path/to/Refactron_Lib_TS/dist/mcp/server.js`.
+`refactron-mcp` is installed by `npm install -g refactron`. Working from a source checkout instead? Point the client at `node /absolute/path/to/Refactron_Lib_TS/dist/mcp/server.js`.
 
 The agent proposes an edit (full-file `edits` or a `unifiedDiff`), calls `verify_change`, and gets back the same `SAFE` / `UNSAFE` / `UNPROVEN` JSON report, then decides whether to land it. The tool runs entirely local and never mutates your repo.
 

@@ -40,14 +40,14 @@ If your project is installed into the environment (an editable `pip install -e .
 Requires Node.js ≥ 18, plus Python 3.8+ with `coverage.py` for the coverage half.
 
 ```bash
-npm install -g refactron@0.3.0
+npm install -g refactron
 ```
 
-That puts `refactron` (and `refactron-mcp`) on your `PATH`. To skip the install, run `npx refactron@0.3.0 verify-diff ...` instead.
+That puts `refactron` (and `refactron-mcp`) on your `PATH`. To skip the install, run `npx refactron verify-diff ...` instead.
 
 <Note>
   `pip install refactron==0.3.0` installs a thin `refactron` shim that shells out to the npm CLI. It
-  is not a Node-free path: you still need Node.js ≥ 18 **and** `npm install -g refactron@0.3.0`.
+  is not a Node-free path: you still need Node.js ≥ 18 **and** `npm install -g refactron`.
   When the npm CLI is missing, the shim prints the exact matching install command and exits
   non-zero.
 </Note>
@@ -195,7 +195,7 @@ git diff origin/main...HEAD > pr.diff
 refactron verify-diff . --diff pr.diff --test-cmd "python3 -m pytest -q"
 ```
 
-Unlike `preflight`, `verify-diff` has no `--fail-on-unproven` flag. To fail CI on `UNPROVEN`, read the `verdict` field from `--json` output and set the exit code yourself; the process exits `0` for `UNPROVEN` by design, so a green suite on untested lines never silently blocks a merge unless you choose to.
+`verify-diff` has no `--fail-on-unproven` flag. To fail CI on `UNPROVEN`, read the `verdict` field from `--json` output and set the exit code yourself; the process exits `0` for `UNPROVEN` by design, so a green suite on untested lines never silently blocks a merge unless you choose to.
 
 ## Next
 
@@ -208,8 +208,5 @@ Unlike `preflight`, `verify-diff` has no `--fail-on-unproven` flag. To fail CI o
   </Card>
   <Card title="Safety model" icon="shield-check" href="/concepts/safety-model">
     How the shadow tree and the three gates work.
-  </Card>
-  <Card title="Preflight" icon="clipboard-check" href="/verification/preflight">
-    A coverage-aware safety report for the SQLAlchemy 1.x to 2.0 migration.
   </Card>
 </CardGroup>

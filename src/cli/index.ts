@@ -69,6 +69,15 @@ if (cmd === 'verify-diff') {
 }
 
 if (cmd === 'login') {
+  // Handled BEFORE importing device-auth, because that import is the start of a
+  // real OAuth device flow: it calls out to the API and spawns a browser. Any
+  // caller asking for help — a human, or a test enumerating advertised verbs —
+  // must get help, not a login attempt.
+  if (process.argv.includes('--help') || process.argv.includes('-h')) {
+    process.stdout.write(STATIC_HELP);
+    process.exit(0);
+  }
+
   const printToken = process.argv.includes('--print-token');
   const { runLoginFlow } = await import('../auth/device-auth.js');
 
@@ -81,10 +90,30 @@ if (cmd === 'login') {
   };
 
   try {
-    const { creds } = await runLoginFlow(false, onStatus);
-    const token = creds?.access_token ?? '';
+    const { creds, requiresApiKey } = await runLoginFlow(false, onStatus);
+
+    // runLoginFlow saves credentials ONLY for plans that need no API key. For
+    // pro and enterprise it returns creds with api_key=null and saves nothing,
+    // expecting the caller to collect a key and persist them. The Ink LoginFlow
+    // did that; it left with the TUI. Until this CLI can prompt for a key,
+    // report the truth: exiting 0 here would tell a paying customer they are
+    // logged in while `verify-diff` keeps exiting 7 with no explanation.
+    if (requiresApiKey) {
+      process.stderr.write(
+        `refactron login: your ${creds.plan ?? 'paid'} plan needs an API key, and this CLI cannot yet prompt for one.\n` +
+          `  Create one in the dashboard and export it instead:\n` +
+          `    export REFACTRON_TOKEN=<your key>\n`,
+      );
+      process.exit(1);
+    }
+
+    const token = creds.access_token ?? '';
+    if (!token) {
+      process.stderr.write('refactron login: the server returned no access token.\n');
+      process.exit(1);
+    }
     if (printToken) process.stdout.write(token + '\n');
-    process.exit(token ? 0 : 1);
+    process.exit(0);
   } catch (err) {
     process.stderr.write(`refactron login: ${err instanceof Error ? err.message : String(err)}\n`);
     process.exit(1);
@@ -96,6 +125,19 @@ if (cmd === 'login') {
 // exits 2 rather than throwing ERR_MODULE_NOT_FOUND.
 if (cmd === undefined) {
   process.stdout.write(STATIC_HELP);
+  process.exit(2);
+}
+
+// Name the removal rather than just rejecting it. The person who hits this is
+// reading CI stderr, not the changelog, and "unknown command" alone turns a
+// one-line pin into a support round trip.
+const REMOVED_IN_0_4_0 = ['analyze', 'run', 'document', 'rollback', 'preflight', 'init'];
+
+if (REMOVED_IN_0_4_0.includes(cmd)) {
+  process.stderr.write(
+    `refactron: '${cmd}' was removed in 0.4.0 along with migration mode.\n` +
+      `  Pin the last release that has it:  npm install -g refactron@0.3.1\n`,
+  );
   process.exit(2);
 }
 

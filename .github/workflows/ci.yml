@@ -50,6 +50,9 @@ jobs:
           python-version: '3.11'
       - run: python3 -m pip install pytest requests coverage
       - run: npm ci
+      # help-drift.test.ts asserts against dist/ and now HARD FAILS when it is
+      # absent. Without this build it skipped in all nine matrix jobs at exit 0.
+      - run: npm run build
       - run: npm test -- --coverage
       - uses: codecov/codecov-action@v4
         with:
@@ -88,8 +91,12 @@ jobs:
       - name: A departed command is rejected, not a missing module
         run: |
           out=$(node dist/cli/index.js analyze 2>&1) && exit 1
-          echo "$out" | grep -q "unknown command 'analyze'"
+          echo "$out" | grep -q 'removed in 0.4.0'
+          echo "$out" | grep -q 'refactron@0.3.1'
           ! echo "$out" | grep -q 'ERR_MODULE_NOT_FOUND'
+          # Criterion 4: bare invocation. Asserted nowhere in CI before.
+          node dist/cli/index.js >/dev/null 2>&1 && exit 1
+          [ $? -eq 2 ]
 
       - name: Python sidecars reached dist
         run: |

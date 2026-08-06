@@ -11,10 +11,10 @@ In the next ten minutes you'll install Refactron, verify a real change against a
 Requires Node.js ≥ 18.
 
 ```bash
-npm install -g refactron@0.3.0
+npm install -g refactron
 ```
 
-That puts two binaries on your `PATH`: `refactron` (the CLI, including `verify-diff` and `preflight`) and `refactron-mcp` (the MCP server). To skip the install, run `npx refactron@0.3.0 <command>` instead.
+That puts two binaries on your `PATH`: `refactron` (the CLI) and `refactron-mcp` (the MCP server). To skip the install, run `npx refactron <command>` instead.
 
 To earn a `SAFE` verdict end to end you also need a Python project with a passing `pytest` suite, plus `coverage.py` for the coverage measurement:
 
@@ -25,7 +25,7 @@ pip install pytest coverage
 <Note>
   Prefer PyPI? `pip install refactron==0.3.0` installs a thin `refactron` shim that shells out to
   the npm CLI. It is not a Node-free path: you still need Node.js ≥ 18 **and** `npm install -g
-  refactron@0.3.0`. When the npm CLI is missing, the shim prints the exact matching install command
+  refactron`. When the npm CLI is missing, the shim prints the exact matching install command
   and exits non-zero. The shim provides the `refactron` command only; `refactron-mcp` comes from the
   npm package.
 </Note>

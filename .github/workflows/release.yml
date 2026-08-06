@@ -55,8 +55,9 @@ jobs:
       - run: pip install pytest requests coverage
       - run: npm ci
       - run: npm run typecheck
-      - run: npm test
+      # Build first: the CLI drift test asserts against dist/ and fails without it.
       - run: npm run build
+      - run: npm test
       - run: node dist/cli/index.js --version
 
   publish-npm:

@@ -35,7 +35,7 @@ STEP 2 - Install the server.
 Run `which refactron-mcp`, or `where refactron-mcp` on Windows. If it prints a
 path, go to step 3. Otherwise install it:
 
-    npm install -g refactron@0.3.0
+    npm install -g refactron
 
 That puts two binaries on PATH: `refactron` (the CLI) and `refactron-mcp` (the
 MCP server). If you cannot install globally, install nothing and use the npx
@@ -63,7 +63,7 @@ Without a global install, use this instead. The `-p` flag is required, because
 of its own:
 
     { "mcpServers": { "refactron": { "command": "npx",
-        "args": ["-y", "-p", "refactron@0.3.0", "refactron-mcp"] } } }
+        "args": ["-y", "-p", "refactron", "refactron-mcp"] } } }
 
 Validate the JSON before you finish. Claude Desktop skips a malformed config
 silently, so a trailing comma looks exactly like a broken install.
@@ -91,7 +91,7 @@ If it failed to start, the logs are per-server: on macOS
 ~/Library/Logs/Claude/mcp-server-refactron.log, on Windows
 %APPDATA%\Claude\logs\.
 
-You are looking for a server named `refactron`, version 0.3.0, exposing exactly
+You are looking for a server named `refactron` exposing exactly
 ONE tool: `verify_change`.
 
 If the server is connected but no tool appears, the handshake failed. Prove the
@@ -185,7 +185,7 @@ To pin the version and skip the global install:
   "mcpServers": {
     "refactron": {
       "command": "npx",
-      "args": ["-y", "-p", "refactron@0.3.0", "refactron-mcp"]
+      "args": ["-y", "-p", "refactron", "refactron-mcp"]
     }
   }
 }
