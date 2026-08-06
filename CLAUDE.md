@@ -14,7 +14,7 @@ Route through these resources instead of redoing the work each session.
 | `principal-engineer`        | Architecture / locked-contract calls / breaking changes |
 | `staff-code-reviewer`       | Adversarial pre-merge review                            |
 | `security-engineer`         | Threat modeling, sidecar safety, supply chain           |
-| `python-sidecar-specialist` | LibCST patterns, verify checks, refusal preconditions   |
+| `python-sidecar-specialist` | Verify-check sidecars, stdin/stdout protocol, refusals  |
 | `typescript-architect`      | Verify engine, ts-morph, ESM, type-level safety         |
 | `release-manager`           | Semver, changelog, npm + PyPI publish                   |
 | `test-engineer`             | Red-first proof, fixtures, snapshot discipline          |
@@ -42,7 +42,6 @@ Use `/ship` instead of `gh pr create`. A branch with no issue behind it is work 
 - `/review`: three-lens adversarial review of the current branch (correctness, architecture, tests), run in parallel.
 - `/ship`: the pre-PR gate. Verify against the issue, run the review, open the PR.
 - `/check-locked`: verify the locked-files invariant on the current branch.
-- `/new-transform`: end-to-end transform scaffolding (migration mode).
 
 **Rules**
 
@@ -60,7 +59,7 @@ Use `/ship` instead of `gh pr create`. A branch with no issue behind it is work 
 **Settings & hooks (`.claude/settings.json`, `.claude/hooks/`)**: team-wide permissions plus three live hooks:
 
 - `block-dangerous-bash.sh` (PreToolUse:Bash): blocks `--no-verify`, `--force` push, `git reset --hard`, real `npm publish`, broad `rm -rf`
-- `block-locked-file-writes.sh` (PreToolUse:Write|Edit): blocks edits to `src/contracts.ts`, `src/core/models.ts`, `src/adapters/interface.ts`
+- `block-locked-file-writes.sh` (PreToolUse:Write|Edit): blocks edits to `src/contracts.ts`
 - `auto-format.sh` (PostToolUse:Write|Edit): runs prettier on supported files so format:check stays green
 - `.githooks/commit-msg`: enforces COMMIT_CONVENTIONS (Conventional Commits shape, no AI names, no co-author trailers, 72-char subject cap). Activated by `npm install` via the `prepare` script.
 
@@ -80,7 +79,6 @@ npm run format:check       # CI-style prettier check
 npm test                   # vitest run (full suite)
 npm run test:watch         # vitest in watch mode
 npm run test:coverage      # vitest with v8 coverage
-npm run test:verification  # only tests/verification/
 
 # Single test file / single case:
 npx vitest run tests/unit/<file>.test.ts
@@ -95,56 +93,60 @@ node dist/cli/index.js <command>
 
 Requires Node.js 18+ and Python 3.8+ (for Python-adapter tests).
 
-## Locked Contracts: Do Not Modify
+## Locked Contract: Do Not Modify
 
-- `src/core/models.ts`
-- `src/adapters/interface.ts`
+- `src/contracts.ts`
 
-These define types every other module depends on. PRs that modify them are closed without review; changes require a major version bump and coordinated migration. If a contract change seems necessary, open an issue first.
+This is the locked engine surface. It defines the engine interfaces along with
+`RefactorPlan`, `FileChange`, `GateResult` and the `TransformId` union.
+Structural changes require a major version bump and coordinated migration. If a
+contract change seems necessary, open an issue first.
 
-## Engine Contracts
+`TransformId` still lists the 20 transform literals even though the transforms
+left with the refactoring product in 0.4.0. That is deliberate: narrowing a
+locked contract in the same release that restructures the repo would make any
+regression un-bisectable. `src/verify/verify-diff.ts` casts a synthetic
+`'external-diff'` id for diffs that came from outside a pipeline. Narrow it in a
+later major.
 
-`src/contracts.ts` is the locked engine surface. It defines the four engine interfaces (`Analyzer`, `Refactorer`, `Verifier`, `Documenter`) along with `RefactorPlan`, `FileChange`, `GateResult`, and the 20 `TransformId` literals. Adding a `TransformId` literal is additive; structural changes require a major version bump.
-
-`src/core/models.ts` and `src/adapters/interface.ts` remain locked and are classified as legacy. They back the blast-radius analyze path and still compile.
-
-Both surfaces coexist. New engine code targets `contracts.ts`; the legacy engines keep compiling against `models.ts`. Do not import from both surfaces in the same file: pick one side of the boundary per module.
-
-`VerdictReport` (`src/verify/verdict-fuse.ts`) is not in `contracts.ts` but is equally public: the MCP tool and `verify-diff --json` serialize it verbatim, and it carries `reportVersion` so consumers storing reports know which shape they hold. Additive fields are safe; renames, removals, and retypes are breaking.
-
-## Blast Radius Invariant
-
-Every `CodeIssue` produced anywhere in the codebase MUST carry a non-null `blastRadius` of shape `{affectedFiles, affectedFunctions, affectedTestFiles, score, level}`. Tests or analyzers that emit issues without it will be rejected.
-
-- Score formula: `files (40%) + functions (40%) + test-coverage gap (20%)`
-- The legacy verification engine scales by `level`:
-  - `trivial` maps to syntax only
-  - `low` / `medium` / `high` map to syntax + imports + tests (45s timeout)
-  - `critical` maps to syntax + imports + tests (120s timeout)
-
-That gating belongs to the legacy `src/verification/` engine; do not bypass it there. The `verify-diff` and MCP path is separate: it always runs all three gates in order and applies a flat 600s default test timeout (`src/verify/runners/detect.ts`).
+`VerdictReport` (`src/verify/verdict-fuse.ts`) is not in `contracts.ts` but is
+equally public: the MCP tool and `verify-diff --json` serialize it verbatim, and
+it carries `reportVersion` so consumers storing reports know which shape they
+hold. Additive fields are safe; renames, removals and retypes are breaking.
 
 ## Architecture (the big picture)
 
-- **`src/verify/`**: the verification engine. Shadow tree (`shadow-tree.ts`), diff intake and rejection (`diff-input.ts`), the three gates (`gates/`), per-language checks (`checks/`, including the Python sidecars under `checks/_py/`), statement mapping and coverage attribution, and `verdict-fuse.ts` (pure fusion into `SAFE` / `UNSAFE` / `UNPROVEN`). Batch writes go through `atomic-batch-writer.ts`.
-- **`src/mcp/`**: the stdio MCP server (`server.ts`) exposing `verify_change`, which returns the same report the CLI does.
-- **`src/core/`**: locked legacy types (`models.ts`), config loader (`config.ts`), and `orchestrator.ts` that wires the migration pipeline.
-- **`src/adapters/`**: language-agnostic boundary via `ILanguageAdapter`. Python uses a subprocess; TypeScript uses the compiler API. **All language-specific logic stays inside an adapter**: the verification and analysis engines must remain language-agnostic.
-- **`src/analysis/`**: blast-radius scoring (`blast-radius.ts`), `import-graph.ts` (file-level reverse imports), `call-graph.ts` (function-level), `temporal.ts` (git history), and the analyzer set under `analyzers/`.
-- **`src/verification/`**: legacy blast-radius-aware check selection (`engine.ts`); single-file writes go through `atomic-writer.ts` (temp file, then rename) so partial writes never occur.
-- **`src/autofix/`**: fixer-based. Each extends `BaseFixer` (`fixers/base.ts`), declares `supportedIssueTypes`, and is registered in `autofix/engine.ts`.
-- **`src/pipeline/`**: session state machine, `.refactron/` persistence (`store.ts`), and fix queue.
-- **`src/infrastructure/`**: backup/rollback, diff generation, git log + co-change.
-- **`src/cli/`**: `index.ts` is a fast-path dispatcher (target under 10ms for `--version`); `app.tsx` routes to Ink command components under `commands/`.
-- **`src/ui/`**: Ink terminal UI components.
+- **`src/verify/`**: the verification engine. Shadow tree (`shadow-tree.ts`),
+  diff intake and rejection (`diff-input.ts`), the three gates (`gates/`),
+  per-language checks (`checks/`, including the Python sidecars under
+  `checks/_py/`), statement mapping and coverage attribution, and
+  `verdict-fuse.ts` (pure fusion into `SAFE` / `UNSAFE` / `UNPROVEN`).
+- **`src/analyze/coverage/`**: `coverage.py` invocation and parsing. This is the
+  only surviving piece of the old `src/analyze/` tree, and the one place that
+  has to reproduce exactly what the tests gate ran. Read the governing rule at
+  the top of `python-line-coverage.ts` before touching it: two false `SAFE`
+  verdicts have come from this file.
+- **`src/mcp/`**: the stdio MCP server (`server.ts`) exposing `verify_change`,
+  which returns the same report the CLI does.
+- **`src/cli/`**: `index.ts` is a two-verb dispatcher with zero-import fast paths
+  (target under 10ms for `--version`); `verify-diff-command.ts` is the command.
+- **`src/auth/`**: OAuth device flow and credential storage.
+- **`src/ui/theme.ts`**: terminal colour tokens. The chrome is monochrome; only
+  verdicts, severities and diffs carry hue.
+- **`src/index.ts`**: the library entry point.
 
-Shadow-tree isolation, atomic writes, honest verdict degradation, and the locked adapter interface are the properties the rest of the system relies on. Preserve them.
+Shadow-tree isolation, honest verdict degradation and the locked contract are
+the properties the rest of the system relies on. Preserve them.
 
 ## Where to Register New Things
 
-- **Analyzer**: add `src/analysis/analyzers/<name>.ts` extending `BaseAnalyzer`, register in `src/analysis/engine.ts`, add a config key in `src/core/config.ts` and `refactron.yaml`, test in `tests/unit/analyzers.test.ts`.
-- **Fixer**: extend `BaseFixer` in `src/autofix/fixers/`, declare `supportedIssueTypes`, register in `src/autofix/engine.ts`, test in `tests/unit/autofix-engine.test.ts`.
-- **Language adapter**: implement `ILanguageAdapter` from `src/adapters/interface.ts`, register in `src/adapters/registry.ts`. Keep all language-specific logic inside the adapter.
+- **Per-language check**: add `src/verify/checks/<gate>-<language>.ts`, wire it
+  into the gate in `src/verify/gates/`, and test it in `tests/unit/verify/`.
+  Language-specific logic stays inside the check; the gates and the engine stay
+  language-agnostic.
+- **Python sidecar**: add `src/verify/checks/_py/<name>.py`, and extend the
+  post-build assertion in `build:verify-sidecars` so a missing copy fails the
+  build instead of failing at runtime.
 
 ## Conventions
 

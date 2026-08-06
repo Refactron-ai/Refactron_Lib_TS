@@ -28,7 +28,7 @@ Yes, that's the point. Refactron ships an [MCP server](/mcp/index) with a `verif
 
 `verify-diff` and the MCP `verify_change` tool are **read-only**. They copy your project into a shadow tree, apply the change _there_, run the tests, and clean up. Your working tree is never mutated; landing the change is your (or your agent's) decision.
 
-Nothing in Refactron writes to your project. Migration mode, which did write (on green, atomically), was removed in 1.0.0. See the [safety model](/concepts/safety-model).
+Nothing in Refactron writes to your project. Migration mode, which did write (on green, atomically), was removed in 0.4.0. See the [safety model](/concepts/safety-model).
 
 ---
 
@@ -70,7 +70,7 @@ Each language is a full adapter: parser, gate paths, and (for coverage) a covera
 
 ## What happened to the transforms, and to `analyze` and `run`?
 
-They were removed in 1.0.0. Up to 0.3.x this package also shipped a migration
+They were removed in 0.4.0. Up to 0.3.x this package also shipped a migration
 mode: 20 deterministic AST transforms that both _authored_ a mechanical change
 and _verified_ it through these same gates before an atomic write, driven by the
 `analyze`, `run` and `document` commands.

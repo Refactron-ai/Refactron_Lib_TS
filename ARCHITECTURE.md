@@ -1,177 +1,168 @@
 # Architecture
 
-The big picture for contributors. Pairs with `CLAUDE.md` (concise rules), `CONTRIBUTING.md` (workflow), and `dev-docs/decisions/` (specific ADRs).
+The big picture for contributors. Pairs with `CLAUDE.md` (concise rules),
+`CONTRIBUTING.md` (workflow), and `dev-docs/decisions/` (specific ADRs).
+
+This describes the tree as of 0.4.0, after the refactoring product was split
+out. The transforms, the analyzers, the autofix engine, the adapters and the
+Ink TUI are not here; they are archived with their history.
 
 ---
 
 ## What Refactron is
 
-A deterministic refactoring engine for TypeScript and Python codebases. Given a project root, Refactron:
+A verification layer for code change. Given a project root and a unified diff,
+it answers one question with one of three words:
 
-1. **Analyzes** the source — runs detectors that report findings tied to specific transforms.
-2. **Plans** a refactor — invokes transforms (TypeScript via ts-morph, Python via LibCST sidecars) to produce a list of file changes.
-3. **Verifies** the plan — three gates: syntax check → import resolution → tests pass, all scaled by blast-radius level.
-4. **Applies** the plan atomically — all-or-nothing batch write through `atomic-writer.ts`; failures roll back cleanly.
-5. **Documents** the result — generates docstrings and CHANGELOG entries.
+| Verdict    | Meaning                                                              |
+| ---------- | -------------------------------------------------------------------- |
+| `SAFE`     | The gates passed and the tests executed the lines that changed.      |
+| `UNSAFE`   | A gate failed. The change breaks something.                          |
+| `UNPROVEN` | The gates passed, but nothing established that the change is tested. |
 
-No LLM in the core path. Every transform is deterministic; the LLM is only invoked for documentation generation (`src/document/`), and even then is gated behind the same atomic-write boundary.
+`UNPROVEN` is the reason the product exists. A tool that only says pass or fail
+has to lie when it cannot tell, and the lie is always in the same direction.
+
+**A false `SAFE` is the only unforgivable defect.** Every other bug is a bug;
+that one removes the reason to run the tool. Two have shipped, both fixed in
+0.3.1, and both had the same cause: coverage measured a different program than
+the tests gate ran.
+
+No LLM anywhere. The verdict is deterministic and reproducible.
 
 ---
 
-## The two-engine boundary
+## Two entry points, one engine
 
-Refactron is mid-migration from a legacy engine surface to a v2.0 surface:
+```
+  refactron verify-diff              refactron-mcp  (stdio)
+  src/cli/verify-diff-command.ts     src/mcp/tools/verify-change.ts
+                    \                /
+                     verifyDiff()                src/verify/verify-diff.ts
+                          │
+                 ┌────────┴────────┐
+            diff intake       shadow tree
+                          │
+        gate 1 syntax → gate 2 imports → gate 3 tests
+                          │
+              changed-line coverage attribution
+                          │
+                   verdict fusion                 src/verify/verdict-fuse.ts
+                          │
+                    VerdictReport
+```
 
-- **Legacy** (`src/core/models.ts`, `src/adapters/interface.ts`): pre-v2.0 types. **LOCKED.** Backed the blast-radius analysis engines and continues to compile.
-- **v2.0** (`src/contracts.ts`): the four engine interfaces — `Analyzer`, `Refactorer`, `Verifier`, `Documenter` — plus `RefactorPlan`, `FileChange`, the `TransformId` literal union. **LOCKED.**
+Both surfaces call the same function and serialize the same `VerdictReport`.
+There is no separate "MCP mode": if the CLI and the MCP tool ever disagree
+about a diff, that is a bug.
 
-**Rule:** a single file imports from one side or the other, never both. Pick a side per module during the migration window.
+---
+
+## Pipeline
+
+1. **Intake** (`verify/diff-input.ts`). Parse and validate the diff. Reject what
+   cannot be applied faithfully rather than applying an approximation. A
+   rejection is a result, not a crash.
+2. **Shadow tree** (`verify/shadow-tree.ts`). Copy the project to an isolated
+   location and apply the diff **there**.
+3. **Gate 1, syntax** (`verify/gates/syntax.ts`). Per-language checks under
+   `verify/checks/`. Python goes through a sidecar in `checks/_py/`; TypeScript
+   uses the compiler API.
+4. **Gate 2, imports** (`verify/gates/imports.ts`). Does every import in the
+   changed files still resolve.
+5. **Gate 3, tests** (`verify/gates/tests.ts`). Run the project's real test suite
+   against the shadow tree, using the runner detected in `verify/runners/`.
+6. **Attribution** (`verify/statement-map.ts`, `verify/coverage-attribution.ts`).
+   Map changed lines to enclosing statements, then ask whether the run executed
+   them. Attribution is by AST statement containment, not line number, because
+   `coverage.py` reports a multi-line statement at its first line.
+7. **Fusion** (`verify/verdict-fuse.ts`). A pure function from gate results plus
+   coverage to a verdict. No I/O, so the decision is testable in isolation.
+
+---
+
+## Four load-bearing invariants
+
+### 1. Shadow-tree isolation
+
+Verification runs against a copy. Nothing in this repo writes to the caller's
+tree, in any path, for any verdict. This is what makes it safe to point at a
+diff you do not trust, which is the whole use case.
+
+### 2. Honest degradation
+
+When something cannot be measured the verdict degrades toward `UNPROVEN`, never
+toward `SAFE`. Coverage attestation is `coverage.py` only, so a non-Python or
+mixed diff returns `UNPROVEN` rather than a guess. `verdict-fuse.ts` types the
+coverage tool as `'coverage.py' | 'none'` so there is no third state that could
+be mistaken for evidence.
+
+### 3. The shadow-bypass guard
+
+If a changed file is absent from `measuredFiles`, the suite never loaded the
+copy being verified: it exercised the installed package, or a different path
+entirely. The verdict is floored at `UNPROVEN` with a reason naming the remedy.
+Without this, an editable install produces a confident `SAFE` for code that no
+test touched.
+
+### 4. Measurement parity
+
+The coverage run must be **observationally equivalent** to what the tests gate
+ran. `toCoverageRunArgs` in `src/analyze/coverage/python-line-coverage.ts`
+returns non-null only when it can reproduce the gate's argv and environment
+exactly, and declines otherwise. A decline costs a `SAFE` verdict; a wrong
+reproduction costs the product's credibility. Read the rule block at the top of
+that file before changing it — both shipped false `SAFE`s originated there.
+
+---
+
+## Locked surface
+
+`src/contracts.ts` is the locked engine surface: the engine interfaces,
+`RefactorPlan`, `FileChange`, `GateResult` and the `TransformId` union.
 
 A locked surface change requires:
+
 1. An ADR in `dev-docs/decisions/`
 2. A major version bump
 3. A documented migration path for consumers
 
----
+`VerdictReport` (`verify/verdict-fuse.ts`) is not in `contracts.ts` but is
+equally public: the MCP tool and `verify-diff --json` serialize it verbatim, and
+it carries `reportVersion` so consumers storing reports know which shape they
+hold. Additive fields are safe; renames, removals and retypes are breaking.
 
-## Pipeline (high level)
-
-```
-   ┌────────────────┐
-   │  refactron.yaml│ ← user config
-   └───────┬────────┘
-           ↓
-   ┌────────────────┐  ┌─────────────────────────────────┐
-   │  source files  │→ │  Adapter Registry              │
-   └────────────────┘  │  (src/adapters/{python,ts})    │
-                       └────────────┬────────────────────┘
-                                    ↓
-                       ┌────────────────────────────────┐
-                       │  Analyzer  (src/analyze/)      │
-                       │  • Detectors per transform     │
-                       │  • Blast radius scoring        │
-                       │  • Tier classification         │
-                       └────────────┬────────────────────┘
-                                    ↓ AnalysisReport
-                       ┌────────────────────────────────┐
-                       │  Refactorer (src/transform/)   │
-                       │  • TRANSFORM_ORDER             │
-                       │  • Composition per file        │
-                       │  • Precondition emission       │
-                       └────────────┬────────────────────┘
-                                    ↓ RefactorPlan
-                       ┌────────────────────────────────┐
-                       │  Verifier (src/verify/, also   │
-                       │  legacy src/verification/)     │
-                       │  • Gate 1: syntax             │
-                       │  • Gate 2: imports             │
-                       │  • Gate 3: tests               │
-                       │  Scope scales by blast-radius  │
-                       └────────────┬────────────────────┘
-                                    ↓
-                       ┌────────────────────────────────┐
-                       │  Atomic batch writer           │
-                       │  (src/infrastructure/)         │
-                       │  temp file → fsync → rename    │
-                       │  rollback on partial failure   │
-                       └────────────┬────────────────────┘
-                                    ↓
-                       ┌────────────────────────────────┐
-                       │  Documenter (src/document/)    │
-                       │  • Docstring insertion         │
-                       │  • CHANGELOG update            │
-                       └────────────────────────────────┘
-```
-
-State at every step is persisted to `.refactron/` (session, store, queue). Crashes or interrupts can resume from the last good state.
-
----
-
-## Three load-bearing invariants
-
-The rest of the system relies on these. Breaking any of them is a major-version event.
-
-### 1. Atomic writes
-
-Every file write goes through `src/infrastructure/atomic-writer.ts`:
-
-```
-write temp file → fsync → rename(temp, dest)
-```
-
-Partial writes are impossible. POSIX rename is atomic; on Windows, the `write-file-atomic` dep handles the equivalent. Mode bits are preserved.
-
-**Why:** a refactor that fails mid-batch can never leave files in a half-written state. The user's working tree is always coherent.
-
-### 2. Blast radius
-
-Every `CodeIssue` carries a non-null `blastRadius` of shape:
-
-```typescript
-{
-  affectedFiles: string[],
-  affectedFunctions: string[],
-  affectedTestFiles: string[],
-  score: number,
-  level: 'trivial' | 'low' | 'medium' | 'high' | 'critical',
-}
-```
-
-Score formula: `files (40%) + functions (40%) + test-coverage gap (20%)`.
-
-Verification scales by `level`:
-- `trivial` → syntax only
-- `low` / `medium` / `high` → syntax + imports + tests (45s timeout)
-- `critical` → syntax + imports + tests (120s timeout)
-
-**Why:** scaling verification depth to the change's reach prevents the syntax-only quick check from missing a critical regression, and prevents the full-tests gate from being wasted on a one-character whitespace edit.
-
-### 3. Locked adapter interface
-
-`ILanguageAdapter` (in `src/adapters/interface.ts`) is the only boundary the analysis and verification engines see. **All language-specific logic stays inside an adapter.** Python uses a `child_process.spawn` of `python3` against vendored sidecars. TypeScript uses `ts-morph` directly.
-
-**Why:** the verification and analysis engines remain language-agnostic. Adding Go or Rust later is "implement `ILanguageAdapter`," not "fork the engine."
-
----
-
-## Tier taxonomy
-
-Every transform is classified at the v2-adapter layer (`src/cli/v2-adapters.ts`):
-
-- **`debt`** — real maintenance burden with a forward-looking argument (deprecation timer, known bug class, Py2/Vue2 holdover). Worth a dedicated PR.
-- **`modernization`** — newer-form-is-clearly-better, old form still works. Worth doing opportunistically.
-- **`style`** — semantically identical, pure preference. Worth doing only on files you're already touching.
-
-The `analyze` output groups findings by tier so users can read "57 debt items, 102 modernization, 2,569 style" instead of one undifferentiated count.
+`TransformId` still lists 20 transform literals with no transforms behind them.
+Narrowing a locked contract in the same release that restructures the repo would
+make any regression un-bisectable, so it waits for a later major.
+`verify/verify-diff.ts` casts a synthetic `'external-diff'` id in the meantime.
 
 ---
 
 ## Extension points
 
-| You want to add… | Read |
-|---|---|
-| A new analyzer (detector) | `CONTRIBUTING.md` → "Adding a New Analyzer" |
-| A new fixer (autofix) | `CONTRIBUTING.md` → "Adding a New Fixer" |
-| A new transform end-to-end | `.claude/commands/new-transform.md` |
-| A new language adapter | `CONTRIBUTING.md` → "Adding a Language Adapter" |
-| A new verification check | `dev-docs/decisions/04-verify-engine-architecture.md` |
+- **A new language check**: add `verify/checks/<gate>-<language>.ts` and wire it
+  into the gate. Language-specific logic stays in the check; the gates and the
+  engine stay language-agnostic.
+- **A new Python sidecar**: add `verify/checks/_py/<name>.py` and extend the
+  `build:verify-sidecars` assertion, so a missing copy fails the build rather
+  than failing every verdict at runtime.
 
 ---
 
-## What is NOT in this architecture
+## What is deliberately not here
 
-- **No LLM in the planning path.** Documentation is the only LLM consumer, and it operates on already-verified, already-written code.
-- **No network calls from sidecars or core.** Sidecars are stdlib-only Python; the TypeScript core is stdlib + vendored deps. A network call would be a security review event.
-- **No mutation of `playground/`.** The playground (Ansible checkout, etc.) is a trial corpus, not a release surface. Mutations to it from CI or local runs are bugs.
+- **No model in any path.** The verdict is deterministic and reproducible.
+- **No network calls** from the verification engine; it runs entirely local.
+- **No writes** to the caller's tree.
+- **No coverage for languages other than Python.** The honest answer to "this
+  cannot be measured" is `UNPROVEN`, not an estimate.
 
 ---
 
 ## Related reading
 
-- `dev-docs/decisions/01-ts-morph-vs-babel.md` — why ts-morph for the TS side
-- `dev-docs/decisions/02-libcst-vs-parso.md` — why LibCST for Python
-- `dev-docs/decisions/04-verify-engine-architecture.md` — the 3-gate design
-- `dev-docs/decisions/06-refactor-engine-architecture.md` — the transform composition model
-- `dev-docs/Refactron_Detailed_Execution_Plan.md` — the original build plan
-
-When in doubt, the ADRs are the source of truth — they explain not just what we built but what alternatives we rejected and why.
+- `CLAUDE.md`: working rules and ops scaffolding
+- `GLOSSARY.md`: shadow tree, gate, verdict, attribution
+- `RUNBOOK.md`: release, rollback, CVE response
+- `docs/verification/`: the user-facing explanation of the same material

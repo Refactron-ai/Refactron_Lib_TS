@@ -89,7 +89,7 @@ Coverage is measured with `coverage.py`, so it is **Python-only** today. A non-P
 
 ## Atomic batch write (landing)
 
-`verify-diff` never writes, and as of 1.0.0 nothing in Refactron does. Earlier versions had a migration mode that wrote on green, handing a list of `(path, newContent)` pairs to an atomic batch writer so a partial failure could never leave a half-written tree. That path was removed with the transforms; the guarantee it protected is now unconditional.
+`verify-diff` never writes, and as of 0.4.0 nothing in Refactron does. Earlier versions had a migration mode that wrote on green, handing a list of `(path, newContent)` pairs to an atomic batch writer so a partial failure could never leave a half-written tree. That path was removed with the transforms; the guarantee it protected is now unconditional.
 
 ## Citations
 

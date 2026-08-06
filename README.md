@@ -143,7 +143,7 @@ Full design: [`ARCHITECTURE.md`](./ARCHITECTURE.md). Vocabulary: [`GLOSSARY.md`]
 
 ## Status & scope
 
-`refactron@1.0.0` on npm ships one product from two entry points: the `refactron`
+`refactron@0.4.0` on npm ships one product from two entry points: the `refactron`
 CLI and the `refactron-mcp` server.
 
 **What it does:** verifies an arbitrary diff through three gates against an
@@ -151,7 +151,7 @@ isolated shadow tree (syntax → imports → tests), measures whether the tests
 actually executed the changed lines, and fuses that into a `SAFE` / `UNSAFE` /
 `UNPROVEN` verdict. Read-only: your working tree is never touched.
 
-**Removed in 1.0.0:** migration mode, and with it the 20 AST transforms, the
+**Removed in 0.4.0:** migration mode, and with it the 20 AST transforms, the
 `analyze` / `run` / `document` / `rollback` / `preflight` / `init` commands, the
 Ink TUI, blast-radius scoring and the tier taxonomy. They were the demo of the
 verification engine, not the product. The code is archived with its full history

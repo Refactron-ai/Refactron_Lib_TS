@@ -7,6 +7,88 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [0.4.0] — 2026-08-06
+
+**Breaking, despite being a minor.** Refactron is now only a verification layer.
+The refactoring product it grew out of has been removed from this package.
+
+Under semver, a `0.x` release may carry breaking changes in a minor, and this one
+does. Read the Removed section before upgrading: there is no major-version bump
+to warn you, so `^0.3.0` will not pull this in but `refactron@latest` will.
+
+The 0.3.0 entry below says "Nothing was renamed, removed, or redefined." That
+was true of 0.3.0 and is explicitly untrue of this release.
+
+### Removed
+
+Six commands, the transforms behind them, and the interactive UI:
+
+| Removed                            | Was                                             |
+| ---------------------------------- | ----------------------------------------------- |
+| `refactron analyze`                | scan for transform patterns, blast radius, tier |
+| `refactron run`                    | plan, verify and apply transforms               |
+| `refactron document`               | generate docstrings and changelog prose         |
+| `refactron rollback`               | undo the last applied refactor                  |
+| `refactron preflight`              | SQLAlchemy 1.x → 2.0 safety report              |
+| `refactron init`                   | scaffold `.refactronrc.json`                    |
+| bare `refactron` (interactive TUI) | the Ink REPL                                    |
+
+Also removed: the 20 AST transforms and their LibCST sidecars, the autofix
+fixers, blast-radius scoring, the tier taxonomy, the `.refactron/` session
+store, the legacy verification engine, the language-adapter layer, and the
+`src/core/models.ts` and `src/adapters/interface.ts` locked contracts.
+
+**If you use any of it, pin `refactron@0.3.1`.** The code is archived with its
+full history and is not currently published under any name.
+
+Why: they were the demo of the verification engine, not the product. They were
+also most of the package. What remains is about a sixth of the source and all of
+what people install it for.
+
+### Changed
+
+- **Bare `refactron` prints help and exits 2** instead of opening the TUI.
+- **An unknown command exits 2** and says so, rather than failing to resolve a
+  module.
+- **`refactron login` is a real command.** Previously only `login --print-token`
+  was dispatched, and it discarded the status callback, so the device code and
+  verification URL were never displayed. Status now goes to stderr, which keeps
+  `--print-token` pipeable.
+- **`--help` describes this product.** It advertised six departed commands and
+  called Refactron "safety-first refactoring", the pre-pivot positioning.
+
+### Added
+
+- **A library entry point.** `main` and `types` have pointed at `dist/index.js`
+  since before 0.2.0, but no such file existed, so `import { verifyDiff } from
+'refactron'` never resolved. `src/index.ts` now exports `verifyDiff`,
+  `RefactronVerifier`, `checkPythonSyntax`, `checkTypescriptSyntax`,
+  `reportCoverage`, the `VerdictReport` type and the `contracts.ts` surface.
+- **`tests/unit/cli/help-drift.test.ts`**, which asserts every verb the help
+  advertises is actually dispatched, against the built binary.
+
+### Fixed
+
+- **`build:copy-py` could fail silently.** Its trailing `|| true` bound to the
+  whole `&&` chain, so a failure to copy the _verification_ sidecars exited 0:
+  green build, green CI, then every Python verdict failing at runtime against a
+  missing sidecar. The build now asserts all three sidecars reach `dist/`.
+
+### Internal
+
+- 18 unused runtime dependencies dropped, including `ink`, `react`, `ts-morph`
+  and the three `tree-sitter` packages. Five remain.
+- The pre-merge gate no longer runs `analyze src/` against this repo. It gates
+  the shipped artifact instead. It deliberately does **not** run `verify-diff`
+  against this repo either: coverage attestation is Python-only, so a TypeScript
+  repo verifying itself caps at `UNPROVEN` permanently.
+
+`TransformId` still lists the 20 transform literals. Narrowing a locked contract
+in the same release that restructures the repo would make any regression
+un-bisectable; it waits for a later major.
+
+---
+
 ## [0.3.1] — 2026-08-06
 
 Two false `SAFE` verdicts, found and fixed. Both had the same shape: coverage
