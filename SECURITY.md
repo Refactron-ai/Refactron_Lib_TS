@@ -22,7 +22,7 @@ When reporting, include: a description, reproduction steps, the affected version
 
 ## Threat model
 
-Refactron is a deterministic refactoring engine. The core pipeline (analyze → plan → transform → verify) contains **no LLM in the critical path**. Every change committed to disk originates from a registered transform with documented preconditions and is gated by three deterministic verifiers (syntax, imports, tests). The published surface cannot generate code that wasn't produced by a reviewed transform — there is no path by which a hallucinated or hostile model response can rewrite a user file.
+Refactron is a deterministic verification layer. The core pipeline (shadow tree → syntax → imports → tests → coverage) contains **no LLM in the critical path**. Every change committed to disk originates from a registered transform with documented preconditions and is gated by three deterministic verifiers (syntax, imports, tests). The published surface cannot generate code that wasn't produced by a reviewed transform — there is no path by which a hallucinated or hostile model response can rewrite a user file.
 
 The `document` step (Step 4 of the pipeline, in `src/document/`) is the only LLM-touching component. It runs **only on already-verified diffs** and produces docstrings, commit messages, and CHANGELOG entries — never executable code that participates in verification. The worst-case outcome of a malicious or hallucinated LLM response is an incorrect docstring or a misleading changelog line; the underlying refactor remains correct because it was verified before the LLM was ever consulted.
 
@@ -31,17 +31,17 @@ Document-side mitigations:
 - **Secret redaction** — `src/document/redact.ts` strips API keys, bearer tokens, and `.env`-style assignments from prompts before they leave the process.
 - **Provider-error fallback** — if the LLM call fails or returns garbage, the refactor stays applied; only the documentation step is skipped or marked degraded.
 
-Atomic write guarantees: refactor outputs are written by `writeBatchAtomic` in `src/verify/atomic-batch-writer.ts`, which writes every `FileChange` to a sibling temp file and then renames atomically. On any rename failure, the remaining temps are unlinked. There is no partial-write state — a refactor plan either commits in full or leaves the working tree untouched.
+Atomic write guarantees: Refactron never writes to your working tree; verification runs entirely against an isolated shadow copy. On any rename failure, the remaining temps are unlinked. There is no partial-write state — a refactor plan either commits in full or leaves the working tree untouched.
 
 ## Subprocess safety
 
-All subprocess invocations use `execa(cmd, [args], opts)` array-form. There is no `child_process.exec` and no string interpolation into command strings; `shell: true` is **not** used for any tool-invoked command. The 10 `execa` call sites in `src/` (Python sidecar, vitest runner, pytest runner, Python interpreter probes, the verifier runner, and the transform runner) all pass arguments as arrays.
+All subprocess invocations use `execa(cmd, [args], opts)` array-form. There is no `child_process.exec` and no string interpolation into command strings; `shell: true` is **not** used for any tool-invoked command. The `execa` call sites in `src/` (the Python sidecars, the test runner, and the Python interpreter probes) all pass arguments as arrays.
 
 **One intentional exception**: when the user supplies a `testCmd` in `.refactronrc.json` (or via `--test-cmd`), Refactron runs it through `sh -c` (`src/verify/runners/detect.ts:27`). This is the entire purpose of the field — users need to express things like `vitest run --testNamePattern foo` or chained pipelines. The trust boundary is the `.refactronrc.json` file: **a hostile `.refactronrc.json` in a repository can run arbitrary shell commands inside the verifier's shadow tree**, equivalent to running that repository's own test suite. Refactron is therefore no more or less safe than running `npm test` (or `pytest`) on an untrusted repository. Treat unfamiliar `.refactronrc.json` files with the same caution you would treat unfamiliar `package.json` `scripts` blocks.
 
 ## Atomic-write guarantees
 
-`writeBatchAtomic` (`src/verify/atomic-batch-writer.ts`) uses [`write-file-atomic`](https://www.npmjs.com/package/write-file-atomic), which performs a POSIX `rename(2)` on Unix and `MoveFileExW` with `MOVEFILE_REPLACE_EXISTING` on Windows. Each file in a `RefactorPlan` is written to a temp file first; only after every temp file is fsync'd does the writer perform the renames. If any rename fails, the remaining temp files are unlinked and the plan is reported as failed — the working tree is never left half-converted.
+Refactron never writes to your working tree. Verification applies the diff to an isolated shadow copy under the system temp directory, runs the gates there, and removes it. There is no write path to your files in any command, for any verdict. The atomic batch writer that used to land migration-mode changes was removed in 0.4.0 along with the transforms.
 
 ## Known dependency advisories
 

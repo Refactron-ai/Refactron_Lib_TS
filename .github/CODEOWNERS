@@ -8,8 +8,6 @@
 # Locked surfaces — never modified without an ADR + major version plan.
 # Owner review here is a hard gate.
 /src/contracts.ts                       @omsherikar
-/src/core/models.ts                     @omsherikar
-/src/adapters/interface.ts              @omsherikar
 
 # Operations scaffolding — changes affect everyone using the repo.
 /.claude/                               @omsherikar

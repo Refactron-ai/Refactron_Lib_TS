@@ -4,9 +4,9 @@ description: Three gates and a coverage check, run against your change in an iso
 icon: shield-check
 ---
 
-Refactron's value is what happens **before** you trust a change, not how clever any rewrite is. Every change (an arbitrary diff you're [verifying](/verification/verify-diff), or a [migration-mode transform](/transforms/index) landing atomically) passes through the same engine: an isolated shadow tree, three gates, and a coverage check that fuses into one verdict.
+Refactron's value is what happens **before** you trust a change, not how clever any rewrite is. Every change you [verify](/verification/verify-diff) passes through the same engine: an isolated shadow tree, three gates, and a coverage check that fuses into one verdict.
 
-> **Inviolable rule:** verification runs against a copy, never your working tree. When Refactron does write (migration mode), it writes atomically.
+> **Inviolable rule:** verification runs against a copy, never your working tree. Refactron never writes to it.
 
 ## The shadow tree
 
@@ -69,7 +69,7 @@ The most expensive gate, and the only one that runs **your** code.
    - `vitest.config.ts` or `vitest.config.js` → `vitest run`
    - `jest.config.js` or `jest.config.ts` → `jest`
    - any of `pyproject.toml`, `pytest.ini`, or `setup.cfg` present → `pytest`
-   - Override with `--test-cmd` (CLI / MCP) or `.refactronrc.json` `testCmd`.
+   - Override with `--test-cmd` (CLI) or the `testCmd` argument (MCP).
 2. **Run the baseline first**: the runner against the _unchanged_ copy. If the baseline already fails, Refactron won't blame the change: the tests gate reports an already-red baseline, and the verdict becomes [`UNPROVEN`](/verification/verdicts), not `UNSAFE`.
 3. **Run the mutated tree**: same runner, with the change in place. A non-zero exit fails the gate.
 
@@ -89,22 +89,7 @@ Coverage is measured with `coverage.py`, so it is **Python-only** today. A non-P
 
 ## Atomic batch write (landing)
 
-`verify-diff` never writes. **Migration mode** does, and only on green. Once the gates pass, the verifier hands a list of `(path, newContent)` pairs to `writeBatchAtomic`, using `write-file-atomic` per file:
-
-1. Write the new content to a sibling temp file (`<path>.refactron-tmp-<rand>`).
-2. `fsync` the temp file.
-3. POSIX `rename` (`MoveFileExW` on Windows) the temp over the real path: atomic at the filesystem layer.
-
-**The contract:** either every change lands, or none does. There is no intermediate state where one file has new content and another still holds the old. A mid-batch failure aborts and cleans up the temp files; your real tree never sees the inconsistent middle.
-
-## Cross-file preconditions (migration mode)
-
-Some transforms need to know whether **other files** depend on the surface they're about to mutate. These walk the import graph for the target file and skip themselves rather than break a cross-file caller:
-
-- [`callback_to_async_await`](/transforms/callback-to-async-await): skips when an external file imports the function and passes a callback at the call site.
-- [`deprecated_api_requests_to_httpx`](/transforms/deprecated-api-requests-to-httpx): skips when an external file references `<module>.requests` (including `unittest.mock.patch` string targets).
-
-The check runs during planning, before Gate 1, so the transform never produces a plan it knows would orphan a caller.
+`verify-diff` never writes, and as of 0.4.0 nothing in Refactron does. Earlier versions had a migration mode that wrote on green, handing a list of `(path, newContent)` pairs to an atomic batch writer so a partial failure could never leave a half-written tree. That path was removed with the transforms; the guarantee it protected is now unconditional.
 
 ## Citations
 

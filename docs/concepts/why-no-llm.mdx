@@ -34,7 +34,7 @@ That reproducibility is what makes the verdict _usable_:
 
 ## Where a model does fit
 
-The verdict is never a model's call. The one place an LLM appears in Refactron is the optional [`document` command](/cli/reference#document) in [migration mode](/transforms/index): after a change has already been verified and written, it generates docstrings, inline comments, and changelog prose on top of the verified diff. The worst case is a clumsy sentence: never a wrong verdict, never broken code.
+The verdict is never a model's call, and as of 0.4.0 there is no model anywhere in Refactron. Earlier versions shipped an optional `document` command that generated docstrings and changelog prose on top of an already-verified diff; it was removed with migration mode. Even then the rule held: a model was welcome where fluent language was the goal, and kept out of the path that decides whether a change is safe.
 
 That's the rule the whole product follows: models are welcome where fluent language is the goal, and kept out of the path that decides whether your change is safe.
 

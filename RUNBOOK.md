@@ -57,7 +57,7 @@ disaster, but the ordering is not optional.
     ```bash
     npm publish --dry-run
     ```
-    Verify the file list against `package.json#files`: no `dev-docs/`, no `playground/`, no `.refactron/`, no `tests/`, no `bench/`, no `docs/`. Source maps **are** shipped on purpose, so a user reading a CLI stack trace gets real line numbers; do not "fix" that. **Confirm the Python sidecars are present**: `dist/verify/checks/_py/*.py` and `dist/transform/transforms/python/_py/*.py`. They are copied by `build:copy-py`, not emitted by `tsc`, so a build-script regression drops them silently and the verification engine ships broken.
+    Verify the file list against `package.json#files`: no `dev-docs/`, no `playground/`, no `.refactron/`, no `tests/`, no `bench/`, no `docs/`. Source maps **are** shipped on purpose, so a user reading a CLI stack trace gets real line numbers; do not "fix" that. **Confirm the Python sidecars are present**: `dist/verify/checks/_py/*.py` (all three). There must be NO `dist/transform/` at all; migration mode left in 0.4.0. They are copied by `build:copy-py`, not emitted by `tsc`, so a build-script regression drops them silently and the verification engine ships broken.
 12. **PyPI.**
     ```bash
     cd refactron-py
@@ -110,7 +110,7 @@ disaster, but the ordering is not optional.
 18. **The sidecars survived the tarball.**
     ```bash
     ls node_modules/refactron/dist/verify/checks/_py/
-    ls node_modules/refactron/dist/transform/transforms/python/_py/
+    ls node_modules/refactron/dist/verify/checks/_py/
     ```
     Both must be non-empty.
 19. **The MCP bin exists.**

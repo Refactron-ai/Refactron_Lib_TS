@@ -35,7 +35,7 @@ STEP 2 - Install the server.
 Run `which refactron-mcp`, or `where refactron-mcp` on Windows. If it prints a
 path, go to step 3. Otherwise install it:
 
-    npm install -g refactron@0.3.0
+    npm install -g refactron
 
 That puts two binaries on PATH: `refactron` (the CLI) and `refactron-mcp` (the
 MCP server). If you cannot install globally, install nothing and use the npx
@@ -60,7 +60,7 @@ Without a global install, use this instead. The `-p` flag is required, because
 of its own:
 
     { "servers": { "refactron": { "type": "stdio", "command": "npx",
-        "args": ["-y", "-p", "refactron@0.3.0", "refactron-mcp"] } } }
+        "args": ["-y", "-p", "refactron", "refactron-mcp"] } } }
 
 If step 5 reports `spawn refactron-mcp ENOENT`, the binary is not on the PATH
 VS Code inherited. Use the absolute path from `which refactron-mcp` as
@@ -85,7 +85,7 @@ tools at all.
 GitHub Copilot CLI keeps its own MCP config and expects "mcpServers".
 Configuring VS Code does not configure the CLI.
 
-You are looking for a server named `refactron`, version 0.3.0, exposing exactly
+You are looking for a server named `refactron` exposing exactly
 ONE tool: `verify_change`.
 
 If the server is connected but no tool appears, the handshake failed. Prove the
@@ -182,7 +182,7 @@ To pin the version and skip the global install:
     "refactron": {
       "type": "stdio",
       "command": "npx",
-      "args": ["-y", "-p", "refactron@0.3.0", "refactron-mcp"]
+      "args": ["-y", "-p", "refactron", "refactron-mcp"]
     }
   }
 }

@@ -35,7 +35,7 @@ STEP 2 - Install the server.
 Run `which refactron-mcp`, or `where refactron-mcp` on Windows. If it prints a
 path, go to step 3. Otherwise install it:
 
-    npm install -g refactron@0.3.0
+    npm install -g refactron
 
 That puts two binaries on PATH: `refactron` (the CLI) and `refactron-mcp` (the
 MCP server). If you cannot install globally, install nothing and use the npx
@@ -73,7 +73,7 @@ of its own:
 
     [mcp_servers.refactron]
     command = "npx"
-    args = ["-y", "-p", "refactron@0.3.0", "refactron-mcp"]
+    args = ["-y", "-p", "refactron", "refactron-mcp"]
     tool_timeout_sec = 900
 
 Check for a duplicate [mcp_servers.refactron] table before you finish. Two of
@@ -97,7 +97,7 @@ the tool list.
 If it is configured but never starts, check for `enabled = false` on the table.
 That key disables a server without removing it.
 
-You are looking for a server named `refactron`, version 0.3.0, exposing exactly
+You are looking for a server named `refactron` exposing exactly
 ONE tool: `verify_change`.
 
 If the server is connected but no tool appears, the handshake failed. Prove the
@@ -195,7 +195,7 @@ To pin the version and skip the global install:
 ```toml
 [mcp_servers.refactron]
 command = "npx"
-args = ["-y", "-p", "refactron@0.3.0", "refactron-mcp"]
+args = ["-y", "-p", "refactron", "refactron-mcp"]
 tool_timeout_sec = 900
 ```
 
@@ -229,7 +229,7 @@ Then start a session and ask for the tool list. You are looking for one tool, `v
 
 - **The table name is wrong**: it is `[mcp_servers.refactron]`. A `[mcpServers.refactron]` table is silently a different, unused key. Codex does not warn you.
 - **The server is configured but never starts**: check for `enabled = false` on the table. That key disables a server without removing it, and it is easy to leave behind.
-- **`command not found` on launch**: run `which refactron-mcp`. If it prints nothing, run `npm install -g refactron@0.3.0`, or switch to the `npx` form above.
+- **`command not found` on launch**: run `which refactron-mcp`. If it prints nothing, run `npm install -g refactron`, or switch to the `npx` form above.
 - **A project-scoped `.codex/config.toml` is ignored**: Codex reads project config only for a trusted project. Trust the directory, or move the entry to `~/.codex/config.toml`.
 - **A verification fails after about a minute on a suite that takes longer**: that is `tool_timeout_sec`, not a verdict. Raise it.
 - **Duplicate TOML tables**: two `[mcp_servers.refactron]` tables in one file is a parse error, and Codex rejects the whole config. If you ran `codex mcp add` after hand-editing, check for both.

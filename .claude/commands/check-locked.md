@@ -5,8 +5,6 @@ description: Verify the locked-contract invariant: fails if any locked file has 
 Check whether the current branch modifies any locked file. The locked files are:
 
 - `src/contracts.ts`
-- `src/core/models.ts`
-- `src/adapters/interface.ts`
 
 Steps:
 

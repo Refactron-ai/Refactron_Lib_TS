@@ -65,8 +65,6 @@ Requirements: Node.js 18+, Python 3.8+ (for Python adapter tests).
 Key directories:
 
 ```
-src/core/models.ts          ← LOCKED. Never modify.
-src/adapters/interface.ts   ← LOCKED. Never modify.
 src/analysis/               ← Analyzers and blast radius
 src/verification/           ← Verification engine and checks
 src/autofix/                ← AutoFix engine and fixers
@@ -81,7 +79,6 @@ tests/                      ← Unit, integration, verification tests
 
 ## Locked Contracts
 
-**`src/core/models.ts` and `src/adapters/interface.ts` are frozen.** Do not open PRs that modify these files. They define the contracts that every other module depends on.
 
 If you believe a contract change is necessary, open an issue for discussion first — these changes require a major version bump and coordinated migration.
 
@@ -122,7 +119,6 @@ const issue: CodeIssue = {
 
 ## Adding a Language Adapter
 
-1. Implement `ILanguageAdapter` from `src/adapters/interface.ts`.
 2. Register it in `src/adapters/registry.ts`.
 3. All language-specific logic must stay inside the adapter — the verification engine must remain language-agnostic.
 4. Write tests in `tests/unit/your-adapter.test.ts`.
@@ -135,7 +131,6 @@ const issue: CodeIssue = {
 - Reference the issue number in the PR description.
 - Include a short description of what changed and why.
 - All CI checks must pass before review.
-- PRs that modify `src/core/models.ts` or `src/adapters/interface.ts` will be closed without review.
 
 **PR template:**
 

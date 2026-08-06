@@ -35,7 +35,7 @@ STEP 2 - Install the server.
 Run `which refactron-mcp`, or `where refactron-mcp` on Windows. If it prints a
 path, go to step 3. Otherwise install it:
 
-    npm install -g refactron@0.3.0
+    npm install -g refactron
 
 That puts two binaries on PATH: `refactron` (the CLI) and `refactron-mcp` (the
 MCP server). If you cannot install globally, install nothing and use the npx
@@ -68,7 +68,7 @@ Without a global install, use this instead. The `-p` flag is required, because
 of its own:
 
     { "mcpServers": { "refactron": { "command": "npx",
-        "args": ["-y", "-p", "refactron@0.3.0", "refactron-mcp"],
+        "args": ["-y", "-p", "refactron", "refactron-mcp"],
         "timeout": 900000 } } }
 
 STEP 4 - Reload.
@@ -92,7 +92,7 @@ here. This is the failure that looks like a broken install and is not one.
 If it is configured but never connects, check the top-level `mcp` object for an
 `allowed` list that does not name `refactron`.
 
-You are looking for a server named `refactron`, version 0.3.0, exposing exactly
+You are looking for a server named `refactron` exposing exactly
 ONE tool: `verify_change`.
 
 If the server is connected but no tool appears, the handshake failed. Prove the
@@ -198,7 +198,7 @@ To pin the version and skip the global install:
   "mcpServers": {
     "refactron": {
       "command": "npx",
-      "args": ["-y", "-p", "refactron@0.3.0", "refactron-mcp"],
+      "args": ["-y", "-p", "refactron", "refactron-mcp"],
       "timeout": 900000
     }
   }
@@ -223,7 +223,7 @@ Inside a session, the `/mcp` slash command shows connected servers with their to
 
 - **The server shows `Disconnected` and the command is right**: Gemini CLI only starts a stdio server in a trusted folder. Run `gemini trust` in the project directory, then list again. This is the failure that looks like a broken install and is not one.
 - **`gemini mcp add` put it somewhere unexpected**: the default scope is project, so the entry landed in `.gemini/settings.json` in whatever directory you ran it from. Re-run with `--scope user` for a machine-wide entry.
-- **`command not found` on launch**: run `which refactron-mcp`. If it prints nothing, run `npm install -g refactron@0.3.0`, or switch to the `npx` form above.
+- **`command not found` on launch**: run `which refactron-mcp`. If it prints nothing, run `npm install -g refactron`, or switch to the `npx` form above.
 - **A verification is cut off partway**: `timeout` is milliseconds. `900` means 0.9 seconds, not 15 minutes, and every call fails instantly.
 - **Confirmation prompts on every call**: set `"trust": true` on the `refactron` entry to skip them. The server reads your repository and writes only to a temporary shadow copy, so this is a reasonable server to trust. It is a per-server setting, so it does not loosen anything else.
 - **The server is configured but excluded**: check the top-level `mcp` object for an `allowed` list. If `mcp.allowed` is set and does not name `refactron`, the CLI never connects to it.

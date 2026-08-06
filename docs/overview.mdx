@@ -41,7 +41,7 @@ It applies the change in an isolated **shadow tree**, runs three gates against i
 Install the CLI and `login` first (both are in the [quickstart](/quickstart); an unauthenticated run exits `7`):
 
 ```bash
-npm install -g refactron@0.3.0
+npm install -g refactron
 refactron verify-diff . --diff change.diff --test-cmd "python3 -m pytest -q"
 ```
 
@@ -62,9 +62,6 @@ refactron verify-diff . --diff change.diff --test-cmd "python3 -m pytest -q"
   <Card title="Verdicts" icon="scale-balanced" href="/verification/verdicts">
     SAFE, UNSAFE, UNPROVEN: coverage fusion and the Python-only limitation, in depth.
   </Card>
-  <Card title="Preflight" icon="clipboard-check" href="/verification/preflight">
-    A coverage-aware safety report for the SQLAlchemy 1.x to 2.0 migration.
-  </Card>
 </CardGroup>
 
 <Warning>
@@ -76,12 +73,6 @@ refactron verify-diff . --diff change.diff --test-cmd "python3 -m pytest -q"
 ## Deterministic, on purpose
 
 The verification engine is 100% deterministic: no model, no temperature, no statistical inference decides whether your change is safe. Read the same repo state and the same diff twice, get the same verdict. That determinism is exactly what makes Refactron the gate an LLM agent can _call_: the agent proposes, Refactron proves. See [Deterministic by design](/concepts/why-no-llm).
-
-## Migration mode
-
-Refactron also ships deterministic transforms (20 AST rewrites for Python and TypeScript) that both _author_ a change and _verify_ it through the same gates before an atomic write. They are the demo of the gate on real, mechanical migrations, and remain fully supported.
-
-Migration mode (`analyze`, `run`, `document`) ships in the same package as the verification surfaces: `npm install -g refactron@0.3.0` gives you both. See [Migration mode](/transforms/index) for the catalog.
 
 ## Next steps
 

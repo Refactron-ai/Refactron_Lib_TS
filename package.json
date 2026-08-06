@@ -1,7 +1,7 @@
 {
   "name": "refactron",
-  "version": "0.3.1",
-  "description": "The verification layer for AI code change: prove a diff preserved behavior before it lands",
+  "version": "0.4.0",
+  "description": "A verification layer for code change: verify any diff for a SAFE / UNSAFE / UNPROVEN verdict, from the CLI or over MCP.",
   "author": "Om Sherikar <omsherikar0229@gmail.com>",
   "bin": {
     "refactron": "./dist/cli/index.js",
@@ -12,8 +12,8 @@
   "type": "module",
   "exports": {
     ".": {
-      "import": "./dist/index.js",
-      "types": "./dist/index.d.ts"
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
     }
   },
   "repository": {
@@ -25,18 +25,15 @@
     "url": "https://github.com/Refactron-ai/Refactron_Lib_TS/issues"
   },
   "scripts": {
-    "build": "tsc --project tsconfig.build.json && chmod +x dist/cli/index.js && chmod +x dist/mcp/server.js && npm run build:copy-py",
-    "build:copy-py": "mkdir -p dist/verify/checks/_py dist/transform/transforms/python/_py && cp src/verify/checks/_py/*.py dist/verify/checks/_py/ && cp src/transform/transforms/python/_py/*.py dist/transform/transforms/python/_py/ 2>/dev/null || true",
+    "build": "tsc --project tsconfig.build.json && node scripts/postbuild.mjs",
     "build:watch": "tsc --project tsconfig.build.json --watch",
     "typecheck": "tsc --noEmit",
     "lint": "eslint src/ tests/ --ext .ts,.tsx --max-warnings 0",
     "format": "prettier --write src/ tests/",
     "format:check": "prettier --check src/ tests/",
     "test": "vitest run",
-    "test:e2e": "vitest run --config vitest.e2e.config.ts",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
-    "test:verification": "vitest run tests/verification/",
     "clean": "rimraf dist",
     "prepublishOnly": "npm run clean && npm run build && npm run typecheck && npm run lint && npm test",
     "prepare": "git config core.hooksPath .githooks 2>/dev/null || true"
@@ -76,36 +73,14 @@
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0",
-    "ajv": "^8.20.0",
-    "chalk": "^5.0.0",
-    "cli-table3": "^0.6.5",
-    "commander": "^12.0.0",
-    "cosmiconfig": "^9.0.1",
     "diff": "^5.0.0",
     "execa": "^8.0.0",
-    "glob": "^10.0.0",
-    "ignore": "^7.0.5",
-    "ink": "^5.0.0",
-    "ink-spinner": "^5.0.0",
-    "ink-table": "^3.0.0",
-    "js-yaml": "^4.0.0",
-    "react": "^18.0.0",
-    "semver": "^7.0.0",
-    "tree-sitter": "^0.21.0",
-    "tree-sitter-python": "^0.21.0",
-    "tree-sitter-typescript": "^0.21.0",
-    "ts-morph": "^22.0.0",
     "typescript": "^5.4.0",
-    "write-file-atomic": "^5.0.1",
     "zod": "^4.4.3"
   },
   "devDependencies": {
     "@types/diff": "^5.0.0",
-    "@types/js-yaml": "^4.0.0",
     "@types/node": "^20.0.0",
-    "@types/react": "^18.0.0",
-    "@types/semver": "^7.0.0",
-    "@types/write-file-atomic": "^4.0.3",
     "@typescript-eslint/eslint-plugin": "^7.0.0",
     "@typescript-eslint/parser": "^7.0.0",
     "@vitest/coverage-v8": "^3.2.4",

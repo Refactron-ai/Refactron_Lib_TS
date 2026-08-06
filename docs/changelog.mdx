@@ -7,6 +7,23 @@ description: Release history for Refactron, newest first.
 Refactron follows [Semantic Versioning](https://semver.org/). The full,
 unabridged log lives in [`CHANGELOG.md`](https://github.com/Refactron-ai/Refactron_Lib_TS/blob/main/CHANGELOG.md).
 
+<Update label="0.4.0" description="August 6, 2026">
+  **Breaking.** Refactron is now only a verification layer. `analyze`, `run`,
+  `document`, `rollback`, `preflight`, `init`, the interactive TUI and the 20 AST
+  transforms have been removed from this package, along with blast-radius scoring
+  and the tier taxonomy. They were the demo of the verification engine, not the
+  product.
+
+  If you use any of them, pin `refactron@0.3.1`. The code is archived with its
+  full history and is not currently published under any name.
+
+  `verify-diff` and the MCP `verify_change` tool are unchanged. Bare `refactron`
+  now prints help and exits 2 instead of opening the TUI, `refactron login` is a
+  real command for the first time, and `import { verifyDiff } from 'refactron'`
+  resolves for the first time. Full detail in
+  [`CHANGELOG.md`](https://github.com/Refactron-ai/Refactron_Lib_TS/blob/main/CHANGELOG.md).
+</Update>
+
 <Update label="0.3.1" description="August 6, 2026">
   Two false `SAFE` verdicts, found and fixed. Both had the same shape: coverage
   measured a different program than the tests gate ran, then reported the

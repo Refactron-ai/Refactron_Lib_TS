@@ -21,6 +21,4 @@ What tests were added or modified to cover this change.
 - [ ] `npm run format:check` passes
 - [ ] `npm test` passes (all tests green)
 - [ ] `npm run build` succeeds
-- [ ] `src/core/models.ts` was NOT modified
-- [ ] `src/adapters/interface.ts` was NOT modified
 - [ ] Every new `CodeIssue` has a non-null `blastRadius`
