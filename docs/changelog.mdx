@@ -7,6 +7,21 @@ description: Release history for Refactron, newest first.
 Refactron follows [Semantic Versioning](https://semver.org/). The full,
 unabridged log lives in [`CHANGELOG.md`](https://github.com/Refactron-ai/Refactron_Lib_TS/blob/main/CHANGELOG.md).
 
+<Update label="0.3.1" description="August 6, 2026">
+  Two false `SAFE` verdicts, found and fixed. Both had the same shape: coverage
+  measured a different program than the tests gate ran, then reported the
+  changed lines as covered. A false `SAFE` is the one defect this product
+  cannot have, so upgrade rather than pin: `npm install -g refactron@0.3.1`.
+
+A `testCmd` carrying a leading `PYTHONPATH=` no longer silently disables
+coverage measurement, and a console entry point is now resolved the way the
+shell resolves it, or declined. A `testCmd` naming an entry point that cannot
+be resolved reports `UNPROVEN` rather than `SAFE`, which is a verdict change
+in the safe direction. Full detail in
+[`CHANGELOG.md`](https://github.com/Refactron-ai/Refactron_Lib_TS/blob/main/CHANGELOG.md).
+
+</Update>
+
 <Update label="0.3.0" description="August 2, 2026">
   The verification layer ships. Verify any diff (an AI agent's, a codemod's, or
   your own) for a `SAFE` / `UNSAFE` / `UNPROVEN` verdict, and expose the same

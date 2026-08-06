@@ -1,6 +1,6 @@
 {
   "name": "refactron",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "The verification layer for AI code change: prove a diff preserved behavior before it lands",
   "author": "Om Sherikar <omsherikar0229@gmail.com>",
   "bin": {

@@ -7,6 +7,76 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [0.3.1] — 2026-08-06
+
+Two false `SAFE` verdicts, found and fixed. Both had the same shape: coverage
+measured a **different program** than the tests gate ran, then reported the
+changed lines as covered. A false `SAFE` is the one defect this product cannot
+have, so upgrade rather than pin.
+
+Everything here is a fix. No command, flag, contract or report field changed.
+
+### Fixed
+
+- **A leading `NAME=VALUE` on `testCmd` silently disabled coverage.** The tests
+  gate runs the override through `sh -c`, which honours the assignment; the
+  coverage runner tokenised the command itself and treated `PYTHONPATH=.` as a
+  module name. `coverage run -m PYTHONPATH=. python3 -m pytest` imports nothing,
+  writes no data file, and the verdict degraded to `UNPROVEN`. That is the safe
+  direction, but it capped every project using the documented shadow-bypass
+  remedy at `UNPROVEN`, which no amount of test-writing could lift. Leading
+  assignments are now hoisted into the child environment. (#95, PR #97)
+
+- **A console entry point ran under the wrong interpreter.** `coverage run
+  <script>` executes the file as source in the *current* interpreter and never
+  honours its shebang; the shell that runs the gate does. A venv's `pytest` was
+  therefore measured under whatever `python3` we happened to spawn, with a
+  different set of installed packages. The resolver now models what the shell
+  actually does: it stops at the shell's first PATH match, requires the exec
+  bit, declines on Windows, and accepts only two shebang shapes. (#98, #99,
+  PR #102, PR #103)
+
+
+- **Shebang arguments were dropped, which was itself a false `SAFE`.**
+  `#!/usr/bin/python3 -s` is the Fedora and RHEL packaging default, and `-E`
+  makes Python ignore `PYTHONPATH`. The gate execs the script so the kernel
+  applies the flag and imports the _installed_ copy; coverage dropped the flag,
+  honoured `PYTHONPATH`, imported the _shadow_ copy and measured it as covered.
+  The changed file lands in `measuredFiles`, so the shadow-bypass guard stays
+  silent and the fusion reads `SAFE` for a change no test executed. Any shebang
+  carrying arguments now declines. (PR #103)
+
+- **The shadow-bypass floor blamed the wrong thing.** When measurement failed it
+  told users to prefix their test command with `PYTHONPATH=.`, which could not
+  have helped and was not the cause. The reason now names the real remedy.
+  (PR #103)
+
+- **Coverage declines now say what to do instead.** A console entry point that
+  is not a Python script (a native launcher on Windows, a pyenv/asdf/nix shim)
+  can never be handed to `coverage run`, so the decline is permanent rather than
+  transient. The message names module form, `python -m`, as the fix. (#100)
+
+- **Eight tests reported PASSED without running.** Guards inside test bodies
+  returned early when coverage.py or pytest was missing, which vitest counts as
+  a pass. Converted to `it.skipIf`. Measured against a coverage-less `python3`
+  shim: `19 passed | 3 skipped` before, `12 passed | 10 skipped` after. (#101)
+
+### Changed
+
+- **A `testCmd` naming a console entry point that cannot be resolved now reports
+  `UNPROVEN` rather than `SAFE`.** This is a verdict change in the safe
+  direction and the reason it is not a major: the previous `SAFE` was, in the
+  cases this covers, not something the measurement had established.
+
+- **The default `testCmd` moved from `pytest -q` to `python3 -m pytest -q`.**
+  Module form is the only form coverage can reliably wrap.
+
+- **The CLI mascot and palette.** The mascot is now Tabslot, and the chrome is
+  monochrome cream so the only colours on screen are verdicts, severities and
+  diffs. Cosmetic; no output contract changed.
+
+---
+
 ## [0.3.0] — 2026-08-02
 
 The verification layer ships. Refactron can now verify **any** diff, whether an AI agent wrote it, a codemod produced it, or you typed it yourself, and return a three-way verdict: `SAFE`, `UNSAFE`, or `UNPROVEN`. It applies the change in an isolated shadow tree, runs your real test suite, and checks whether those tests actually exercise the lines that changed. Your working tree is never touched. The same gate is exposed to AI agents over MCP.
