@@ -2,9 +2,15 @@ import { describe, it, expect } from 'vitest';
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 import { RefactronVerifier } from '../../src/verify/engine.js';
-import type { RefactorPlan } from '../../src/contracts.js';
+import type { RefactorPlan, TransformId } from '../../src/contracts.js';
 
-const FIXTURE = path.resolve('fixtures/python-legacy-mini');
+const FIXTURE = path.resolve('tests/fixtures/python-legacy-mini');
+
+// This repo ships no transforms, so a plan here never comes from one. Mirrors
+// the cast src/verify/verify-diff.ts:25 already uses for the same reason: the
+// TransformId union is a locked contract and still lists the 20 transform ids
+// that left with the refactoring product.
+const SYNTHETIC_TRANSFORM = 'external-diff' as unknown as TransformId;
 
 describe('RefactronVerifier on python-legacy-mini', () => {
   it('passes a no-op plan', async () => {
@@ -26,7 +32,7 @@ describe('RefactronVerifier on python-legacy-mini', () => {
           path: target,
           oldHash: 'x',
           newContent: 'def slugify(:\n',
-          transformId: 'format_to_fstring',
+          transformId: SYNTHETIC_TRANSFORM,
         },
       ],
       preconditions: [],
@@ -45,7 +51,7 @@ describe('RefactronVerifier on python-legacy-mini', () => {
           path: target,
           oldHash: 'x',
           newContent: 'import this_module_does_not_exist_xyz\n',
-          transformId: 'format_to_fstring',
+          transformId: SYNTHETIC_TRANSFORM,
         },
       ],
       preconditions: [],
@@ -70,7 +76,7 @@ describe('RefactronVerifier on python-legacy-mini', () => {
           path: target,
           oldHash: 'x',
           newContent: broken,
-          transformId: 'format_to_fstring',
+          transformId: SYNTHETIC_TRANSFORM,
         },
       ],
       preconditions: [],
