@@ -89,7 +89,7 @@ you've previewed locally.
 
 ## Future work
 
-- Install the Mintlify GitHub App on `Refactron-ai/Refactron_Lib_TS` and switch
+- Install the Mintlify GitHub App on `Refactron-ai/refactron` and switch
   to auto-deploy on `main`. Open as a separate issue post-launch so the
   configuration change can be reviewed independently.
 - Add a docs-only PR check that runs `npx mintlify@latest broken-links` against

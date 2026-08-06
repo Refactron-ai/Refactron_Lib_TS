@@ -18,11 +18,11 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/Refactron-ai/Refactron_Lib_TS.git"
+    "url": "https://github.com/Refactron-ai/refactron.git"
   },
-  "homepage": "https://github.com/Refactron-ai/Refactron_Lib_TS#readme",
+  "homepage": "https://github.com/Refactron-ai/refactron#readme",
   "bugs": {
-    "url": "https://github.com/Refactron-ai/Refactron_Lib_TS/issues"
+    "url": "https://github.com/Refactron-ai/refactron/issues"
   },
   "scripts": {
     "build": "tsc --project tsconfig.build.json && node scripts/postbuild.mjs",

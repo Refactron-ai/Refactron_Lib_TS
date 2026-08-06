@@ -38,10 +38,10 @@ dependencies = []
 refactron = "refactron.cli:main"
 
 [project.urls]
-Homepage = "https://github.com/Refactron-ai/Refactron_Lib_TS"
+Homepage = "https://github.com/Refactron-ai/refactron"
 Documentation = "https://docs.refactron.dev"
-Changelog = "https://github.com/Refactron-ai/Refactron_Lib_TS/blob/main/CHANGELOG.md"
-Issues = "https://github.com/Refactron-ai/Refactron_Lib_TS/issues"
+Changelog = "https://github.com/Refactron-ai/refactron/blob/main/CHANGELOG.md"
+Issues = "https://github.com/Refactron-ai/refactron/issues"
 
 # Single source of truth for the version: the literal in refactron/__init__.py.
 # setuptools reads it statically, so the packaged metadata and the runtime

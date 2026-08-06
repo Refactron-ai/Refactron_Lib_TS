@@ -27,8 +27,8 @@ Be respectful. We do not tolerate harassment, discrimination, or dismissive beha
 ## Getting Started
 
 ```bash
-git clone https://github.com/Refactron-ai/Refactron_Lib_TS.git
-cd Refactron_Lib_TS
+git clone https://github.com/Refactron-ai/refactron.git
+cd refactron
 npm install
 npm test          # all 45 tests must pass before you start
 npm run build     # verify the build

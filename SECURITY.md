@@ -7,7 +7,7 @@
 Please report privately via either:
 
 - Email: `omsherikar0229@gmail.com`
-- GitHub Security Advisory: https://github.com/Refactron-ai/Refactron_Lib_TS/security/advisories/new
+- GitHub Security Advisory: https://github.com/Refactron-ai/refactron/security/advisories/new
 
 You will receive an acknowledgement within **72 hours**. For high or critical issues we will coordinate disclosure with you and aim to ship a patched release before any public details are published. Please give us a reasonable embargo window before disclosing publicly.
 
