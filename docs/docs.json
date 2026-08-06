@@ -5,7 +5,7 @@
   "description": "Prove that any change, your AI agent's, a codemod's, or your own, preserved behavior. Refactron runs your real tests in an isolated shadow tree and lands only on green, with a reproducible record of why it's safe.",
   "colors": {
     "primary": "#141416",
-    "light": "#EAE7DE",
+    "light": "#E9E6DF",
     "dark": "#141416"
   },
   "fonts": {

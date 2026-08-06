@@ -1,15 +1,25 @@
 // src/cli/components/SessionHeader.tsx
-// YRC CondensedLogo-equivalent: 3-row compact header shown once at top of REPL session.
-// Mascot (9 cols) on the left, version/adapter/cwd text on the right — no box borders.
+// Compact header shown once at the top of a REPL session.
+// Tabslot on the left, version/adapter/cwd text on the right — no box borders.
 //
 // Renders:
-//   ▗▄████▄▖  Refactron  v0.1.0
-//   ▐▌ ▄▄ ▐▌  Python · FREE
-//    ▝▘  ▝▘   ~/my-project
+//        ▄▄
+//    ▄▄▄▄██▄▄▄▄
+//   ██▀██████▀██   Refactron  v0.3.0
+//   ██▄██████▄██   Python · FREE
+//   ▀██████████▀   ~/my-project
+//   ████████████
+//    ▀▀▀▀▀▀▀▀▀▀
+//
+// The mascot is 7 rows and the text is 3, so the text is centred against it
+// rather than top-aligned. Tabslot has exactly one size in a terminal: the
+// sprite is 14 cells across and cannot be halved without redrawing it, and the
+// brand forbids that. This header renders once into scrollback, not per turn,
+// so the extra rows cost nothing after the first screen.
 import React from 'react';
 import { Box, Text, useStdout } from 'ink';
 import { theme } from '../../ui/theme.js';
-import { getMascotRows } from './Mascot.js';
+import { getMascotRows, MascotLine } from './Mascot.js';
 
 interface SessionHeaderProps {
   version: string;
@@ -34,25 +44,30 @@ export function SessionHeader({
   const { stdout } = useStdout();
   const columns = stdout?.columns ?? 80;
 
-  const mascot = getMascotRows('default');
+  const mascot = getMascotRows();
   const subtitle = plan ? `${adapterName} \u00b7 ${plan.toUpperCase()}` : adapterName;
   const cwdMaxWidth = Math.max(columns - 15, 20); // YRC: Math.max(columns - 15, 20)
   const cwd = truncatePath(process.cwd(), cwdMaxWidth);
 
   return (
-    <Box flexDirection="row" marginBottom={1}>
-      {/* Mascot — 3 rows, 9 cols wide (matches Clawd dimensions exactly) */}
+    <Box flexDirection="row" alignItems="center" marginBottom={1}>
+      {/* Tabslot — 7 rows, 14 cols. SAFE is the identity mark here, not a verdict. */}
       <Box flexDirection="column" marginRight={2}>
-        <Text color={theme.colors.brand}>{mascot[0]}</Text>
-        <Text color={theme.colors.brand}>{mascot[1]}</Text>
-        <Text color={theme.colors.brand}>{mascot[2]}</Text>
+        {mascot.map((row, i) => (
+          <MascotLine key={i} row={row} />
+        ))}
       </Box>
 
-      {/* Info rows — YRC CondensedLogo right column */}
+      {/* Info rows — centred against the taller mascot by alignItems above */}
       <Box flexDirection="column">
         {/* Row 1: product name (bold) + version (dim) */}
         <Text>
-          <Text bold>{'Refactron'}</Text>
+          {/* Explicit, not bare `bold`: bold alone inherits the terminal's own
+              foreground, so the product name was whatever colour the user's
+              theme happened to be rather than the brightest step of ours. */}
+          <Text color={theme.colors.brand} bold>
+            {'Refactron'}
+          </Text>
           {'  '}
           <Text dimColor>
             {'v'}

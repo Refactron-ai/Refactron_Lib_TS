@@ -1,0 +1,85 @@
+{
+  "name": "Tabslot",
+  "grid": [14, 14],
+  "transparent": ".",
+  "palette": {
+    "B": { "role": "body", "alpha": 1 },
+    "G": { "role": "socket", "alpha": 0.42 }
+  },
+  "grounds": {
+    "ink": {
+      "bg": "#141416",
+      "ink": "#E9E6DF",
+      "flat": { "B": "#E9E6DF", "G": "#6D6C6A" }
+    },
+    "cream": {
+      "bg": "#E9E6DF",
+      "ink": "#141416",
+      "flat": { "B": "#141416", "G": "#908E8B" }
+    }
+  },
+  "states": {
+    "safe": {
+      "form": "whole",
+      "map": [
+        "..............",
+        "......BB......",
+        "......BB......",
+        "..BBBBBBBBBB..",
+        ".BBBBBBBBBBBB.",
+        ".BB.BBBBBB.BB.",
+        ".BB.BBBBBB.BB.",
+        ".BBBBBGGBBBBB.",
+        ".BBBBBGGBBBBB.",
+        "..BBBBGGBBBB..",
+        ".GGGGGGGGGGGG.",
+        ".GGGGGGGGGGGG.",
+        "..GGGGGGGGGG..",
+        ".............."
+      ]
+    },
+    "unsafe": {
+      "form": "sheared",
+      "map": [
+        "..............",
+        ".....B..B.....",
+        "..............",
+        "..BBBBBBBBBB..",
+        ".BBBBBBBBBBBB.",
+        ".BB.BBBBBB.BB.",
+        ".BB.BBBBBB.BB.",
+        ".BBBBBGGBBBBB.",
+        ".BBBBBGGBBBBB.",
+        "..BBBBGGBBBB..",
+        ".GGGGGGGGGGGG.",
+        ".GGGGGGGGGGGG.",
+        "..GGGGGGGGGG..",
+        ".............."
+      ]
+    },
+    "unproven": {
+      "form": "half printed",
+      "map": [
+        "..............",
+        "......BB......",
+        "......BB......",
+        "..BBBBBBBBBB..",
+        ".BBBBBBBBBBBB.",
+        ".BB.BBBBBB.BB.",
+        ".BB.BBBBBB.BB.",
+        ".BBBBB..BBBBB.",
+        "..BBB......BB.",
+        "...B........B.",
+        ".GGGGGGGGGGGG.",
+        ".GGGGGGGGGGGG.",
+        "..GGGGGGGGGG..",
+        ".............."
+      ]
+    }
+  },
+  "regions": {
+    "crown": [1, 2],
+    "body": [3, 9],
+    "socket": [10, 12]
+  }
+}
