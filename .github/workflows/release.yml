@@ -52,7 +52,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-      - run: pip install pytest requests libcst coverage
+      - run: pip install pytest requests coverage
       - run: npm ci
       - run: npm run typecheck
       - run: npm test
@@ -85,7 +85,7 @@ jobs:
       - run: npm run build
       # --ignore-scripts skips prepublishOnly (full test gate). We already
       # ran the equivalent in test-before-release; re-running here would
-      # require Python+libcst on this minimal runner for no extra signal.
+      # require Python and coverage on this minimal runner for no extra signal.
       - run: npm publish --provenance --access public --ignore-scripts
 
   publish-pypi:
