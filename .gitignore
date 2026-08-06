@@ -40,3 +40,7 @@ bench/*-loc/
 refactron-py/dist/
 refactron-py/build/
 refactron-py/**/*.egg-info/
+
+refactron-py/*.whl
+refactron-py/*.tar.gz
+*.tgz
