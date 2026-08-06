@@ -9,13 +9,13 @@
   "grounds": {
     "ink": {
       "bg": "#141416",
-      "ink": "#EAE7DE",
-      "flat": { "B": "#EAE7DE", "G": "#6E6D6A" }
+      "ink": "#E9E6DF",
+      "flat": { "B": "#E9E6DF", "G": "#6D6C6A" }
     },
     "cream": {
-      "bg": "#EAE7DE",
+      "bg": "#E9E6DF",
       "ink": "#141416",
-      "flat": { "B": "#141416", "G": "#908E8A" }
+      "flat": { "B": "#141416", "G": "#908E8B" }
     }
   },
   "states": {

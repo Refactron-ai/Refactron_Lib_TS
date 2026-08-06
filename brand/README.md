@@ -84,23 +84,18 @@ No favicon exists for UNSAFE or UNPROVEN. Nothing should be making a favicon out
 
 One hue, two values, which is the system the mark already uses. `docs/logo/refactron-symbol-light.svg` is a solid rounded square plus the same cream at `opacity="0.42"` behind it. Tabslot is that pair applied to a sprite.
 
-| Code | Role   | Alpha | On ink `#141416` | On cream `#EAE7DE` |
+| Code | Role   | Alpha | On ink `#141416` | On cream `#E9E6DF` |
 | ---- | ------ | ----- | ---------------- | ------------------ |
-| `B`  | body   | 1.0   | `#EAE7DE`        | `#141416`          |
-| `G`  | socket | 0.42  | `#6E6D6A`        | `#908E8A`          |
+| `B`  | body   | 1.0   | `#E9E6DF`        | `#141416`          |
+| `G`  | socket | 0.42  | `#6D6C6A`        | `#908E8B`          |
 
 The SVGs carry the alpha and composite themselves. The terminal cannot, so `tabslot-sprites.json` also declares the flattened hex for each ground, and `generate.mjs` recomputes both from the alpha and throws if they have drifted. That check is the only thing keeping the two surfaces the same colour.
 
 **Why not more colours.** Refactron's whole identity is that it is monochrome and does not decorate. Cobble gets four hues because Spolia is a separate product that must not wear the parent's greys; Tabslot is the parent, so it wears them.
 
-**One known inconsistency, and Tabslot is currently on the wrong side of it.** There are two creams in circulation, one step apart per channel:
+**There is now one cream, and it is `#E9E6DF`.** Tabslot was drawn on `#EAE7DE`, taken from `docs.json` on the reasoning that it was the machine readable file. That was the wrong tiebreak: `docs/logo/*.svg` and the website's `--color-cream` were both already on `#E9E6DF`, and two hand maintained surfaces outvote one config key. `docs.json` moved to match rather than the other way round, and this sprite moved with it.
 
-| Value     | Where                                                                 |
-| --------- | --------------------------------------------------------------------- |
-| `#E9E6DF` | `docs/logo/*.svg`, and `--color-cream` in the website's `globals.css` |
-| `#EAE7DE` | `docs.json` `colors.light`, and Tabslot                               |
-
-Nobody can see the difference, but there should be one cream, and the majority of the system is on `#E9E6DF`. Tabslot took `#EAE7DE` because `docs.json` is the machine readable file, which was the wrong tiebreak: two hand maintained surfaces outvote it. Reconciling means one value in `tabslot-sprites.json` plus a regeneration, and the validator will recompute both flat hexes to match. It has not been done yet because it should be done together with `docs.json`, not separately.
+The two flat hexes above are the recomputed ones. Nothing had to be redrawn: the value changed in `tabslot-sprites.json`, the validator refused the stale flats by name, and a regeneration produced the rest.
 
 ## States
 
