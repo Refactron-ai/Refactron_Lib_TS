@@ -97,16 +97,17 @@ The engine surface is locked in `src/contracts.ts`. Language-specific work stays
 
 ## Architecture
 
-The pipeline a migration-mode change flows through (`verify-diff` reuses the Verifier and stops at the verdict, no write):
+The pipeline a diff flows through. Nothing writes: the shadow tree is a copy, and the verdict is where it ends.
 
 ```mermaid
 flowchart LR
-  S["source files"] --> A["Analyzer<br/>detectors · blast radius · tier"]
-  A --> R["Refactorer<br/>LibCST · ts-morph<br/>per-file composition"]
-  R --> V{"Verifier<br/>3-gate shadow tree"}
-  V -- "any gate fails" --> X["✗ reject<br/>tree untouched"]
-  V -- "all pass" --> W["Atomic batch write<br/>temp · fsync · rename"]
-  W --> D["Documenter<br/>docstrings · CHANGELOG"]
+  D["your diff"] --> I["intake<br/>parse · reject what<br/>cannot be applied"]
+  I --> S["shadow tree<br/>isolated copy"]
+  S --> V{"3 gates<br/>syntax · imports · tests"}
+  V -- "a gate fails" --> X["UNSAFE"]
+  V -- "all pass" --> C["changed-line<br/>coverage attribution"]
+  C -- "changed lines exercised" --> OK["SAFE"]
+  C -- "not exercised, or<br/>not measurable" --> U["UNPROVEN"]
 
   classDef accent fill:#d97757,stroke:#b85c3c,color:#160f0c;
   class V accent;
@@ -128,7 +129,7 @@ flowchart LR
   class NO hold;
 ```
 
-Every change runs all three gates in order (syntax, then imports, then your full test suite); no gate is skipped. The test gate's default timeout is 600 seconds (10 minutes). (Refactron's legacy blast-radius engine scaled check selection and timeouts by a change's reach; the `verify-diff` and MCP path applies the flat default.)
+Every change runs all three gates in order (syntax, then imports, then your full test suite); no gate is skipped. The test gate's default timeout is 600 seconds (10 minutes).
 
 Full design: [`ARCHITECTURE.md`](./ARCHITECTURE.md). Vocabulary: [`GLOSSARY.md`](./GLOSSARY.md). ADRs: [`dev-docs/decisions/`](./dev-docs/decisions/).
 
@@ -171,7 +172,7 @@ and is not currently published; pin `refactron@0.3.1` if you depend on it.
 ## Docs
 
 - [`ARCHITECTURE.md`](./ARCHITECTURE.md): engines, locked surfaces, pipeline, invariants
-- [`GLOSSARY.md`](./GLOSSARY.md): blast radius, tier, sidecar, precondition, gate
+- [`GLOSSARY.md`](./GLOSSARY.md): verdict, gate, shadow tree, attribution, sidecar
 - [`RUNBOOK.md`](./RUNBOOK.md): release, rollback, CVE response
 - [`CLAUDE.md`](./CLAUDE.md): agent working rules + ops scaffolding
 - [`CONTRIBUTING.md`](./CONTRIBUTING.md): development workflow

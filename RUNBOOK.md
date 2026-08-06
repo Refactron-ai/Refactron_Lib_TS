@@ -57,7 +57,7 @@ disaster, but the ordering is not optional.
     ```bash
     npm publish --dry-run
     ```
-    Verify the file list against `package.json#files`: no `dev-docs/`, no `playground/`, no `.refactron/`, no `tests/`, no `bench/`, no `docs/`. Source maps **are** shipped on purpose, so a user reading a CLI stack trace gets real line numbers; do not "fix" that. **Confirm the Python sidecars are present**: `dist/verify/checks/_py/*.py` (all three). There must be NO `dist/transform/` at all; migration mode left in 0.4.0. They are copied by `build:copy-py`, not emitted by `tsc`, so a build-script regression drops them silently and the verification engine ships broken.
+    Verify the file list against `package.json#files`: no `dev-docs/`, no `playground/`, no `.refactron/`, no `tests/`, no `bench/`, no `docs/`. Source maps **are** shipped on purpose, so a user reading a CLI stack trace gets real line numbers; do not "fix" that. **Confirm the Python sidecars are present**: `dist/verify/checks/_py/*.py` (all three). There must be NO `dist/transform/` at all; migration mode left in 0.4.0. They are copied by `scripts/postbuild.mjs`, not emitted by `tsc`. That script derives the list from `src/verify/checks/_py/` and asserts every file arrived in `dist/`, so a copy regression fails the build instead of shipping a verification engine that dies at runtime.
 12. **PyPI.**
     ```bash
     cd refactron-py
@@ -178,35 +178,6 @@ Triage in order:
 
 ---
 
-## Regenerating golden snapshots
-
-The e2e suite uses Vitest snapshots in `tests/e2e/__snapshots__/`. Regenerate ONLY when a snapshot diff is intentional.
-
-```bash
-npm run test:e2e -- -u
-```
-
-Then **diff the snapshot file manually** before committing. Every changed line should be explainable. If you can't explain it, you have a real regression hiding in the regen.
-
-Commit message: `test(e2e): regenerate snapshot for <change>`. Reference the PR that motivated the regen.
-
----
-
-## Updating LibCST (Python sidecar dep)
-
-LibCST is vendored via the runtime's Python install (`pip install libcst` in CI). We don't pin it in our package but the floor matters.
-
-1. Bump the CI workflow's `pip install libcst==X.Y.Z`.
-2. Run `npm test` locally with the new version.
-3. Test on `playground/ansible` end-to-end (`analyze` → `run --dry-run` → spot-check).
-4. If anything broke, the breakage is one of:
-   - LibCST API change (very rare for patch; check the changelog).
-   - LibCST behavior change in parsing edge cases.
-   - Our code relying on undocumented LibCST internals.
-     Fix in our code, not by pinning to the old LibCST.
-
----
-
 ## Updating Vitest (or another major test framework dep)
 
 1. Read the migration guide for the version.
@@ -231,25 +202,7 @@ npm run build
 npm test
 ```
 
-Windows: WSL2 is the supported path. Native Windows works for most tests but the POSIX-mode tests skip themselves (see `tests/unit/atomic-writer.test.ts`).
-
----
-
-## Investigating a transform that produces no changes despite findings
-
-Common pattern (the #57 class of bug):
-
-1. Run `analyze` — confirm findings exist.
-2. Run `run --dry-run --transforms=<id> --json` — confirm `plan.changes.length === 0`.
-3. Probe `plan.preconditions`:
-   ```bash
-   # Use a probe script like /tmp/probe-mt.mjs that drives the engine
-   # programmatically and prints preconditions by stem.
-   ```
-4. If `preconditions` is empty or covers fewer files than `findings`:
-   - The sidecar is silently refusing without emitting a record. Fix per the precondition discipline (`.claude/agents/python-sidecar-specialist.md`).
-5. If preconditions cover all files with reasons:
-   - The refusals are real. The fix is either to tighten the detector (so it doesn't flag uncatchable cases) or to expand the rewriter (so it handles the patterns it's currently refusing).
+Windows: native Windows is supported and covered by CI (Node 18, 20 and 22). `npm run build` goes through `scripts/postbuild.mjs` rather than shell commands, because `mkdir -p` is a cmd.exe builtin that rejects `-p` and the old build silently never worked there.
 
 ---
 

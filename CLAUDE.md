@@ -18,7 +18,7 @@ Route through these resources instead of redoing the work each session.
 | `typescript-architect`      | Verify engine, ts-morph, ESM, type-level safety         |
 | `release-manager`           | Semver, changelog, npm + PyPI publish                   |
 | `test-engineer`             | Red-first proof, fixtures, snapshot discipline          |
-| `dx-engineer`               | Verdict output, CLI ergonomics, error messages, Ink TUI |
+| `dx-engineer`               | Verdict output, CLI ergonomics, error messages          |
 | `documentation-engineer`    | README, mdx, changelog tone, migrations                 |
 | `performance-engineer`      | Throughput, sidecar latency, profiling                  |
 
@@ -51,7 +51,7 @@ Use `/ship` instead of `gh pr create`. A branch with no issue behind it is work 
 **Operations & navigation**
 
 - `ARCHITECTURE.md`: engines, locked surfaces, pipeline, invariants
-- `GLOSSARY.md`: blast radius, tier, sidecar, atomic write, precondition, gate, and the rest
+- `GLOSSARY.md`: verdict, gate, shadow tree, attribution, sidecar, and the rest
 - `RUNBOOK.md`: release, rollback, CVE response, snapshot regeneration
 
 **Templates**: `docs/prd/_template.md`, `docs/plans/_template.md`, `dev-docs/decisions/_template.md` (each links real examples in this repo).

@@ -62,66 +62,60 @@ Requirements: Node.js 18+, Python 3.8+ (for Python adapter tests).
 
 ## Project Structure
 
-Key directories:
-
 ```
-src/analysis/               ← Analyzers and blast radius
-src/verification/           ← Verification engine and checks
-src/autofix/                ← AutoFix engine and fixers
-src/adapters/               ← Language adapters
-src/pipeline/               ← Session, store, queue
-src/cli/                    ← CLI entry point and commands
-src/ui/                     ← Ink terminal UI components
-tests/                      ← Unit, integration, verification tests
+src/verify/                 ← the verification engine: shadow tree, gates, checks, fusion
+src/verify/checks/_py/      ← Python sidecars (stdlib only), copied to dist/ at build
+src/analyze/coverage/       ← coverage.py invocation and parsing
+src/mcp/                    ← the stdio MCP server exposing verify_change
+src/cli/                    ← the two-verb dispatcher and verify-diff command
+src/auth/                   ← OAuth device flow and credential storage
+src/index.ts                ← the library entry point
+tests/                      ← unit and integration tests, plus fixtures
 ```
 
 ---
 
-## Locked Contracts
+## Locked Contract
 
-
-If you believe a contract change is necessary, open an issue for discussion first — these changes require a major version bump and coordinated migration.
+`src/contracts.ts` is the only locked file. Modifying it requires an ADR in
+`dev-docs/decisions/`, a major version bump and a coordinated migration. If you
+believe a change is necessary, open an issue for discussion first.
 
 ---
 
 ## Writing Tests
 
 - All new code must have tests.
-- Tests live in `tests/unit/`, `tests/integration/`, or `tests/verification/`.
+- Tests live in `tests/unit/` or `tests/integration/`.
 - Use Vitest. Import from `vitest`, not from `jest`.
-- Follow the existing TDD pattern: write the failing test first, then implement.
+- Write the failing test first and prove it red before implementing. A
+  regression test that was never red is not evidence.
+- A test whose prerequisite may be missing uses `it.skipIf`, never an early
+  return: an early return reports PASSED and proves nothing.
+- Do not skip on repo state you control. `dist/` missing is a hard failure, not
+  a skip; skipping on it is how six CLI assertions silently stopped running.
 
-**Every `CodeIssue` produced by any analyzer must have a non-null `blastRadius`.** Tests that produce issues without blast radius will be rejected.
-
-```typescript
-// Good — blastRadius always present
-const issue: CodeIssue = {
-  ...fields,
-  blastRadius: { affectedFiles: [], affectedFunctions: [], affectedTestFiles: [], score: 0, level: 'trivial' },
-};
-```
+**Anything that can change a verdict needs its safety case pinned in both
+directions.** It is not enough to show the good input produces `SAFE`; show that
+the unmeasurable one produces `UNPROVEN` and the broken one produces `UNSAFE`.
 
 ---
 
-## Adding a New Analyzer
+## Adding a Language Check
 
-1. Create `src/analysis/analyzers/your-analyzer.ts` extending `BaseAnalyzer`.
-2. Add it to `src/analysis/engine.ts`.
-3. Add a config key to `RefactronConfig` in `src/core/config.ts` and `refactron.yaml`.
-4. Write tests in `tests/unit/analyzers.test.ts`.
+1. Create `src/verify/checks/<gate>-<language>.ts`.
+2. Wire it into the matching gate in `src/verify/gates/`.
+3. Keep language-specific logic inside the check. The gates and the engine stay
+   language-agnostic.
+4. Write tests in `tests/unit/verify/`.
 
-## Adding a New Fixer
+## Adding a Python Sidecar
 
-1. Create `src/autofix/fixers/your-fixer.ts` extending `BaseFixer`.
-2. Declare `supportedIssueTypes` matching the issue `type` strings it handles.
-3. Register it in `src/autofix/engine.ts`.
-4. Write tests in `tests/unit/autofix-engine.test.ts`.
-
-## Adding a Language Adapter
-
-2. Register it in `src/adapters/registry.ts`.
-3. All language-specific logic must stay inside the adapter — the verification engine must remain language-agnostic.
-4. Write tests in `tests/unit/your-adapter.test.ts`.
+1. Create `src/verify/checks/_py/<name>.py`. Stdlib only.
+2. `scripts/postbuild.mjs` derives the list from that directory and asserts each
+   file reaches `dist/`, so nothing further is needed to have it verified.
+3. Remember the sidecar is copied, not compiled: a mistake there is silent at
+   build time and fatal at runtime.
 
 ---
 
@@ -163,12 +157,12 @@ What tests cover this change.
 We use [Conventional Commits](https://www.conventionalcommits.org/):
 
 ```
-feat: add support for Go language adapter
-fix: handle empty file list in blast radius analyzer
+feat: add a Go syntax check
+fix: decline shebangs we cannot reproduce exactly
 test: add edge case for circular import detection
 docs: update README quick start section
 chore: bump vitest to 2.0
-refactor: simplify verification engine check selection
+refactor: simplify gate selection
 ```
 
-Scope is optional but helpful: `feat(blast-radius): ...`, `fix(python-adapter): ...`
+Scope is optional but helpful: `fix(coverage): ...`, `feat(cli): ...`

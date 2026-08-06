@@ -2,62 +2,36 @@
 
 Terms used throughout the Refactron codebase. If a term you encounter isn't here, that's a glossary bug — open an issue.
 
+Terms belonging to the refactoring product (transform, fixer, blast radius, tier, adapter, plan, finding, and the rest) left in 0.4.0 along with the code. They live in the archived repository.
+
 ---
 
-**Adapter** — a language-specific implementation of `ILanguageAdapter` (`src/adapters/interface.ts`). Hides parser/AST differences behind a uniform interface so analysis and verification stay language-agnostic. Refactron has `python` (subprocess + LibCST) and `typescript` (in-process ts-morph). Locked interface.
+**Attribution** — deciding whether a test run actually executed the lines a diff changed. Done by mapping each changed line to its enclosing AST statement (`src/verify/statement-map.ts`) and asking whether coverage.py recorded that statement (`src/verify/coverage-attribution.ts`). Containment, not line numbers: coverage.py reports a multi-line statement at its first line.
 
-**Analyze report** — the output of `RefactronAnalyzer.analyze()` / `analyzeExtended()`. A list of `Finding`s grouped by transform, with blast-radius and tier metadata. Persisted in `.refactron/` and consumed by the refactorer to build a plan.
+**Contract** — `src/contracts.ts`, the locked engine surface: the engine interfaces plus `RefactorPlan`, `FileChange`, `GateResult` and the `TransformId` union. `TransformId` still lists 20 transform literals with no transforms behind them; narrowing it is a breaking change and waits for a major.
 
-**Apply** — the act of writing a `RefactorPlan` to disk. Goes through the 3-gate verifier first and the atomic batch writer second. If any gate fails, nothing is written.
+**Drift** — when two pieces of logic that should match silently disagree: help text against the dispatcher, a doc page against source, an inlined constant against its generator. Caught by `tests/unit/cli/help-drift.test.ts` for the CLI surface. The class is worth naming because a drift test that itself cannot fail is the same bug one level up.
 
-**Atomic write** — writing a file by `write-to-temp → fsync → rename(temp, dest)`. Atomic at the filesystem level (POSIX `rename(2)`, equivalent on Windows). All Refactron writes go through `src/infrastructure/atomic-writer.ts`. Bypassing this is a CR-block.
+**False SAFE** — reporting `SAFE` for a change that is not safe. The only unforgivable defect in this product: every other bug is a bug, this one removes the reason to run the tool. Two have shipped, both fixed in 0.3.1, both caused by coverage measuring a different program than the tests gate ran.
 
-**Batch writer** — wraps `atomic-writer` to write N files atomically as a group. Preflight checks (parent dirs exist, no path escapes project root) → two-phase rename (all temps first, then all renames). Partial failure rolls back every rename done so far.
+**Gate** — one stage of the verification pipeline: syntax (does it parse?), imports (do they resolve?), tests (does the suite pass in the shadow tree?). All three always run, in order. They are no longer selected by blast radius; that scaling left with the legacy engine.
 
-**Blast radius** — a per-issue estimate of how far a fix's effect propagates. Required on every `CodeIssue`. Shape: `{affectedFiles, affectedFunctions, affectedTestFiles, score, level}`. Computed from import-graph + call-graph + test coverage. Drives verification depth via `level`.
+**Honest degradation** — when something cannot be measured, the verdict moves toward `UNPROVEN`, never toward `SAFE`. Coverage attestation is coverage.py only, so a non-Python or mixed diff returns `UNPROVEN` rather than a guess.
 
-**Confidence** — per-detector estimate of how likely a finding is a true positive. `low` / `medium` / `high`. Surfaced in `analyze`; can be filtered with `--confidence=<level>`.
+**Locked file** — a source file whose interface is frozen. Modifications require an ADR, a major version bump and a migration plan. Currently just `src/contracts.ts`. PRs that touch it without an ADR get closed.
 
-**Contract (v2.0)** — the four engine interfaces in `src/contracts.ts`: `Analyzer`, `Refactorer`, `Verifier`, `Documenter`. Plus `RefactorPlan`, `FileChange`, `TransformId`. Locked.
+**Measurement parity** — the rule that the coverage run must be observationally equivalent to what the tests gate actually ran. Enforced in `toCoverageRunArgs` (`src/analyze/coverage/python-line-coverage.ts`), which declines rather than approximating. Both shipped false SAFEs were parity failures.
 
-**Detector** — code that scans source for a transform's candidates and emits `Finding`s. Lives in `src/analyze/detectors/<lang>/<name>.ts`. Uses tree-sitter on the Python side, ts-morph on the TypeScript side. Must match its sidecar's accept predicate exactly — drift causes silent refusals (the #57 class of bug).
+**Precondition** — a record of a refusal: `{id, satisfied, reason?}`. Every refusal path must emit one, because a silent refusal is indistinguishable from success.
 
-**Documenter** — the engine that generates docstrings (LLM-backed) and CHANGELOG entries (deterministic). Lives in `src/document/`. Runs after `apply`; never blocks the refactor.
+**Sidecar** — a Python script invoked as a subprocess by a verification check. Lives in `src/verify/checks/_py/<name>.py`, stdlib only. Copied into `dist/` by `scripts/postbuild.mjs`, which asserts they arrived: a missing sidecar is silent at build time and fatal at runtime.
 
-**Drift** — when two pieces of logic that should match (detector ↔ sidecar; CLI flag ↔ engine option; doc page ↔ source) silently disagree. Caught by `tests/unit/cli/transform-ids-drift.test.ts` for the TRANSFORM_ID set; other drifts are caught by code review.
+**Shadow tree** — a copy of the project into which the diff is applied, under the system temp directory. Every gate runs there. Nothing in this codebase writes to the caller's working tree, in any path, for any verdict.
 
-**Engine** — a major subsystem implementing one of the v2.0 contracts. Refactron has four: analyze, transform (refactor), verify, document.
+**Shadow bypass** — when the test suite loads a different copy of the code than the one being verified, usually an installed or editable package. Detected by a changed file being absent from `measuredFiles`, which floors the verdict at `UNPROVEN` with a reason naming the remedy. Without this guard an editable install produces a confident `SAFE` for code no test touched.
 
-**Finding** — a detector's report that a file has a candidate for a specific transform. Carries file path, line, transform id, remediation minutes, confidence, blast radius. Becomes a planned `FileChange` once the refactorer processes it.
+**Subagent** — a Claude Code subagent definition in `.claude/agents/<name>.md`. Refactron ships senior personas (principal-engineer, staff-code-reviewer, test-engineer and others) routable via the Agent tool's `subagent_type` parameter.
 
-**Fixer** — legacy autofix abstraction (`src/autofix/fixers/`). Each extends `BaseFixer`, declares `supportedIssueTypes`. Predates the v2.0 transform model; new work uses transforms, not fixers.
+**Verdict** — `SAFE`, `UNSAFE` or `UNPROVEN`, produced by `fuseVerdict` (`src/verify/verdict-fuse.ts`) from gate results plus coverage. A pure function with no I/O, so the decision is testable in isolation. `UNPROVEN` exits 0: it is a warning, not a rejection.
 
-**Gate** — one stage of the verification pipeline. Refactron has three: syntax (parses cleanly?), imports (do all imports resolve in the new state?), tests (do the project's tests pass in a shadow tree with the new files?). Higher-blast-radius changes run more gates; trivial changes run only syntax.
-
-**Locked file** — a source file whose interface is frozen. Modifications require an ADR + major version bump + migration plan. Currently: `src/contracts.ts`, `src/core/models.ts`, `src/adapters/interface.ts`. PRs that touch these without an ADR get closed.
-
-**Plan** — a `RefactorPlan` produced by `Refactorer.plan()`. Contains `changes: FileChange[]` and `preconditions: Precondition[]`. The plan is what gets verified and applied; nothing is written until apply.
-
-**Playground** — `playground/` directory. Real-world trial corpora (Ansible checkout, large-Python, legacy-TS, etc.). Used to validate transforms empirically. **NOT a release surface.** Mutations to `playground/` are bugs; transforms run in `/tmp/` copies for testing.
-
-**Precondition** — a record emitted by a transform attempt: `{id, satisfied, reason?}`. `satisfied: true` records a successful change; `satisfied: false` records a refusal with a reason. **Every refusal path must emit one** — silent refusals are the #57 class of bug.
-
-**Refactorer** — the v2.0 engine that takes an `AnalysisReport` and produces a `RefactorPlan`. Lives in `src/transform/engine.ts`. Composes transforms per-file in `TRANSFORM_ORDER`.
-
-**Refactron config** — `refactron.yaml` at the project root. Controls which transforms run, confidence threshold, Python version target, test command override, etc. Schema in `src/core/config.ts`.
-
-**Remediation minutes** — per-finding estimate of how long a human fix would take. Summed to produce the "minutes saved" headline in `analyze`. Defined per-transform in `src/analyze/sqale.ts`.
-
-**Shadow tree** — a hardlinked-or-copied mirror of the project used during verification. The verifier writes the plan into the shadow tree (never the real tree) and runs syntax/import/test checks there. Built in `src/verify/` (post-v2.0); legacy path in `src/verification/`.
-
-**Sidecar** — a Python script invoked as a subprocess by a `python` adapter transform. Lives in `src/transform/transforms/python/_py/<name>.py`. Reads source path from `sys.argv[1]`, emits `ok`/`new_content`/`preconditions` via `_base.emit`. Stdlib + LibCST only.
-
-**Subagent** — a Claude Code subagent definition in `.claude/agents/<name>.md`. Refactron ships 10+ senior personas (principal-engineer, staff-code-reviewer, etc.) that are routable via the Agent tool's `subagent_type` parameter.
-
-**Tier** — a transform's classification: `debt` / `modernization` / `style`. Defined in `TIER_BY_TRANSFORM` in `src/cli/v2-adapters.ts`. Drives the `BY TIER` section in `analyze` output.
-
-**Transform** — a code-rewriting operation: detect candidates, plan changes, verify, write. Identified by a `TransformId` literal (in the locked `src/contracts.ts` union). Refactron ships 20+ transforms; new ones are added via `.claude/commands/new-transform.md`.
-
-**TRANSFORM_ORDER** — the canonical exec order of all transforms, exported from `src/transform/engine.ts`. The CLI's `--transforms=all` and the REPL's transform list both derive from this — drift between them is a tracked bug class (#49).
-
-**Verify / 3-gate** — the verification pipeline: syntax → imports → tests. Gates run in a shadow tree, gated by blast-radius level. A plan only applies if all gates pass.
+**VerdictReport** — the serialized result, emitted verbatim by both `verify-diff --json` and the MCP `verify_change` tool. A public contract carrying `reportVersion` so stored reports are readable later. Additive fields are safe; renames, removals and retypes are breaking.
