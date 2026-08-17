@@ -118,7 +118,11 @@ export interface CoverageReport {
 // Shell metacharacters mean the command is a composite the coverage wrapper
 // cannot reliably wrap (`pytest && lint`, pipes, substitutions). Guessing here
 // risks measuring only part of the suite, so we decline and report unknown.
-const SHELL_COMPOSITE_RE = /&&|\|\||[;|`<>]|\$\(/;
+// Exported so src/verify/test-scope.ts declines exactly the same commands this
+// runner does. Two independent parsers of the same testCmd string disagreeing
+// about what the shell would do is the failure this file's header warns about;
+// sharing the predicate is cheaper than keeping two copies honest.
+export const SHELL_COMPOSITE_RE = /&&|\|\||[;|`<>]|\$\(/;
 
 /** How to hand `testCmd` to `coverage run`. Module form needs `-m`; a script
  *  path must be passed positionally, or coverage tries to import a module by

@@ -202,6 +202,39 @@ describe('a narrowed testCmd cannot earn SAFE (issue #110)', () => {
     120_000,
   );
 
+  // Found in review. `--collect-only` is the maximal narrowing: it selects zero
+  // tests, exits 0 so the tests gate passes on exit code alone, and still
+  // IMPORTS every test module, so coverage.py marks module-level changed lines
+  // as executed. Before the fix this returned SAFE with coverage 1/1 on a diff
+  // the full suite calls UNSAFE. The fixture uses a module-level constant
+  // because that is what collection alone can execute.
+  it.skipIf(NO_COVERAGE)(
+    'a collect-only run selects zero tests and cannot be SAFE',
+    async () => {
+      const root = await fs.mkdtemp(path.join(os.tmpdir(), 'vd-collect-'));
+      roots.push(root);
+      await fs.mkdir(path.join(root, 'tests'), { recursive: true });
+      await fs.writeFile(path.join(root, 'pyproject.toml'), '[project]\nname = "co"\n');
+      await fs.writeFile(path.join(root, 'conftest.py'), '');
+      await fs.writeFile(
+        path.join(root, 'calc.py'),
+        'LIMIT = 4\n\n\ndef limit():\n    return LIMIT\n',
+      );
+      await fs.writeFile(
+        path.join(root, 'tests', 'test_limit.py'),
+        'from calc import limit\n\n\ndef test_limit():\n    assert limit() == 4\n',
+      );
+      const report = await verifyDiff({
+        repoRoot: root,
+        edits: [{ path: 'calc.py', newContent: 'LIMIT = 6\n\n\ndef limit():\n    return LIMIT\n' }],
+        testCmd: 'python3 -m pytest -q --collect-only',
+      });
+      expect(report.verdict).not.toBe('SAFE');
+      expect(report.testScope?.scope).toBe('narrowed');
+    },
+    120_000,
+  );
+
   // CHARACTERIZATION, not regression: this one passes on main too, by design.
   // It is here to pin the fact that makes #110 and #109 independent, so a later
   // reader cannot conclude that the statement-coverage rule subsumes this fix.

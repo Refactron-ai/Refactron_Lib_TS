@@ -169,10 +169,28 @@ describe('formatFlakyNote', () => {
 // Issue #110. Unlike the other notes, this one explains a VERDICT, so it has to
 // name the signal that cost the reader their SAFE and tell them what to do.
 describe('formatTestScopeNote', () => {
-  it('is silent when the scope is absent, full, or unparsed', () => {
+  it('is silent when the scope is absent or full', () => {
     expect(formatTestScopeNote(undefined)).toBeNull();
     expect(formatTestScopeNote({ scope: 'full', source: 'detected', signals: [] })).toBeNull();
-    expect(formatTestScopeNote({ scope: 'unknown', source: 'override', signals: [] })).toBeNull();
+    expect(formatTestScopeNote({ scope: 'full', source: 'override', signals: [] })).toBeNull();
+  });
+
+  it('is silent for a detected runner even if unknown: the engine chose it', () => {
+    expect(formatTestScopeNote({ scope: 'unknown', source: 'detected', signals: [] })).toBeNull();
+  });
+
+  it('speaks up on an unparsed override rather than letting SAFE read as clean', () => {
+    // `unknown` does not floor the verdict, so a SAFE here rests on a command we
+    // could not parse. Silence would be the same mistake `coverage.unknownReason`
+    // exists to prevent: a failed measurement reading as a clean one.
+    const note = formatTestScopeNote({
+      scope: 'unknown',
+      source: 'override',
+      signals: ['make is not a recognised test runner, so the scope is unknown'],
+    });
+    expect(note).toContain('could not determine');
+    expect(note).toContain('make');
+    expect(note).toContain('assumes it does');
   });
 
   it('names the signal and says the run cannot be SAFE', () => {

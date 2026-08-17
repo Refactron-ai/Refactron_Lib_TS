@@ -242,12 +242,33 @@ Refactron classifies your command into three buckets, and reports the result on
 | `narrowed` | Names a path, node id, `-k`, `-m`, `-t`, `--onlyChanged`, … | no          |
 | `unknown`  | Not recognised (`make test`, `npm test`, a wrapper script)  | yes         |
 
-`unknown` does not floor the verdict. Flooring every unparsed wrapper would put
-`SAFE` out of reach for most projects, so Refactron reports what it knows rather
-than refusing outright. This is a real gap: narrowing hidden inside a wrapper
-script is not detected. `full` means "this command names no filters", not "this
-run was the whole suite" — narrowing configured in `pytest.ini` `addopts`,
-`PYTEST_ADDOPTS`, or a vitest `include` is invisible here.
+**Naming a directory counts as narrowing**, including `pytest tests/`. Tests can
+live outside any single directory, so Refactron cannot treat that as the whole
+suite without risking a false `SAFE`. Run the bare command (`pytest -q`) to get a
+`SAFE`-eligible verdict. `pytest .` is fine: `.` collects from the root, so it is
+never narrower than the default.
+
+**A run that executes no tests is narrowing too.** `--collect-only` and `--help`
+exit successfully while selecting zero tests, and they still import your test
+modules, so coverage can mark module-level changed lines as executed. Those are
+classified `narrowed`.
+
+`unknown` does not floor the verdict. Most commands that land there are a full
+suite carrying a flag we do not recognise (`pytest --doctest-modules`), and
+refusing `SAFE` for every unrecognised plugin flag would be worse than the gap it
+closes. The CLI says so explicitly rather than staying quiet:
+
+```
+  note: could not determine whether the test command runs the whole suite
+        (make is not a recognised test runner, so the scope is unknown);
+        the verdict assumes it does.
+```
+
+This is a real gap, and two shapes fall into it: `python -m unittest tests.test_foo`
+and `python3 tests/runtests.py auth` both narrow and both classify `unknown`.
+`full` also means "this command names no filters", not "this run was the whole
+suite" — narrowing configured in `pytest.ini` `addopts`, `PYTEST_ADDOPTS`, or a
+vitest `include` is invisible here.
 
 The `PYTHONPATH=` prefix recommended below is **not** narrowing.
 `PYTHONPATH=. python3 -m pytest -q` classifies as `full`.

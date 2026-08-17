@@ -29,6 +29,22 @@
 //   * `-n` is xdist worker count, not a filter. `-x` and `--maxfail` only stop
 //     early ON FAILURE, and a run that stopped early is red, so it cannot reach
 //     SAFE regardless.
+//
+// RULE FOR EDITING THE TABLES BELOW (ADR-12 Compliance). Every flag added to a
+// FlagTable arrives with a test row, and a flag placed in `valueLong` or
+// `valueShort` arrives with a row of the shape `runner <flag> <value> <path>`
+// asserting `narrowed`. That is the only assertion that catches an arity error,
+// and an arity error is dangerous in one direction: a flag wrongly filed as
+// taking a value SWALLOWS the following positional and yields `full`. Two live
+// bugs came from this table being written from memory rather than from `--help`:
+// `--cov` (pytest-cov takes an optional value) and vitest `-w` (takes none).
+//
+// Flags that exit 0 WITHOUT running the suite (`--collect-only`, `--help`) are
+// narrowing, not boolean: they select zero tests, still import every test
+// module, and coverage then marks module-level changed lines as executed. That
+// combination produced a real false SAFE.
+
+import { SHELL_COMPOSITE_RE } from '../analyze/coverage/python-line-coverage.js';
 
 export type TestScope = 'full' | 'narrowed' | 'unknown';
 
@@ -74,11 +90,25 @@ const PYTEST: FlagTable = {
     '--ignore-glob',
     '--deselect',
     '--last-failed-no-failures',
+    // Collection-only runs are the MAXIMAL narrowing: they select zero tests to
+    // execute, exit 0 (so the tests gate passes on exit code alone), and still
+    // IMPORT every test module, so coverage.py marks module-level changed lines
+    // as executed. Reproduced: a changed module constant read UNSAFE under
+    // `python3 -m pytest -q` and SAFE under `python3 -m pytest -q
+    // --collect-only`, with coverage 1/1. Any flag that exits 0 while running
+    // nothing belongs here, not in boolLong.
+    '--collect-only',
+    '--co',
+    '--help',
+    '--version',
+    '--fixtures',
+    '--markers',
+    '--setup-plan',
   ]),
   // `-k` is a name expression, `-m` a marker expression. Both select a subset.
   // Reaching pytest's `-m` requires having already consumed python's own `-m`
   // module flag; see parseRunner.
-  narrowingShort: new Set(['-k', '-m']),
+  narrowingShort: new Set(['-k', '-m', '-h']),
   valueLong: new Set([
     '--maxfail',
     '--tb',
@@ -98,6 +128,11 @@ const PYTEST: FlagTable = {
     '--override-ini',
     '--assert',
     '--timeout',
+    // pytest-cov declares --cov with nargs='?', so `--cov src` consumes `src`
+    // as the coverage SOURCE and still runs the whole suite. Filed as boolLong
+    // it left `src` to be read as a path filter, which floored one of the most
+    // common Python CI commands there is at UNPROVEN.
+    '--cov',
   ]),
   boolLong: new Set([
     '--quiet',
@@ -110,11 +145,6 @@ const PYTEST: FlagTable = {
     '--disable-warnings',
     '--showlocals',
     '--full-trace',
-    '--cov',
-    '--co',
-    '--collect-only',
-    '--tb-native',
-    '--force-sugar',
     // Reordering, not filtering: every test still runs.
     '--failed-first',
     '--ff',
@@ -124,8 +154,10 @@ const PYTEST: FlagTable = {
     '--stepwise',
     '--sw',
   ]),
-  valueShort: new Set(['-n', '-p', '-W', '-o', '-c', '-r', '-D']),
-  boolShort: new Set(['-q', '-v', '-x', '-s', '-l', '-h']),
+  // `-h` is deliberately NOT here: it exits 0 without running tests, the same
+  // shape as --collect-only, and lives in narrowingLong as --help.
+  valueShort: new Set(['-n', '-p', '-W', '-o', '-c', '-r']),
+  boolShort: new Set(['-q', '-v', '-x', '-s', '-l']),
   subcommands: new Set(),
 };
 
@@ -137,8 +169,11 @@ const VITEST: FlagTable = {
     '--shard',
     '--project',
     '--dir',
+    // Zero-test-run flags, same rule as pytest's --collect-only.
+    '--help',
+    '--version',
   ]),
-  narrowingShort: new Set(['-t']),
+  narrowingShort: new Set(['-t', '-h']),
   valueLong: new Set([
     '--reporter',
     '--config',
@@ -168,9 +203,14 @@ const VITEST: FlagTable = {
     '--allowOnly',
     '--sequence.shuffle',
   ]),
-  valueShort: new Set(['-c', '-w', '-r']),
-  boolShort: new Set(['-u', '-h']),
-  // `vitest run` and `vitest watch` are mode subcommands, not path filters.
+  // `-w` is --watch and takes NO value. Filed under valueShort it swallowed the
+  // following token, so `vitest run -w src/foo.test.ts` classified as `full`
+  // while vitest ran only that one file. An entry misfiled INTO a value table
+  // eats a real positional and yields `full`, which is the dangerous direction.
+  valueShort: new Set(['-c', '-r']),
+  boolShort: new Set(['-u', '-w']),
+  // `run` and `watch` are mode subcommands, not path filters. `list` is NOT
+  // here: it collects without executing, the same shape as --collect-only.
   subcommands: new Set(['run', 'watch']),
 };
 
@@ -189,8 +229,12 @@ const JEST: FlagTable = {
     '--shard',
     '--selectProjects',
     '--runTestsByPath',
+    // Zero-test-run flags, same rule as pytest's --collect-only.
+    '--help',
+    '--version',
+    '--listTests',
   ]),
-  narrowingShort: new Set(['-t', '-o', '-f']),
+  narrowingShort: new Set(['-t', '-o', '-f', '-h']),
   valueLong: new Set([
     '--maxWorkers',
     '--config',
@@ -218,7 +262,7 @@ const JEST: FlagTable = {
     '--json',
   ]),
   valueShort: new Set(['-w', '-c']),
-  boolShort: new Set(['-i', '-u', '-h']),
+  boolShort: new Set(['-i', '-u']),
   subcommands: new Set(),
 };
 
@@ -263,15 +307,39 @@ interface ParsedRunner {
   table: FlagTable;
   name: string;
   args: string[];
+  /** Values of leading NAME=VALUE assignments whose variable feeds ARGUMENTS to
+   *  the runner. Stripping these unexamined produced a false SAFE:
+   *  `PYTEST_ADDOPTS="-k test_scale" python3 -m pytest -q` ran only the matching
+   *  tests, and the classifier answered `full` — its strongest claim. The
+   *  leading-assignment prefix is the documented, and over MCP the only, way to
+   *  pass environment (issues #95 and #98), so it is exactly the form in use. */
+  optionEnvValues: string[];
 }
+
+/** Environment variables whose value is appended to the runner's own argv, and
+ *  can therefore carry a filter. Matched case-sensitively on the assignment
+ *  NAME. `PYTHONPATH` is deliberately absent: it changes import resolution, not
+ *  test selection, and treating it as an option source would break the #95/#98
+ *  remedy this classifier is required to leave alone. */
+const OPTION_ENV_NAMES = new Set(['PYTEST_ADDOPTS', 'VITEST_ADDOPTS', 'JEST_ADDOPTS']);
 
 /** Identify the runner and return its arguments, or null when unrecognised. */
 function parseRunner(tokens: string[]): ParsedRunner | null {
   let rest = tokens;
+  const optionEnvValues: string[] = [];
 
-  // Strip leading NAME=VALUE assignments. Stop at the first token that is not
-  // one, so a legitimate argument containing `=` is never consumed.
-  while (rest.length > 0 && ENV_ASSIGNMENT.test(rest[0] as string)) rest = rest.slice(1);
+  // Strip leading NAME=VALUE assignments, KEEPING the value of any variable that
+  // feeds arguments to the runner. Stop at the first token that is not an
+  // assignment, so a legitimate argument containing `=` is never consumed.
+  const takeAssignments = (): void => {
+    while (rest.length > 0 && ENV_ASSIGNMENT.test(rest[0] as string)) {
+      const tok = rest[0] as string;
+      const eq = tok.indexOf('=');
+      if (OPTION_ENV_NAMES.has(tok.slice(0, eq))) optionEnvValues.push(tok.slice(eq + 1));
+      rest = rest.slice(1);
+    }
+  };
+  takeAssignments();
 
   // Strip wrappers. Bounded so a pathological command cannot spin.
   for (let guard = 0; guard < 8 && rest.length > 0; guard++) {
@@ -305,8 +373,19 @@ function parseRunner(tokens: string[]): ParsedRunner | null {
       rest = rest.slice(2);
       continue;
     }
+    // `env PYTHONPATH=. pytest ...`. Without this, the whole command read as an
+    // unrecognised runner and the filter behind it was never seen.
+    if (head === 'env') {
+      rest = rest.slice(1);
+      takeAssignments();
+      continue;
+    }
     break;
   }
+
+  // A second pass of NAME=VALUE, because stripping a wrapper can expose more
+  // (`env FOO=1 BAR=2 pytest` and `poetry run PYTHONPATH=. pytest`).
+  takeAssignments();
 
   if (rest.length === 0) return null;
   const head = basename(rest[0] as string);
@@ -320,12 +399,38 @@ function parseRunner(tokens: string[]): ParsedRunner | null {
     const moduleName = rest[2] as string;
     const table = tableFor(moduleName);
     if (!table) return null;
-    return { table, name: moduleName, args: rest.slice(3) };
+    return { table, name: moduleName, args: rest.slice(3), optionEnvValues };
   }
 
   const table = tableFor(head);
   if (!table) return null;
-  return { table, name: head, args: rest.slice(1) };
+  return { table, name: head, args: rest.slice(1), optionEnvValues };
+}
+
+/** Why a command was unrecognised. `unknown` does not floor the verdict, so
+ *  these strings are the only field evidence for whether the carve-out is
+ *  drawn in the right place (ADR-12 follow-up). Never throw them away. */
+function unknownRunnerSignal(tokens: string[]): string {
+  const head = basename(tokens[0] ?? '');
+  if (head === '') return 'the command is empty';
+  return `${head} is not a recognised test runner, so the scope is unknown`;
+}
+
+/** A positional that means "everything from here", which is never narrower than
+ *  the runner's own default. `.` and `./` collect from the rootdir; the shadow
+ *  root IS the cwd, so this is the whole suite. `tests/` is NOT in this set: a
+ *  repo can hold tests outside it, and calling that `full` would be a false
+ *  SAFE, the unforgivable direction. */
+const WHOLE_TREE_POSITIONALS = new Set(['.', './']);
+
+/** pytest's `-o` / `--override-ini` sets an ini key inline, and two of those
+ *  keys select tests: `testpaths` restricts collection, `addopts` injects
+ *  arbitrary arguments. The value was previously consumed unexamined, so
+ *  `pytest -o testpaths=tests/unit` answered `full` on a narrowed run. */
+function isNarrowingIniOverride(flag: string, value: string): boolean {
+  if (flag !== '-o' && flag !== '--override-ini') return false;
+  const key = value.split('=')[0]?.trim();
+  return key === 'testpaths' || key === 'addopts';
 }
 
 function tableFor(name: string): FlagTable | null {
@@ -342,13 +447,47 @@ function tableFor(name: string): FlagTable | null {
  * recognised returns `unknown`, never `full`.
  */
 export function classifyTestCommand(command: string): { scope: TestScope; signals: string[] } {
+  // Shell composites are not a command we can reason about: `pytest -q > out`,
+  // `pytest a && pytest b`, `cd sub && pytest`. The coverage runner already
+  // declines exactly these, and reading a redirection operator as a test path
+  // produced `narrowed` with the signal "selects specific paths: >".
+  if (SHELL_COMPOSITE_RE.test(command)) {
+    return {
+      scope: 'unknown',
+      signals: ['the command uses shell operators, so its scope is unknown'],
+    };
+  }
+
   const tokens = tokenize(command);
-  if (tokens.length === 0) return { scope: 'unknown', signals: [] };
+  if (tokens.length === 0) return { scope: 'unknown', signals: ['the command is empty'] };
 
   const parsed = parseRunner(tokens);
-  if (!parsed) return { scope: 'unknown', signals: [] };
+  if (!parsed) {
+    return { scope: 'unknown', signals: [unknownRunnerSignal(tokens)] };
+  }
 
-  const { table, args } = parsed;
+  const { table, args, optionEnvValues } = parsed;
+
+  // Scan the values of PYTEST_ADDOPTS and friends with the SAME scanner. pytest
+  // appends that string to its own argv, so `PYTEST_ADDOPTS="-k test_scale"` is
+  // a filter no less than a positional path. Stripping it unexamined answered
+  // `full` on a run that executed one test.
+  for (const value of optionEnvValues) {
+    const inner = scanArgs(table, tokenize(value));
+    if (inner.scope !== 'full') {
+      return {
+        scope: inner.scope,
+        signals: inner.signals.map((sig) => `${sig} (from the environment)`),
+      };
+    }
+  }
+
+  return scanArgs(table, args);
+}
+
+/** Scan a runner's argv for filters. Shared by the command line and by the
+ *  option-carrying environment variables, so the two cannot drift apart. */
+function scanArgs(table: FlagTable, args: string[]): { scope: TestScope; signals: string[] } {
   const signals: string[] = [];
   let seenSubcommand = false;
 
@@ -373,11 +512,20 @@ export function classifyTestCommand(command: string): { scope: TestScope; signal
         return { scope: 'narrowed', signals };
       }
       if (table.valueLong.has(name)) {
+        const value = eq === -1 ? (args[i + 1] ?? '') : tok.slice(eq + 1);
+        if (isNarrowingIniOverride(name, value)) {
+          signals.push(`${name} ${value} selects a subset of the suite`);
+          return { scope: 'narrowed', signals };
+        }
         if (eq === -1) i++; // consume the separate value
         continue;
       }
       if (table.boolLong.has(name)) continue;
-      return { scope: 'unknown', signals: [] }; // unrecognised flag
+      // Unrecognised flag on a RECOGNISED runner. Almost always a plugin flag
+      // on a full suite (`pytest --doctest-modules`), which is why `unknown`
+      // does not floor: flooring it would turn every plugin flag in the wild
+      // into a SAFE-killer fixable only by a PR to us.
+      return { scope: 'unknown', signals: [`${name} is not recognised, so the scope is unknown`] };
     }
 
     if (tok.startsWith('-') && tok.length > 1) {
@@ -387,14 +535,24 @@ export function classifyTestCommand(command: string): { scope: TestScope; signal
         return { scope: 'narrowed', signals };
       }
       if (table.valueShort.has(short)) {
+        const value = tok.length === 2 ? (args[i + 1] ?? '') : tok.slice(2);
+        if (isNarrowingIniOverride(short, value)) {
+          signals.push(`${short} ${value} selects a subset of the suite`);
+          return { scope: 'narrowed', signals };
+        }
         if (tok.length === 2) i++; // `-n 4`; `-n4` carries its own value
         continue;
       }
       // Bundled booleans such as `-qx`.
       const chars = tok.slice(1).split('');
       if (chars.every((c) => table.boolShort.has(`-${c}`))) continue;
-      return { scope: 'unknown', signals: [] };
+      return { scope: 'unknown', signals: [`${short} is not recognised, so the scope is unknown`] };
     }
+
+    // A `#` opens a shell comment, so neither it nor anything after it reaches
+    // the runner. Reading `pytest -q #nightly` as a path filter floored a
+    // whole-suite command.
+    if (tok.startsWith('#')) break;
 
     // A bare word. Mode subcommands are not filters; anything else is a path or
     // node-id filter.
@@ -402,6 +560,10 @@ export function classifyTestCommand(command: string): { scope: TestScope; signal
       seenSubcommand = true;
       continue;
     }
+    // An empty token comes from `pytest ""`, which selects nothing and is not a
+    // path. Reporting it printed a note ending in a bare colon.
+    if (tok.length === 0) continue;
+    if (WHOLE_TREE_POSITIONALS.has(tok)) continue;
     signals.push(`selects specific paths: ${tok}`);
     return { scope: 'narrowed', signals };
   }
@@ -417,7 +579,13 @@ export function classifyTestCommand(command: string): { scope: TestScope; signal
  * arguments, no `-k`, no filters. That path is `full` without inspection.
  */
 export function assessTestScope(override?: string): TestScopeAssessment {
-  if (override === undefined) return { scope: 'full', source: 'detected', signals: [] };
+  // `detectRunner` guards with `if (opts.override)`, so an empty or
+  // whitespace-only string is falsy there and the engine runs its OWN detected,
+  // whole-suite command. Reporting `override` for that run would put a false
+  // statement in a report the ADR sells as auditable history.
+  if (override === undefined || override.trim() === '') {
+    return { scope: 'full', source: 'detected', signals: [] };
+  }
   const { scope, signals } = classifyTestCommand(override);
   return { scope, source: 'override', signals };
 }

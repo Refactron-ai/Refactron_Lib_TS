@@ -145,6 +145,257 @@ describe('classifyTestCommand', () => {
     });
   });
 
+  // A flag that exits 0 without running the suite is the MAXIMAL narrowing, and
+  // it is the one shape that reached a real false SAFE on this branch:
+  // --collect-only selects zero tests, exits 0 so the tests gate passes, and
+  // still imports every test module so coverage marks module-level changed lines
+  // executed. Verdict went SAFE on a diff the full suite called UNSAFE.
+  describe('flags that exit 0 without running the suite are narrowing', () => {
+    const ZERO_TEST_RUNS = [
+      'python3 -m pytest -q --collect-only',
+      'pytest --collect-only',
+      'pytest --co',
+      'pytest --help',
+      'pytest -h',
+      'pytest --version',
+      'pytest --fixtures',
+      'pytest --markers',
+    ];
+    for (const cmd of ZERO_TEST_RUNS) {
+      it(`narrowed: ${cmd}`, () => {
+        expect(scopeOf(cmd)).toBe('narrowed');
+      });
+    }
+  });
+
+  // ARITY PROOF. A flag wrongly filed as taking a value SWALLOWS the following
+  // token, so a real path filter goes unread and the command classifies `full`
+  // — the dangerous direction. Only a row of the shape
+  // `runner <flag> <value> <path>` catches that, so every value-taking flag gets
+  // one. Two live bugs came from writing these tables from memory: pytest
+  // `--cov` (takes an OPTIONAL value) and vitest `-w` (takes NONE).
+  describe('value-flag arity: a trailing path is still seen', () => {
+    const ROWS: Array<[string, string]> = [
+      ['pytest -n 4 tests/test_a.py', 'narrowed'],
+      ['pytest -p no:cacheprovider tests/test_a.py', 'narrowed'],
+      ['pytest -o addopts= tests/test_a.py', 'narrowed'],
+      ['pytest --maxfail 1 tests/test_a.py', 'narrowed'],
+      ['pytest --tb short tests/test_a.py', 'narrowed'],
+      ['pytest --cov src tests/test_a.py', 'narrowed'],
+      ['npx vitest run --reporter verbose src/foo', 'narrowed'],
+      ['npx jest --maxWorkers 2 foo', 'narrowed'],
+    ];
+    for (const [cmd, want] of ROWS) {
+      it(`${want}: ${cmd}`, () => {
+        expect(scopeOf(cmd)).toBe(want);
+      });
+    }
+
+    it('pytest --cov takes an optional value, so `--cov src` is a full run', () => {
+      // pytest-cov declares --cov with nargs='?'. Reading `src` as a path filter
+      // floored one of the most common Python CI commands there is.
+      expect(scopeOf('pytest --cov src')).toBe('full');
+      expect(scopeOf('pytest --cov=src')).toBe('full');
+      expect(scopeOf('pytest --cov')).toBe('full');
+    });
+
+    it('vitest -w is --watch and takes no value, so the next token is a filter', () => {
+      expect(scopeOf('npx vitest run -w src/foo.test.ts')).toBe('narrowed');
+    });
+  });
+
+  // Shell operators are not paths. The coverage runner already declines these
+  // via the same regex, so the two parsers cannot disagree about what the shell
+  // would do. Previously `pytest -q > out.txt` reported
+  // `narrowed: selects specific paths: >`, which is both wrong and unactionable.
+  describe('shell composites are unknown, not narrowed', () => {
+    const COMPOSITES = [
+      'pytest -q > out.txt',
+      'pytest -q 2>&1 | tee log',
+      'pytest -q || true',
+      'python3 -m pytest -q && echo ok',
+      'python3 -m pytest -q; echo ok',
+      'cd sub && pytest -q',
+      'pytest $(cat args.txt)',
+    ];
+    for (const cmd of COMPOSITES) {
+      it(`unknown: ${cmd}`, () => {
+        expect(scopeOf(cmd)).toBe('unknown');
+      });
+    }
+  });
+
+  // A false `narrowed` costs a user their SAFE, so a positional that means
+  // "everything from here" must not trip the filter check. `.` collects from the
+  // rootdir, which is the shadow root, so it is never narrower than the default.
+  // `tests/` is deliberately NOT in this set: a repo can hold tests outside it,
+  // and calling that full would be a false SAFE.
+  describe('whole-tree positionals are not narrowing', () => {
+    it('pytest . and pytest ./ are full', () => {
+      expect(scopeOf('pytest .')).toBe('full');
+      expect(scopeOf('pytest ./')).toBe('full');
+      expect(scopeOf('python3 -m pytest -q .')).toBe('full');
+    });
+
+    it('but a directory IS narrowing, deliberately', () => {
+      // Documented in docs/verification/verdicts.mdx: even `pytest tests/`
+      // counts as narrowed, because tests can live outside that directory.
+      expect(scopeOf('pytest tests/')).toBe('narrowed');
+      expect(scopeOf('pytest tests')).toBe('narrowed');
+    });
+  });
+
+  describe('unknown carries a reason, so the ADR-12 carve-out can be measured', () => {
+    it('names the unrecognised runner', () => {
+      const a = classifyTestCommand('make test');
+      expect(a.scope).toBe('unknown');
+      expect(a.signals.join(' ')).toContain('make');
+    });
+
+    it('names the unrecognised flag', () => {
+      const a = classifyTestCommand('pytest --doctest-modules');
+      expect(a.scope).toBe('unknown');
+      expect(a.signals.join(' ')).toContain('--doctest-modules');
+    });
+
+    it('says so for a shell composite', () => {
+      expect(classifyTestCommand('pytest -q && echo ok').signals.join(' ')).toContain(
+        'shell operators',
+      );
+    });
+  });
+
+  describe('env prefix is stripped like an assignment run', () => {
+    it('sees the runner and any filter behind `env`', () => {
+      expect(scopeOf('env PYTHONPATH=. pytest -q')).toBe('full');
+      expect(scopeOf('env PYTHONPATH=. pytest tests/test_a.py')).toBe('narrowed');
+    });
+  });
+
+  // A leading assignment is normally inert, which is the whole point of the
+  // #95/#98 protection above. But PYTEST_ADDOPTS is APPENDED TO PYTEST'S ARGV,
+  // so its value is a filter like any other. Stripping it unexamined answered
+  // `full` on a run that executed a single test: a false SAFE reached through
+  // the one form issues #95/#98 tell users to adopt, and the only in-band way to
+  // pass environment over MCP.
+  describe('assignments whose value carries arguments are scanned, not discarded', () => {
+    it('PYTEST_ADDOPTS carrying a filter is narrowing', () => {
+      const a = classifyTestCommand('PYTEST_ADDOPTS="-k test_scale" python3 -m pytest -q');
+      expect(a.scope).toBe('narrowed');
+      expect(a.signals.join(' ')).toContain('from the environment');
+    });
+
+    it('sees it behind an env prefix too', () => {
+      expect(scopeOf('env PYTEST_ADDOPTS="-k x" pytest -q')).toBe('narrowed');
+    });
+
+    it('does NOT fire when the value carries no filter', () => {
+      expect(scopeOf('PYTEST_ADDOPTS="-q --strict-markers" python3 -m pytest -q')).toBe('full');
+    });
+
+    it('leaves PYTHONPATH alone: it changes imports, not selection', () => {
+      // Regression guard for #95/#98. If PYTHONPATH were ever treated as an
+      // option source, the documented shadow-bypass remedy would floor.
+      expect(scopeOf('PYTHONPATH=. python3 -m pytest -q')).toBe('full');
+      expect(scopeOf('PYTHONPATH=./src python3 -m pytest -q')).toBe('full');
+    });
+  });
+
+  // pytest's `-o` / `--override-ini` sets an ini key inline, and two of those
+  // keys select tests. The value was being consumed unexamined.
+  describe('ini overrides that select tests are narrowing', () => {
+    const ROWS: Array<[string, string]> = [
+      ['pytest -o testpaths=tests/unit', 'narrowed'],
+      ['pytest --override-ini=testpaths=tests/unit', 'narrowed'],
+      ['pytest -o addopts=-k x', 'narrowed'],
+      ['pytest -o cache_dir=/tmp/x', 'full'],
+      ['pytest --override-ini=log_cli=true', 'full'],
+    ];
+    for (const [cmd, want] of ROWS) {
+      it(`${want}: ${cmd}`, () => {
+        expect(scopeOf(cmd)).toBe(want);
+      });
+    }
+  });
+
+  // One rule, three runners. The zero-test-run rule was originally applied to
+  // pytest only, so `npx jest -h` still answered `full`.
+  describe('the zero-test-run rule applies to every runner', () => {
+    const ROWS = [
+      'npx jest -h',
+      'npx jest --help',
+      'npx jest --version',
+      'npx jest --listTests',
+      'npx vitest run --help',
+      'npx vitest run --version',
+    ];
+    for (const cmd of ROWS) {
+      it(`narrowed: ${cmd}`, () => {
+        expect(scopeOf(cmd)).toBe('narrowed');
+      });
+    }
+  });
+
+  // Costly direction: these are whole-suite commands that were being floored.
+  describe('tokens the shell never passes to the runner are not filters', () => {
+    it('a # comment is not a path', () => {
+      expect(scopeOf('pytest -q #nightly')).toBe('full');
+      expect(scopeOf('python3 -m pytest -q  # run everything')).toBe('full');
+    });
+
+    it('an empty quoted token is not a path', () => {
+      expect(scopeOf('pytest ""')).toBe('full');
+    });
+  });
+
+  describe('every unknown carries a reason', () => {
+    it('including an unrecognised SHORT flag', () => {
+      const a = classifyTestCommand('pytest -Z');
+      expect(a.scope).toBe('unknown');
+      expect(a.signals.join(' ')).toContain('-Z');
+    });
+  });
+
+  // AC-4, extended. These entries were filed as reordering-or-diagnostic rather
+  // than filtering, and had no rows at all; `--ff` sits one character from
+  // `--lf`, which IS narrowing, so a future reader is likely to "correct" them.
+  describe('AC-4 extended: reordering and diagnostics are not narrowing', () => {
+    const FULL = [
+      'pytest --stepwise',
+      'pytest --sw',
+      'pytest --failed-first',
+      'pytest --ff',
+      'pytest --new-first',
+      'pytest --nf',
+      'pytest --exitfirst',
+      'pytest -n auto --dist loadscope',
+      'pytest -p xdist -n auto',
+      'PYTHONPATH=.:src python3 -m pytest -q',
+      'PYTHONPATH=. python3 -m pytest -q --cov=src --cov-report=term',
+      'env PYTHONPATH=src python3 -m pytest -q',
+      'poetry run PYTHONPATH=. pytest -q',
+      'npx vitest run --maxWorkers 4 --bail 1',
+      'npx jest --maxWorkers=2 --ci',
+    ];
+    for (const cmd of FULL) {
+      it(`full: ${cmd}`, () => {
+        expect(scopeOf(cmd)).toBe('full');
+      });
+    }
+  });
+
+  // The arity rule the file header states is only actually exercised by the
+  // ATTACHED form: with `-n 4 path` a mutation making the consume unconditional
+  // still passes, because the separated value hides it.
+  describe('attached short-flag values do not swallow the next token', () => {
+    const ROWS = ['pytest -n4 tests/test_a.py', 'pytest -pno:cacheprovider tests/test_a.py'];
+    for (const cmd of ROWS) {
+      it(`narrowed: ${cmd}`, () => {
+        expect(scopeOf(cmd)).toBe('narrowed');
+      });
+    }
+  });
+
   describe('edge cases', () => {
     it('an empty command is unknown', () => {
       expect(scopeOf('')).toBe('unknown');
@@ -152,8 +403,13 @@ describe('classifyTestCommand', () => {
     });
 
     it('quoted values are not read as positionals', () => {
+      // The two rows below return `narrowed` on the FLAG, before the quoted
+      // token is examined, so they do not actually test quoting. The third does:
+      // break quote handling and `my report.json` splits into two bare words,
+      // the second of which reads as a path filter.
       expect(scopeOf('npx jest --testNamePattern "adds two numbers"')).toBe('narrowed');
       expect(scopeOf('pytest -k "parser and not slow"')).toBe('narrowed');
+      expect(scopeOf('npx jest --outputFile "my report.json"')).toBe('full');
     });
 
     it('vitest run subcommand is not a positional filter', () => {
@@ -168,6 +424,42 @@ describe('assessTestScope', () => {
   it('reports full/detected when there is no override', () => {
     const a = assessTestScope(undefined);
     expect(a).toEqual({ scope: 'full', source: 'detected', signals: [] });
+  });
+
+  it('treats an empty or blank override as no override, matching detectRunner', () => {
+    // `detectRunner` guards with `if (opts.override)`, so a falsy string means
+    // the engine runs its own detected command. Calling that `override` would
+    // put a false statement in a stored report.
+    expect(assessTestScope('')).toEqual({ scope: 'full', source: 'detected', signals: [] });
+    expect(assessTestScope('   ')).toEqual({ scope: 'full', source: 'detected', signals: [] });
+  });
+
+  // AC-5 asks for this "for each of the three detected runners". Deriving the
+  // commands from detectRunner rather than restating them as literals is what
+  // makes the test fail if someone adds a filter to a detected command.
+  it('every command detectRunner can choose classifies as full', async () => {
+    const { detectRunner } = await import('../../../src/verify/runners/detect.js');
+    const fs = await import('node:fs/promises');
+    const os = await import('node:os');
+    const path = await import('node:path');
+
+    const LAYOUTS: Array<[string, string]> = [
+      ['vitest.config.ts', 'export default {}'],
+      ['jest.config.js', 'module.exports = {}'],
+      ['pyproject.toml', '[project]\nname = "x"\n'],
+    ];
+    for (const [marker, body] of LAYOUTS) {
+      const root = await fs.mkdtemp(path.join(os.tmpdir(), 'scope-detect-'));
+      try {
+        await fs.writeFile(path.join(root, marker), body);
+        const spec = await detectRunner(root);
+        expect(spec, `no runner detected for ${marker}`).not.toBeNull();
+        const cmd = [spec?.cmd, ...(spec?.args ?? [])].join(' ');
+        expect(classifyTestCommand(cmd).scope, `${marker} -> ${cmd}`).toBe('full');
+      } finally {
+        await fs.rm(root, { recursive: true, force: true });
+      }
+    }
   });
 
   it('reports the override source when a command was supplied', () => {

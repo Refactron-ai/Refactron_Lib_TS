@@ -75,12 +75,25 @@ export function formatTestFilesNote(testFilesChanged: string[]): string | null {
 // SAFE (ADR-12), so the reader needs to know which signal cost them the verdict
 // and what to run instead. Returns null for a full or unparsed command.
 export function formatTestScopeNote(testScope: VerdictReport['testScope']): string | null {
-  if (!testScope || testScope.scope !== 'narrowed') return null;
+  if (!testScope) return null;
   const signals = testScope.signals.join('; ');
-  return (
-    `  note: the test command narrowed the suite (${signals}), so this run cannot be SAFE. ` +
-    `Re-run without the filter to get a verdict on the whole suite.`
-  );
+  if (testScope.scope === 'narrowed') {
+    return (
+      `  note: the test command narrowed the suite (${signals}), so this run cannot be SAFE. ` +
+      `Re-run without the filter to get a verdict on the whole suite.`
+    );
+  }
+  // An `unknown` scope does NOT change the verdict, so a SAFE here rests on a
+  // command we could not parse. Staying silent about that is the same mistake
+  // `coverage.unknownReason` exists to prevent: a failed measurement must not
+  // read as a clean one.
+  if (testScope.scope === 'unknown' && testScope.source === 'override') {
+    return (
+      `  note: could not determine whether the test command runs the whole suite` +
+      `${signals ? ` (${signals})` : ''}; the verdict assumes it does.`
+    );
+  }
+  return null;
 }
 
 // One line per unexercised STATEMENT (deduped upstream), not per physical line:

@@ -33,25 +33,39 @@ const uncovered: CoverageAssessment = {
 };
 const unknown: CoverageAssessment = { tool: 'none', changedLinesCovered: 'unknown', uncovered: [] };
 
+// fuseVerdict's 4th argument is REQUIRED on purpose: a forgotten optional scope
+// would be a silent false SAFE. This wrapper supplies the whole-suite default so
+// the pre-existing cases below read as before, and passing it explicitly is
+// itself the AC-7 evidence that a `full` scope changes nothing.
+const FULL_SCOPE: TestScopeAssessment = { scope: 'full', source: 'detected', signals: [] };
+function fuse(
+  result: VerificationResult,
+  changedFiles: string[],
+  cov: CoverageAssessment,
+  scope: TestScopeAssessment = FULL_SCOPE,
+) {
+  return fuseVerdict(result, changedFiles, cov, scope);
+}
+
 describe('fuseVerdict', () => {
   it('a failing gate → UNSAFE, surfacing the blocking reason', () => {
-    const r = fuseVerdict(result(false, 'test_x broke'), ['a.py'], unknown);
+    const r = fuse(result(false, 'test_x broke'), ['a.py'], unknown);
     expect(r.verdict).toBe('UNSAFE');
     expect(r.reason).toContain('test_x broke');
   });
   it('tests pass + changed lines covered → SAFE', () => {
-    expect(fuseVerdict(result(true), ['a.py'], covered).verdict).toBe('SAFE');
+    expect(fuse(result(true), ['a.py'], covered).verdict).toBe('SAFE');
   });
   it('tests pass + changed lines uncovered → UNPROVEN with missingTests', () => {
-    const r = fuseVerdict(result(true), ['a.py'], uncovered);
+    const r = fuse(result(true), ['a.py'], uncovered);
     expect(r.verdict).toBe('UNPROVEN');
     expect(r.missingTests?.[0]?.file).toBe('a.py');
   });
   it('tests pass + coverage unknown → UNPROVEN, never SAFE (fail-safe)', () => {
-    expect(fuseVerdict(result(true), ['a.ts'], unknown).verdict).toBe('UNPROVEN');
+    expect(fuse(result(true), ['a.ts'], unknown).verdict).toBe('UNPROVEN');
   });
   it('no test runner detected → UNPROVEN, not UNSAFE (honest: nothing proven)', () => {
-    const r = fuseVerdict(
+    const r = fuse(
       result(false, 'no test runner detected (pytest, vitest, jest); pass testCmd to override'),
       ['a.py'],
       unknown,
@@ -59,7 +73,7 @@ describe('fuseVerdict', () => {
     expect(r.verdict).toBe('UNPROVEN');
   });
   it('pre-existing baseline failure → UNPROVEN, not the diff breaking things', () => {
-    const r = fuseVerdict(
+    const r = fuse(
       result(false, 'baseline tests already fail before refactoring; fix them first.'),
       ['a.py'],
       unknown,
@@ -67,11 +81,7 @@ describe('fuseVerdict', () => {
     expect(r.verdict).toBe('UNPROVEN');
   });
   it('tests fail after refactoring for a normal reason → still UNSAFE (remap not over-broad)', () => {
-    const r = fuseVerdict(
-      result(false, 'tests fail after refactoring: test_x broke'),
-      ['a.py'],
-      unknown,
-    );
+    const r = fuse(result(false, 'tests fail after refactoring: test_x broke'), ['a.py'], unknown);
     expect(r.verdict).toBe('UNSAFE');
   });
 });
@@ -92,7 +102,7 @@ describe('fuseVerdict flakyTests surface', () => {
     // C1: a flaky heal is never a clean stable green. Even with the changed
     // lines covered — the only path that could otherwise reach SAFE — a test
     // that flipped on retry floors the verdict at UNPROVEN. Zero-false-SAFE.
-    const r = fuseVerdict(passingWithFlaky(['test_flaky.py::test_flaky']), ['a.py'], covered);
+    const r = fuse(passingWithFlaky(['test_flaky.py::test_flaky']), ['a.py'], covered);
     expect(r.verdict).toBe('UNPROVEN');
     expect(r.reason).toBe(
       'Tests pass, but 1 test(s) flipped on retry (flaky); a stable green could not be established.',
@@ -101,7 +111,7 @@ describe('fuseVerdict flakyTests surface', () => {
   });
 
   it('covered + multiple flaky → count reflected in the flaky reason', () => {
-    const r = fuseVerdict(passingWithFlaky(['a::x', 'b::y']), ['a.py'], covered);
+    const r = fuse(passingWithFlaky(['a::x', 'b::y']), ['a.py'], covered);
     expect(r.verdict).toBe('UNPROVEN');
     expect(r.reason).toBe(
       'Tests pass, but 2 test(s) flipped on retry (flaky); a stable green could not be established.',
@@ -111,7 +121,7 @@ describe('fuseVerdict flakyTests surface', () => {
   it('unknown coverage + flaky → UNPROVEN, keeps the coverage reason, still carries flaky', () => {
     // Coverage already forces UNPROVEN, so the coverage reason wins the tie; the
     // flaky reason only pre-empts a would-be SAFE. Suspects still surface.
-    const r = fuseVerdict(passingWithFlaky(['test_flaky.py::test_flaky']), ['a.ts'], unknown);
+    const r = fuse(passingWithFlaky(['test_flaky.py::test_flaky']), ['a.ts'], unknown);
     expect(r.verdict).toBe('UNPROVEN');
     expect(r.reason).toMatch(/coverage of the changed code could not be determined/);
     expect(r.reason).not.toMatch(/flipped on retry/);
@@ -119,7 +129,7 @@ describe('fuseVerdict flakyTests surface', () => {
   });
 
   it('uncovered + flaky → UNPROVEN, keeps the coverage reason + missingTests, carries flaky', () => {
-    const r = fuseVerdict(passingWithFlaky(['test_flaky.py::test_flaky']), ['a.py'], uncovered);
+    const r = fuse(passingWithFlaky(['test_flaky.py::test_flaky']), ['a.py'], uncovered);
     expect(r.verdict).toBe('UNPROVEN');
     expect(r.reason).toMatch(/not exercised/);
     expect(r.reason).not.toMatch(/flipped on retry/);
@@ -128,7 +138,7 @@ describe('fuseVerdict flakyTests surface', () => {
   });
 
   it('omits flakyTests when the tests gate reports none', () => {
-    const r = fuseVerdict(result(true), ['a.py'], covered);
+    const r = fuse(result(true), ['a.py'], covered);
     expect(r.flakyTests).toBeUndefined();
   });
 });
@@ -145,7 +155,7 @@ describe('fuseVerdict — testFilesChanged note', () => {
       'conftest.py',
       'ui/widget.test.ts',
     ];
-    const r = fuseVerdict(result(true), changed, covered);
+    const r = fuse(result(true), changed, covered);
     expect(r.testFilesChanged).toEqual([
       'tests/test_make.py',
       'foo.spec.ts',
@@ -156,7 +166,7 @@ describe('fuseVerdict — testFilesChanged note', () => {
   });
 
   it('is empty when no changed file looks like a test', () => {
-    const r = fuseVerdict(result(true), ['src/attr/_make.py', 'src/attr/_config.py'], covered);
+    const r = fuse(result(true), ['src/attr/_make.py', 'src/attr/_config.py'], covered);
     expect(r.testFilesChanged).toEqual([]);
   });
 
@@ -170,7 +180,7 @@ describe('fuseVerdict — testFilesChanged note', () => {
       uncovered: [],
       removalOnlyFiles: ['src/click/globals.py'],
     };
-    const r = fuseVerdict(result(true), ['src/click/globals.py'], removalOnly);
+    const r = fuse(result(true), ['src/click/globals.py'], removalOnly);
     expect(r.verdict).toBe('UNPROVEN');
     expect(r.reason).toMatch(/only removes code/);
     expect(r.reason).not.toMatch(/not exercised/);
@@ -185,7 +195,7 @@ describe('fuseVerdict — testFilesChanged note', () => {
       uncovered: [{ file: 'b.py', line: 3 }],
       removalOnlyFiles: ['a.py'],
     };
-    const r = fuseVerdict(result(true), ['a.py', 'b.py'], mixed);
+    const r = fuse(result(true), ['a.py', 'b.py'], mixed);
     expect(r.verdict).toBe('UNPROVEN');
     expect(r.reason).toMatch(/not exercised/);
     expect(r.missingTests).toEqual([{ file: 'b.py', hint: 'add a test exercising b.py:3' }]);
@@ -204,7 +214,7 @@ describe('fuseVerdict — testFilesChanged note', () => {
       // b.py contributed an inert-free, exercised statement, so it is in neither
       // bucket; the verdict is UNPROVEN for some other reason entirely.
     };
-    const r = fuseVerdict(result(true), ['a.py', 'b.py'], mixed);
+    const r = fuse(result(true), ['a.py', 'b.py'], mixed);
     expect(r.reason).not.toMatch(/only removes code/);
     expect(r.reason).toMatch(/not exercised/);
   });
@@ -220,7 +230,7 @@ describe('fuseVerdict — testFilesChanged note', () => {
       uncoveredTruncated: { shown: 0, total: 12 },
       removalOnlyFiles: ['a.py'],
     };
-    const r = fuseVerdict(result(true), ['a.py'], capped);
+    const r = fuse(result(true), ['a.py'], capped);
     expect(r.reason).not.toMatch(/only removes code/);
   });
 
@@ -231,7 +241,7 @@ describe('fuseVerdict — testFilesChanged note', () => {
       uncovered: [],
       inertOnlyFiles: ['a.py'],
     };
-    const r = fuseVerdict(result(true), ['a.py'], inert);
+    const r = fuse(result(true), ['a.py'], inert);
     expect(r.verdict).toBe('UNPROVEN');
     expect(r.reason).toMatch(/comments and blank lines/);
     expect(r.reason).not.toMatch(/not exercised/);
@@ -246,7 +256,7 @@ describe('fuseVerdict — testFilesChanged note', () => {
       removalOnlyFiles: ['a.py'],
       inertOnlyFiles: ['b.py'],
     };
-    const r = fuseVerdict(result(true), ['a.py', 'b.py'], both);
+    const r = fuse(result(true), ['a.py', 'b.py'], both);
     expect(r.reason).toMatch(/only removes code and touches comments and blank lines/);
   });
 
@@ -262,7 +272,7 @@ describe('fuseVerdict — testFilesChanged note', () => {
         { file: 'plain.py', line: 9 },
       ],
     };
-    const r = fuseVerdict(result(true), ['gated.py', 'plain.py'], excluded);
+    const r = fuse(result(true), ['gated.py', 'plain.py'], excluded);
     expect(r.missingTests?.[0]?.hint).toContain('excluded from coverage');
     expect(r.missingTests?.[0]?.hint).not.toContain('add a test');
     expect(r.missingTests?.[1]?.hint).toBe('add a test exercising plain.py:9');
@@ -271,9 +281,9 @@ describe('fuseVerdict — testFilesChanged note', () => {
   // The report is serialized verbatim by the MCP tool and by `--json`, so its
   // shape is a public contract the moment it ships.
   it('stamps reportVersion on every verdict', () => {
-    expect(fuseVerdict(result(true), ['a.py'], covered).reportVersion).toBe(1);
-    expect(fuseVerdict(result(true), ['a.py'], uncovered).reportVersion).toBe(1);
-    expect(fuseVerdict(result(false, 'boom'), ['a.py'], unknown).reportVersion).toBe(1);
+    expect(fuse(result(true), ['a.py'], covered).reportVersion).toBe(1);
+    expect(fuse(result(true), ['a.py'], uncovered).reportVersion).toBe(1);
+    expect(fuse(result(false, 'boom'), ['a.py'], unknown).reportVersion).toBe(1);
   });
 
   // Disclosure is not a verdict input. A SAFE change can still hold statements
@@ -285,7 +295,7 @@ describe('fuseVerdict — testFilesChanged note', () => {
       uncovered: [{ file: 'a.py', line: 30 }],
       changedStatements: { total: 2, covered: 1 },
     };
-    const r = fuseVerdict(result(true), ['a.py'], partial);
+    const r = fuse(result(true), ['a.py'], partial);
     expect(r.verdict).toBe('SAFE');
     expect(r.coverage.uncovered).toEqual([{ file: 'a.py', line: 30 }]);
     expect(r.coverage.changedStatements).toEqual({ total: 2, covered: 1 });
@@ -306,7 +316,7 @@ describe('fuseVerdict — testFilesChanged note', () => {
     }
 
     it('caps missingTests and reports the truncation explicitly', () => {
-      const r = fuseVerdict(result(true), ['a.py'], uncoveredAt(MISSING_TESTS_CAP + 7));
+      const r = fuse(result(true), ['a.py'], uncoveredAt(MISSING_TESTS_CAP + 7));
       expect(r.missingTests).toHaveLength(MISSING_TESTS_CAP);
       expect(r.missingTestsTruncated).toEqual({
         shown: MISSING_TESTS_CAP,
@@ -315,7 +325,7 @@ describe('fuseVerdict — testFilesChanged note', () => {
     });
 
     it('omits the truncation signal when nothing was dropped', () => {
-      const r = fuseVerdict(result(true), ['a.py'], uncoveredAt(3));
+      const r = fuse(result(true), ['a.py'], uncoveredAt(3));
       expect(r.missingTests).toHaveLength(3);
       expect(r.missingTestsTruncated).toBeUndefined();
     });
@@ -328,7 +338,7 @@ describe('fuseVerdict — testFilesChanged note', () => {
         ...uncoveredAt(MISSING_TESTS_CAP + 7),
         uncoveredTruncated: { shown: MISSING_TESTS_CAP + 7, total: 4231 },
       };
-      const r = fuseVerdict(result(true), ['a.py'], cov);
+      const r = fuse(result(true), ['a.py'], cov);
       expect(r.missingTests).toHaveLength(MISSING_TESTS_CAP);
       expect(r.missingTestsTruncated).toEqual({ shown: MISSING_TESTS_CAP, total: 4231 });
     });
@@ -336,7 +346,7 @@ describe('fuseVerdict — testFilesChanged note', () => {
 
   it('flags tsx, js, and cjs/mjs test variants too', () => {
     const changed = ['ui/panel.test.tsx', 'lib/util.spec.js', 'lib/util.test.mjs', 'ui/panel.tsx'];
-    const r = fuseVerdict(result(true), changed, covered);
+    const r = fuse(result(true), changed, covered);
     expect(r.testFilesChanged).toEqual([
       'ui/panel.test.tsx',
       'lib/util.spec.js',
@@ -350,7 +360,7 @@ describe('fuseVerdict — testFilesChanged note', () => {
 // UNSAFE under `python3 -m pytest -q` and SAFE under
 // `python3 -m pytest -q tests/test_scale.py`. A narrowed scope must therefore
 // disqualify SAFE, exactly as a flaky heal does.
-describe('fuseVerdict + test scope', () => {
+describe('fuseVerdict test scope', () => {
   const full: TestScopeAssessment = { scope: 'full', source: 'detected', signals: [] };
   const narrowed: TestScopeAssessment = {
     scope: 'narrowed',
@@ -360,36 +370,39 @@ describe('fuseVerdict + test scope', () => {
   const unknownScope: TestScopeAssessment = { scope: 'unknown', source: 'override', signals: [] };
 
   it('narrowed scope + fully covered → UNPROVEN, never SAFE', () => {
-    const r = fuseVerdict(result(true), ['a.py'], covered, narrowed);
+    const r = fuse(result(true), ['a.py'], covered, narrowed);
     expect(r.verdict).toBe('UNPROVEN');
   });
 
   it('the narrowed reason names the signal, not a generic coverage miss', () => {
-    const r = fuseVerdict(result(true), ['a.py'], covered, narrowed);
+    const r = fuse(result(true), ['a.py'], covered, narrowed);
     // "the changed code is not exercised by any test" would be false here: it
     // WAS exercised, by a subset the caller chose.
     expect(r.reason).not.toContain('not exercised by any test');
     expect(r.reason).toContain('tests/test_scale.py');
+    // Pins the EXPLANATION, not just the echoed signal. Without this, rewriting
+    // the reason to bare signals still passes.
+    expect(r.reason).toContain('the test command narrowed the suite');
   });
 
   it('full scope + fully covered → still SAFE', () => {
-    expect(fuseVerdict(result(true), ['a.py'], covered, full).verdict).toBe('SAFE');
+    expect(fuse(result(true), ['a.py'], covered, full).verdict).toBe('SAFE');
   });
 
   it('unknown scope does not floor: it would make SAFE unreachable for `make test`', () => {
-    expect(fuseVerdict(result(true), ['a.py'], covered, unknownScope).verdict).toBe('SAFE');
+    expect(fuse(result(true), ['a.py'], covered, unknownScope).verdict).toBe('SAFE');
   });
 
   it('a narrowed scope cannot rescue a failing gate from UNSAFE', () => {
     // Flooring must only ever LOWER a verdict. UNSAFE stays UNSAFE, and keeps
     // its own blocking reason rather than being retold as a scoping problem.
-    const r = fuseVerdict(result(false, 'test_x broke'), ['a.py'], covered, narrowed);
+    const r = fuse(result(false, 'test_x broke'), ['a.py'], covered, narrowed);
     expect(r.verdict).toBe('UNSAFE');
     expect(r.reason).toContain('test_x broke');
   });
 
   it('when coverage already forces UNPROVEN, the coverage reason stands', () => {
-    const r = fuseVerdict(result(true), ['a.py'], uncovered, narrowed);
+    const r = fuse(result(true), ['a.py'], uncovered, narrowed);
     expect(r.verdict).toBe('UNPROVEN');
     expect(r.reason).toContain('not exercised by any test');
     // The hints survive: a narrowed scope must not swallow the missing-test list.
@@ -397,19 +410,63 @@ describe('fuseVerdict + test scope', () => {
   });
 
   it('the scope is disclosed on the report in every branch', () => {
-    expect(fuseVerdict(result(true), ['a.py'], covered, full).testScope).toEqual(full);
-    expect(fuseVerdict(result(true), ['a.py'], covered, narrowed).testScope).toEqual(narrowed);
-    expect(fuseVerdict(result(false), ['a.py'], covered, narrowed).testScope).toEqual(narrowed);
-    expect(fuseVerdict(result(true), ['a.py'], uncovered, narrowed).testScope).toEqual(narrowed);
+    expect(fuse(result(true), ['a.py'], covered, full).testScope).toEqual(full);
+    expect(fuse(result(true), ['a.py'], covered, narrowed).testScope).toEqual(narrowed);
+    expect(fuse(result(false), ['a.py'], covered, narrowed).testScope).toEqual(narrowed);
+    expect(fuse(result(true), ['a.py'], uncovered, narrowed).testScope).toEqual(narrowed);
+    // `unknown` matters most here: it does NOT floor, so a SAFE produced under
+    // it is only auditable if the scope survives onto the report.
+    expect(fuse(result(true), ['a.py'], covered, unknownScope).testScope).toEqual(unknownScope);
   });
 
-  // AC-7: omitting the argument must leave every pre-existing verdict and
-  // reason byte-identical, which is what the 3-argument tests above assert.
-  it('omitting the scope changes nothing and adds no field', () => {
-    const r = fuseVerdict(result(true), ['a.py'], covered);
-    expect(r.verdict).toBe('SAFE');
-    expect(r.reason).toBe('Tests pass and the changed code is covered.');
-    expect(r.testScope).toBeUndefined();
+  // AC-7. The claim is that a non-narrowed scope changes NOTHING, and it has to
+  // hold across every reason branch, not just the SAFE one. `unknown` is in here
+  // because it does not floor: if it ever silently did, this table catches it.
+  describe('AC-7: a non-narrowed scope leaves verdict and reason byte-identical', () => {
+    const unknownScope: TestScopeAssessment = {
+      scope: 'unknown',
+      source: 'override',
+      signals: ['make is not a recognised test runner, so the scope is unknown'],
+    };
+    const removalOnly: CoverageAssessment = {
+      tool: 'coverage.py',
+      changedLinesCovered: false,
+      uncovered: [],
+      removalOnlyFiles: ['a.py'],
+    };
+    const BRANCHES: Array<[string, VerificationResult, CoverageAssessment]> = [
+      ['SAFE', result(true), covered],
+      ['UNSAFE', result(false, 'tests fail after refactoring: test_x broke'), unknown],
+      ['UNPROVEN/uncovered', result(true), uncovered],
+      ['UNPROVEN/unknown-coverage', result(true), unknown],
+      ['UNPROVEN/removal-only', result(true), removalOnly],
+    ];
+
+    for (const [label, res, cov] of BRANCHES) {
+      it(`${label} is identical under full and unknown scope`, () => {
+        const withFull = fuse(res, ['a.py'], cov, FULL_SCOPE);
+        const withUnknown = fuse(res, ['a.py'], cov, unknownScope);
+        expect(withUnknown.verdict).toBe(withFull.verdict);
+        expect(withUnknown.reason).toBe(withFull.reason);
+      });
+    }
+
+    it('SAFE remains reachable under an unknown scope, by ADR-12 decision', () => {
+      expect(fuse(result(true), ['a.py'], covered, unknownScope).verdict).toBe('SAFE');
+    });
+  });
+
+  // A run where no suite executed must not be recorded as `full`: the report is
+  // stored as fleet history, where "full" reads as evidence a whole suite ran.
+  it('a no-runner UNPROVEN downgrades the recorded scope to unknown', () => {
+    const r = fuse(
+      result(false, 'no test runner detected (pytest, vitest, jest); pass testCmd to override'),
+      ['a.py'],
+      unknown,
+      FULL_SCOPE,
+    );
+    expect(r.verdict).toBe('UNPROVEN');
+    expect(r.testScope?.scope).toBe('unknown');
   });
 });
 
@@ -418,7 +475,3 @@ describe('fuseVerdict + test scope', () => {
 // that subset, and SAFE was issued on evidence the caller chose. Reproduced:
 // the same diff returns UNSAFE under `python3 -m pytest -q` and SAFE under
 // `python3 -m pytest -q tests/test_scale.py`.
-// Note for reviewers: an earlier draft of this file carried a second, nearly
-// identical `test-scope flooring` block. Its distinct assertions (UNSAFE keeps
-// its own blocking reason; missingTests survive a narrowed UNPROVEN) were folded
-// into the block above rather than left duplicated.
