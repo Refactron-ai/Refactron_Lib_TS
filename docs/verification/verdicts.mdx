@@ -39,7 +39,7 @@ The fusion rule:
 
 ## SAFE
 
-Every gate passed, and at least one changed **statement** in every changed file was executed by your test suite. The change is on a tested path, and that path is green.
+Every gate passed, and every changed **statement** your suite could reach was executed by it. The change is on a tested path, and that path is green.
 
 `SAFE` is a per-**statement** check. Every changed statement your suite could
 have executed did execute. A file with some exercised and some unexercised
@@ -78,12 +78,14 @@ SAFE](#a-narrowed-test-command-cannot-be-safe) below.
 ```json
 "coverage": {
   "changedLinesCovered": true,
-  "changedStatements": { "total": 40, "covered": 12 },
-  "uncovered": [{ "file": "calc.py", "line": 31 }]
+  "changedStatements": { "total": 40, "covered": 39 },
+  "uncovered": [{ "file": "calc.py", "line": 31, "excluded": true }]
 }
 ```
 
-Twelve of forty changed statements ran. That is a real `SAFE` under the per-file rule and also a clear picture of its limits. A verdict that hid the other twenty-eight would be easier to read and worth less.
+Thirty-nine of forty changed statements ran. The fortieth sits in a `# pragma: no cover` or `if TYPE_CHECKING:` block that no test can reach, so it is subtracted from what `SAFE` requires and still listed rather than hidden. That is the only shape of gap a `SAFE` can now carry: a verdict that concealed it would be easier to read and worth less.
+
+A report showing `changedLinesCovered: true` with a genuinely unexercised statement (`"total": 40, "covered": 12` and no `excluded` flag) was produced by Refactron 0.4.0 or earlier, under the older per-file rule noted above.
 
 `SAFE` requires coverage, and [coverage is Python-only](#the-python-only-limitation). A change that isn't entirely Python can't reach `SAFE` today.
 

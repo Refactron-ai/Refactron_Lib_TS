@@ -124,8 +124,8 @@ The loop:
 3. Read the `verdict` field and act on it.
 
    SAFE     Apply the change. Report the verdict and quote the `reason`. Also
-            say what SAFE does not cover: every changed FILE had at least one
-            changed statement executed, not every changed statement. If
+            say what SAFE does not cover: your suite ran the changed code and
+            stayed green, which is only as strong as its assertions. If
             coverage.changedStatements shows a low covered/total ratio, say so
             rather than presenting SAFE as full coverage.
 

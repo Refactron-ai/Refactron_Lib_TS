@@ -75,7 +75,23 @@ Rejected. It makes a diff whose only change is inside an excluded block read as 
 ## Rollout / migration
 
 - **Consumers**: a partially-covered diff that read `SAFE` now reads `UNPROVEN`, with a reason naming the ratio rather than the generic "not exercised by any test", which would be false when some statements did run.
-- **Docs**: five shipped locations state the old per-file rule and are corrected together — `docs/overview.mdx`, `docs/quickstart.mdx`, `docs/verification/verdicts.mdx`, `docs/verification/verify-diff.mdx`, `README.md`.
+- **Docs**: shipped locations stating the old per-file rule are corrected together — `docs/overview.mdx`, `docs/quickstart.mdx`, `docs/verification/verdicts.mdx`, `docs/verification/verify-diff.mdx`, `docs/mcp/overview.mdx`, `README.md`.
+
+  **Amendment, 2026-08-17 (issue #123).** As originally written this section
+  claimed five locations were "corrected together". They were not. Four survived
+  the sweep in #113 and shipped contradicting the engine: `verdicts.mdx:42`
+  (against its own line 44), `verdicts.mdx:86` (a JSON sample the engine can no
+  longer produce), `verify-diff.mdx:176`, and `docs/mcp/overview.mdx:127`, which
+  is agent instruction text.
+
+  The cause is worth recording, because it will recur. The sweep grepped for the
+  literal phrase `at least one changed (line|statement)`. Line 42 reads `at least
+  one changed **statement**` — markdown emphasis inside the phrase — and
+  `mcp/overview.mdx` wrapped the phrase across two lines. A line-oriented,
+  literal grep cannot see either. **A rule-change sweep must search for the
+  concept with a whitespace- and emphasis-tolerant pattern across the whole file,
+  not for a phrase within a line**, and must finish by re-running that search and
+  reading every surviving hit rather than trusting a clean exit code.
 - **Release**: 0.4.x, alongside ADR-12's scope rule. Both are tightenings of `SAFE` and the changelog presents them under one "what SAFE now means" heading, because shipping two independent narrowings of the same verdict in one release is otherwise confusing.
 
 ## Open questions / follow-ups
