@@ -60,7 +60,7 @@ A change consisting _entirely_ of excluded statements does not reach `SAFE`:
 there is nothing a test could have proven about it.
 
 <Note>
-  This is stricter than it was before 0.5.0. The old rule cleared a whole file as
+  This is stricter than it was in 0.4.0. The old rule cleared a whole file as
   soon as **one** changed statement in it ran, so a diff changing 40 statements
   with 1 exercised returned `SAFE`. If you are comparing against stored reports,
   a `SAFE` whose `coverage.changedStatements` shows `covered < total` was earned
