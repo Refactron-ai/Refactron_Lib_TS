@@ -123,12 +123,12 @@ export function formatUncoveredLines(coverage: VerdictReport['coverage']): strin
   return out;
 }
 
-// What a SAFE verdict did NOT prove, in one line. SAFE clears on one exercised
-// statement per changed file, so a SAFE change can still hold statements no test
-// ran. Saying so is the difference between a verdict you can audit and one you
-// have to take on faith; suppressing it entirely is how a false SAFE stays
-// invisible. Returns null when every changed statement ran, or when there is no
-// ratio to report.
+// What a SAFE verdict did NOT prove, in one line. Since ADR-11 a SAFE requires
+// every COVERABLE changed statement to have run, so the only gap a SAFE can now
+// carry is statements coverage.py excluded (`# pragma: no cover`,
+// `if TYPE_CHECKING:`), which no test could ever reach. Saying so is the
+// difference between a verdict you can audit and one you have to take on faith.
+// Returns null when every changed statement ran, or when there is no ratio.
 export function formatCoverageSummary(coverage: VerdictReport['coverage']): string | null {
   const stats = coverage.changedStatements;
   if (!stats || stats.total === 0 || stats.covered >= stats.total) return null;
@@ -137,7 +137,7 @@ export function formatCoverageSummary(coverage: VerdictReport['coverage']): stri
   const spread = files !== undefined && files > 1 ? ` across ${files} files` : '';
   return (
     `  note: ${stats.covered} of ${stats.total} changed statements were exercised; ` +
-    `${gap} were not${spread} (SAFE requires one per file). See --json for the list.`
+    `${gap} could not be${spread} (excluded from coverage). See --json for the list.`
   );
 }
 

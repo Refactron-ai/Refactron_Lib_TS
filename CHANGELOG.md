@@ -11,8 +11,33 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
-**What `SAFE` means is narrower.** A test command that names a subset of the
-suite can no longer earn `SAFE`.
+**What `SAFE` means is narrower.** Two independent rules tightened it. Both move
+verdicts in the same direction: `SAFE` becomes `UNPROVEN`. Nothing that was
+`UNSAFE` or `UNPROVEN` can become `SAFE`, and exit codes are unchanged.
+
+#### 1. `SAFE` now requires every coverable changed statement to have run
+
+The old rule cleared a whole file as soon as **one** of its changed statements
+executed. A diff changing 40 statements in one file, of which 1 ran, returned
+`SAFE` with the reason "Tests pass and the changed code is covered."
+
+`SAFE` now requires that every changed statement a test _could_ reach did run.
+Partial coverage reports `UNPROVEN` and names the ratio:
+
+```
+[UNPROVEN] Tests pass, but only 3 of 14 changed statements were exercised.
+```
+
+Statements coverage.py excluded (`# pragma: no cover`, `if TYPE_CHECKING:`) are
+subtracted from the count rather than held against you, since no test can reach
+them. A change consisting _entirely_ of excluded statements does not reach
+`SAFE`: there is nothing a test could have proven about it.
+
+If you are comparing against stored reports, a `SAFE` whose
+`coverage.changedStatements` shows `covered < total` was earned under the old
+rule. See ADR-11.
+
+#### 2. A narrowed test command can no longer earn `SAFE`
 
 Passing a `testCmd` such as `pytest tests/unit/test_foo.py`, or one using `-k`,
 `-m`, `-t` or `--onlyChanged`, scopes the entire verification run. Coverage

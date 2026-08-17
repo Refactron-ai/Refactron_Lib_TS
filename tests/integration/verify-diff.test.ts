@@ -161,6 +161,114 @@ async function narrowingFixture(): Promise<string> {
 const SCALED_CALC =
   'def scale(x):\n    return x * 3\n\n\ndef report(x):\n    return "value=" + str(scale(x))\n';
 
+// Issue #109 / ADR-11. `helper` is called by the suite; `report` is called by
+// nothing. Under the v1 per-file rule the single exercised statement in
+// `helper` cleared the WHOLE FILE, so a diff rewriting every line of `report`
+// read SAFE with "the changed code is covered" while ten statements had never
+// run. This is the classic false SAFE the rule change closes.
+const PARTIAL_BASE = `def helper(x):
+    return x + 1
+
+
+def report(a, b):
+    total = a + b
+    doubled = total * 2
+    tripled = doubled + total
+    label = "sum"
+    prefix = label.upper()
+    suffix = str(tripled)
+    joined = prefix + suffix
+    trimmed = joined.strip()
+    final = trimmed.lower()
+    return final
+`;
+
+// `helper` is rewritten but SEMANTICS-PRESERVING (`x + 1` -> `1 + x`), so its
+// test still passes and the tests gate stays green. That is what isolates the
+// coverage rule: the only reason this diff is not SAFE is the ten statements in
+// `report` that no test executes. Break helper's behaviour instead and the
+// verdict is UNSAFE for an unrelated reason, proving nothing.
+const PARTIAL_CHANGED = `def helper(x):
+    return 1 + x
+
+
+def report(a, b):
+    total = a - b
+    doubled = total * 3
+    tripled = doubled + total + 1
+    label = "difference"
+    prefix = label.lower()
+    suffix = str(tripled) + "!"
+    joined = suffix + prefix
+    trimmed = joined.rstrip()
+    final = trimmed.upper()
+    return final
+`;
+
+describe('SAFE requires every coverable changed statement (issue #109)', () => {
+  const roots: string[] = [];
+  afterEach(async () => {
+    for (const r of roots.splice(0)) await fs.rm(r, { recursive: true, force: true });
+  });
+
+  async function partialFixture(): Promise<string> {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'vd-partial-'));
+    roots.push(root);
+    await fs.mkdir(path.join(root, 'tests'), { recursive: true });
+    await fs.writeFile(path.join(root, 'pyproject.toml'), '[project]\nname = "partial"\n');
+    await fs.writeFile(path.join(root, 'conftest.py'), '');
+    await fs.writeFile(path.join(root, 'calc.py'), PARTIAL_BASE);
+    await fs.writeFile(
+      path.join(root, 'tests', 'test_helper.py'),
+      'from calc import helper\n\n\ndef test_helper():\n    assert helper(1) == 2\n',
+    );
+    return root;
+  }
+
+  it.skipIf(NO_COVERAGE)(
+    'one exercised statement no longer clears a file of ten unexercised ones',
+    async () => {
+      const root = await partialFixture();
+      const report = await verifyDiff({
+        repoRoot: root,
+        edits: [{ path: 'calc.py', newContent: PARTIAL_CHANGED }],
+        testCmd: TEST_CMD,
+      });
+      // Before ADR-11 this was SAFE, reason "Tests pass and the changed code is
+      // covered.", with the shortfall visible only in coverage.uncovered.
+      expect(report.verdict).toBe('UNPROVEN');
+      expect(report.coverage.tool).toBe('coverage.py');
+      const stats = report.coverage.changedStatements;
+      expect(stats).toBeDefined();
+      expect(stats!.covered).toBeLessThan(stats!.total);
+      // The reason must name the ratio: "not exercised by any test" would be
+      // false here, because helper's statement did run.
+      expect(report.reason).toContain('changed statements were exercised');
+      expect(report.reason).not.toContain('not exercised by any test');
+    },
+    120_000,
+  );
+
+  it.skipIf(NO_COVERAGE)(
+    'a fully exercised change is still SAFE',
+    async () => {
+      // The tightening must not swallow the legitimate case: change ONLY the
+      // function the suite actually calls.
+      const root = await partialFixture();
+      const report = await verifyDiff({
+        repoRoot: root,
+        edits: [
+          { path: 'calc.py', newContent: PARTIAL_BASE.replace('return x + 1', 'return x + 1 + 0') },
+        ],
+        testCmd: TEST_CMD,
+      });
+      expect(report.verdict).toBe('SAFE');
+      expect(report.coverage.changedStatements).toEqual({ total: 1, covered: 1 });
+    },
+    120_000,
+  );
+});
+
 describe('a narrowed testCmd cannot earn SAFE (issue #110)', () => {
   const roots: string[] = [];
   afterEach(async () => {
@@ -804,10 +912,15 @@ describe('verifyDiff (python three-way, real coverage)', () => {
       180_000,
     );
 
-    // A SAFE report must still disclose the changed statements that provably did
-    // not run. Suppressing them is what made the false SAFE invisible.
+    // VERDICT CHANGED BY ADR-11 (issue #109), deliberately. This fixture pairs a
+    // covered edit with a behaviour break inside a function no test calls, and
+    // it used to assert SAFE: the per-file rule let the one exercised statement
+    // clear the file. That is the false SAFE the statement rule closes, so the
+    // expectation is inverted rather than the test deleted. Everything it was
+    // originally written to prove — that the report still DISCLOSES what it did
+    // not run — is asserted unchanged below.
     it.skipIf(NO_COVERAGE)(
-      'a SAFE verdict still discloses its unexercised statements and the ratio',
+      'a partially exercised change is UNPROVEN and discloses the ratio',
       async () => {
         const report = await runInert(
           (await inertSource())
@@ -817,9 +930,10 @@ describe('verifyDiff (python three-way, real coverage)', () => {
             )
             .replace(...BREAK_UNTESTED),
         );
-        expect(report.verdict).toBe('SAFE');
+        expect(report.verdict).toBe('UNPROVEN');
         expect(report.coverage.uncovered).toEqual([{ file: 'mod.py', line: 11 }]);
         expect(report.coverage.changedStatements).toEqual({ total: 2, covered: 1 });
+        expect(report.reason).toContain('1 of 2 changed statements were exercised');
         expect(report.reportVersion).toBe(1);
       },
       180_000,

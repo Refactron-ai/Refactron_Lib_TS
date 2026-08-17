@@ -59,7 +59,7 @@ The CLI is then `node dist/cli/index.js <command>` and the MCP server is `node d
 
 | Verdict    | Meaning                                                                                              | Exit |
 | ---------- | ---------------------------------------------------------------------------------------------------- | ---- |
-| `SAFE`     | Every gate passed **and** your tests exercise the changed code (at least one changed line per file). | `0`  |
+| `SAFE`     | Every gate passed **and** your tests exercised every coverable changed statement. | `0`  |
 | `UNSAFE`   | A gate failed: the change broke something.                                                           | `1`  |
 | `UNPROVEN` | Tests pass, but the changed code isn't exercised (or coverage couldn't be assessed).                 | `0`  |
 

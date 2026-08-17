@@ -272,7 +272,7 @@ describe('attributeChangedLines (AST statement containment)', () => {
     expect(out.uncovered).toEqual([{ file: 'pkg/mod.py', line: 30 }]);
   });
 
-  it('mixes: one executed statement in a file is enough for the per-file heuristic', () => {
+  it('mixes: one executed statement in a file is NOT enough (ADR-11)', () => {
     const out = attributeChangedLines({
       ranges: ranges({ path: 'pkg/mod.py', lines: [10, 11, 30] }),
       coveredLines: cov('pkg/mod.py:10'),
@@ -283,12 +283,83 @@ describe('attributeChangedLines (AST statement containment)', () => {
         ],
       }),
     });
-    // Documented v1 limitation preserved: partial per-file coverage reads as
-    // covered. The shortfall is DISCLOSED rather than suppressed, so the reader
-    // can see exactly what the verdict did not prove.
-    expect(out.changedLinesCovered).toBe(true);
+    // This assertion is INVERTED from the v1 rule, deliberately, and the input is
+    // unchanged so the record of what changed survives. Under the per-file
+    // heuristic this read `true`: one exercised statement cleared the whole file
+    // and the verdict said "the changed code is covered" while line 30 had never
+    // run. SAFE now requires every coverable changed statement to have executed.
+    expect(out.changedLinesCovered).toBe(false);
     expect(out.uncovered).toEqual([{ file: 'pkg/mod.py', line: 30 }]);
     expect(out.changedStatements).toEqual({ total: 2, covered: 1 });
+  });
+
+  it('all changed statements executed → covered', () => {
+    const out = attributeChangedLines({
+      ranges: ranges({ path: 'pkg/mod.py', lines: [10, 11, 30] }),
+      coveredLines: cov('pkg/mod.py:10', 'pkg/mod.py:30'),
+      statementRuns: stmts({
+        'pkg/mod.py': [
+          [10, 11, 10],
+          [30, 30, 30],
+        ],
+      }),
+    });
+    expect(out.changedLinesCovered).toBe(true);
+    expect(out.changedStatements).toEqual({ total: 2, covered: 2 });
+    expect(out.uncovered).toEqual([]);
+  });
+
+  // ADR-11: coverage.py EXCLUDES `# pragma: no cover` and `if TYPE_CHECKING:`
+  // statements, which can never be executed by any test. Counting them in the
+  // denominator would make SAFE unreachable for any diff that adds a
+  // typing-only import block, so they are subtracted from it.
+  describe('excluded statements are subtracted from the denominator', () => {
+    it('an otherwise fully covered change is still covered', () => {
+      const out = attributeChangedLines({
+        ranges: ranges({ path: 'pkg/mod.py', lines: [10, 30] }),
+        coveredLines: cov('pkg/mod.py:10'),
+        statementRuns: stmts({
+          'pkg/mod.py': [
+            [10, 10, 10],
+            [30, 30, 30],
+          ],
+        }),
+        excludedLines: new Map([['pkg/mod.py', new Set([30])]]),
+      });
+      expect(out.changedLinesCovered).toBe(true);
+      // Still disclosed, tagged, and still in the report: subtracting it from
+      // the denominator is not the same as pretending it was proven.
+      expect(out.uncovered).toEqual([{ file: 'pkg/mod.py', line: 30, excluded: true }]);
+      expect(out.changedStatements).toEqual({ total: 2, covered: 1 });
+    });
+
+    it('a change that is ENTIRELY excluded is not covered', () => {
+      // Denominator zero. `0 === 0` would issue SAFE on a change no test can
+      // reach, which is the opposite of proven.
+      const out = attributeChangedLines({
+        ranges: ranges({ path: 'pkg/mod.py', lines: [30] }),
+        coveredLines: cov(),
+        statementRuns: stmts({ 'pkg/mod.py': [[30, 30, 30]] }),
+        excludedLines: new Map([['pkg/mod.py', new Set([30])]]),
+      });
+      expect(out.changedLinesCovered).toBe(false);
+    });
+
+    it('an excluded statement does not excuse an unexecuted coverable one', () => {
+      const out = attributeChangedLines({
+        ranges: ranges({ path: 'pkg/mod.py', lines: [10, 20, 30] }),
+        coveredLines: cov('pkg/mod.py:10'),
+        statementRuns: stmts({
+          'pkg/mod.py': [
+            [10, 10, 10],
+            [20, 20, 20],
+            [30, 30, 30],
+          ],
+        }),
+        excludedLines: new Map([['pkg/mod.py', new Set([30])]]),
+      });
+      expect(out.changedLinesCovered).toBe(false);
+    });
   });
 
   it('every changed file must have an exercised statement (per-file, not global)', () => {

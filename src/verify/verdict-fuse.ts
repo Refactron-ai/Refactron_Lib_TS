@@ -12,10 +12,10 @@ export interface CoverageAssessment {
   // One entry per UNEXECUTED enclosing statement (deduped), not per physical
   // line: coverage.py attributes execution to a statement's first line, so a
   // multi-line statement reports once, at a line a human can write a test for.
-  // ALWAYS populated, including under a SAFE verdict. The per-file heuristic
-  // clears SAFE on one exercised statement per file, so a SAFE change can still
-  // contain statements no test ran; hiding them is what let a false SAFE pass
-  // unnoticed. Disclosure never weakens a verdict, it only explains it.
+  // ALWAYS populated, including under a SAFE verdict: since ADR-11 the only
+  // entries a SAFE can carry are statements coverage.py EXCLUDED, which no test
+  // could reach. Hiding them is what let a false SAFE pass unnoticed.
+  // Disclosure never weakens a verdict, it only explains it.
   uncovered: Array<{ file: string; line: number; excluded?: boolean }>;
   // Present only when `uncovered` was capped. `total` is the true number of
   // uncovered statements; a short list without this field would misstate the gap.
@@ -25,8 +25,9 @@ export interface CoverageAssessment {
   // whether whole files fell off the list.
   filesWithUncovered?: number;
   // Distinct changed statements and how many executed. A ratio ("12 of 40
-  // changed statements exercised") the boolean cannot express. Additive and
-  // advisory: it does NOT feed the verdict rule.
+  // changed statements exercised") the boolean cannot express. Since ADR-11 the
+  // verdict rule is per-file and statement-level, so this aggregate is the
+  // reader's view of the same evidence rather than an independent signal.
   changedStatements?: { total: number; covered: number };
   // Changed files whose edit only REMOVES lines: there are no added lines for
   // coverage to attest, which is a different situation from "the added code is
@@ -221,11 +222,20 @@ export function fuseVerdict(
       : removalOnlyFiles.length === 0
         ? 'Tests pass. The change only touches comments and blank lines; there are no added statements for coverage to attest.'
         : 'Tests pass. The change only removes code and touches comments and blank lines; there are no added statements for coverage to attest.';
+  // ADR-11 made SAFE require every coverable changed statement to have run, so
+  // the common UNPROVEN is now PARTIAL coverage, not zero. Saying "not exercised
+  // by any test" there would be false — some of it was — and would send the
+  // reader hunting for a test that already exists. Name the ratio instead.
+  const stats = cov.changedStatements;
+  const partialReason =
+    stats && stats.total > 0 && stats.covered > 0
+      ? `Tests pass, but only ${stats.covered} of ${stats.total} changed statements were exercised.`
+      : 'Tests pass, but the changed code is not exercised by any test.';
   const coverageReason = nothingToAttest
     ? nothingToAttestReason
     : cov.changedLinesCovered === 'unknown'
       ? 'Tests pass, but coverage of the changed code could not be determined.'
-      : 'Tests pass, but the changed code is not exercised by any test.';
+      : partialReason;
   // Tie-break when more than one thing could explain the UNPROVEN. A scope or
   // flaky reason wins ONLY when coverage would otherwise have said SAFE; when
   // coverage already forces UNPROVEN ('unknown' or false) the coverage reason
