@@ -49,7 +49,9 @@ Two habits that have repeatedly paid off in this repo:
 - **Prove the test is red first.** Run it against the pre-fix state and paste the failure. Several "regression tests" here turned out to pass identically on both trees.
 - **Surface what you find.** Work that uncovers a second bug is normal. File it with `/issue` and link it; do not silently fold unrelated fixes into this branch.
 
-Commit in logical units with Conventional Commits, subject under 72 characters, no AI names, no co-author trailers. The commit-msg hook enforces this.
+Commit in logical units with Conventional Commits, subject under 72 characters, no AI names, no co-author trailers. The commit-msg hook enforces the message shape; the granularity is on you.
+
+**One logical change per commit.** A small fix gets its own commit, even when several came out of the same sitting. The test is whether the commit can be reverted on its own without taking unrelated work with it. Bundling a review's findings into one large commit destroys revert granularity and makes `git bisect` resolve to "one of these ten things". See `COMMIT_CONVENTIONS.md`.
 
 ## 5. Hand off to /ship
 
