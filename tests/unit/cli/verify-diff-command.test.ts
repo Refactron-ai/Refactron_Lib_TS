@@ -67,17 +67,19 @@ describe('formatCoverageSummary', () => {
   // still hold statements no test ran. The terminal gets the ratio; `--json` keeps
   // the full list. What it must never do is imply everything was proven.
   it('states the shortfall behind a SAFE verdict', () => {
+    // Since ADR-11 the only shortfall a SAFE can carry is statements coverage.py
+    // EXCLUDED, so the note names that cause rather than the old per-file rule.
     expect(
       formatCoverageSummary({
         tool: 'coverage.py',
         changedLinesCovered: true,
-        uncovered: [{ file: 'a.py', line: 31 }],
+        uncovered: [{ file: 'a.py', line: 31, excluded: true }],
         changedStatements: { total: 40, covered: 12 },
         filesWithUncovered: 3,
       }),
     ).toBe(
-      '  note: 12 of 40 changed statements were exercised; 28 were not across 3 files ' +
-        '(SAFE requires one per file). See --json for the list.',
+      '  note: 12 of 40 changed statements were exercised; 28 could not be across 3 files ' +
+        '(excluded from coverage). See --json for the list.',
     );
   });
 

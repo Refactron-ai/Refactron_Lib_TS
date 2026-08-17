@@ -41,7 +41,31 @@ The fusion rule:
 
 Every gate passed, and at least one changed **statement** in every changed file was executed by your test suite. The change is on a tested path, and that path is green.
 
-`SAFE` is a per-file check, not a per-statement one. It means every changed file had at least one changed statement run by your suite; it does not mean every changed statement ran. A file with some exercised and some unexercised changed statements still reads as covered, so `SAFE` can leave individual statements unexercised. Requiring **all** changed statements, not one per file, is the roadmap item here. Until then, read `SAFE` as "the change is on a tested path," not "every changed statement is tested."
+`SAFE` is a per-**statement** check. Every changed statement your suite could
+have executed did execute. A file with some exercised and some unexercised
+changed statements reads as `UNPROVEN`, and the reason names the ratio:
+
+```
+[UNPROVEN] Tests pass, but only 3 of 14 changed statements were exercised.
+```
+
+Statements coverage.py **excluded** are subtracted from the count rather than
+held against you. `# pragma: no cover` bodies and `if TYPE_CHECKING:` blocks can
+never be executed by any test, so requiring them would put `SAFE` out of reach
+for any change that adds a typing-only import. They are still listed in
+`coverage.uncovered`, tagged `excluded`, with a hint telling you to review them
+by hand instead of asking for an impossible test.
+
+A change consisting _entirely_ of excluded statements does not reach `SAFE`:
+there is nothing a test could have proven about it.
+
+<Note>
+  This is stricter than it was before 0.5.0. The old rule cleared a whole file as
+  soon as **one** changed statement in it ran, so a diff changing 40 statements
+  with 1 exercised returned `SAFE`. If you are comparing against stored reports,
+  a `SAFE` whose `coverage.changedStatements` shows `covered < total` was earned
+  under the old rule.
+</Note>
 
 `SAFE` also requires that the suite was not narrowed. If your `testCmd` names a
 subset of the suite, the verdict floors at `UNPROVEN` no matter how well the
