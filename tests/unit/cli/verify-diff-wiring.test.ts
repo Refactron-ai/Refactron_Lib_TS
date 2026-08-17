@@ -120,6 +120,32 @@ describe('runVerifyDiffCommand: test-scope note wiring (#120)', () => {
     expect(stdout).not.toContain('narrowed the suite');
   }, 120_000);
 
+  it.skipIf(NO_PYTEST)(
+    '--json carries testScope, and prints no human notes',
+    async () => {
+      // The third consumer of the field. `--json` is what a CI gate parses and
+      // what a fleet-history store keeps, so a report missing testScope there
+      // loses the only record that the verdict was scope-limited.
+      const { root, diffPath } = await fixture();
+      await runVerifyDiffCommand([
+        root,
+        '--diff',
+        diffPath,
+        '--json',
+        '--test-cmd',
+        'pytest tests/test_a.py',
+      ]);
+      const report = JSON.parse(stdout);
+      expect(report.testScope.scope).toBe('narrowed');
+      expect(report.testScope.source).toBe('override');
+      expect(report.testScope.signals.join(' ')).toContain('tests/test_a.py');
+      // --json is machine-readable output: a stray human note would make it
+      // unparseable, and JSON.parse above is what proves it did not appear.
+      expect(stdout).not.toContain('Re-run without the filter');
+    },
+    120_000,
+  );
+
   it('discloses an unparsed command instead of letting it read as clean', async () => {
     const { root, diffPath } = await fixture();
     await runVerifyDiffCommand([root, '--diff', diffPath, '--test-cmd', 'make test']);
