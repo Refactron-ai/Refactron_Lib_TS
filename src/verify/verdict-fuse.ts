@@ -2,6 +2,7 @@
 // Pure fusion of the verify engine's pass/fail gates with changed-line coverage
 // into the honest three-way verdict. No I/O.
 import type { VerificationResult, GateResult } from '../contracts.js';
+import type { TestScopeAssessment } from './test-scope.js';
 
 export type Verdict = 'SAFE' | 'UNSAFE' | 'UNPROVEN';
 
@@ -63,6 +64,11 @@ export interface VerdictReport {
   // retry. The tests gate treated them as flaky rather than blaming the diff; we
   // surface them so the human/JSON report can note them. Not a verdict input.
   flakyTests?: string[];
+  // What the test command actually ran. IS a verdict input: a `narrowed` scope
+  // disqualifies SAFE (see the fusion rule below and ADR-12). Present whenever
+  // the caller supplied an assessment; absent only for direct callers of
+  // fuseVerdict that omit it, which cannot happen through verify-diff.
+  testScope?: TestScopeAssessment;
 }
 
 // The tests gate carries flakySuspects on the SAME object it returns as the
@@ -99,10 +105,17 @@ export const MISSING_TESTS_CAP = 50;
 const NO_RUNNER_SUBSTRING = 'no test runner detected';
 const BASELINE_RED_SUBSTRING = 'baseline tests already fail';
 
+// REQUIRED, deliberately. An optional scope would make "a new call site forgot
+// to pass it" a silent false SAFE, which is the mechanism behind two of the
+// three false SAFEs this project has already shipped. Required makes it a
+// compile error instead. The FIELD on VerdictReport stays optional, which is
+// load-bearing for a different reason: its absence is how a consumer tells a
+// pre-0.5.0 stored report from one produced by an engine that floors.
 export function fuseVerdict(
   result: VerificationResult,
   changedFiles: string[],
   cov: CoverageAssessment,
+  testScope: TestScopeAssessment,
 ): VerdictReport {
   const flakyTests = flakySuspectsOf(result.gates.tests);
   const base = {
@@ -112,6 +125,7 @@ export function fuseVerdict(
     testFilesChanged: changedFiles.filter(isTestFile),
     coverage: cov,
     ...(flakyTests ? { flakyTests } : {}),
+    testScope,
   };
 
   if (!result.passed) {
@@ -132,7 +146,16 @@ export function fuseVerdict(
       result.gates.imports.passed &&
       (reason.includes(NO_RUNNER_SUBSTRING) || reason.includes(BASELINE_RED_SUBSTRING))
     ) {
-      return { verdict: 'UNPROVEN', ...base, reason };
+      // No suite ran, so `full` would be a claim about a run that never
+      // happened. The verdict is already UNPROVEN either way, but this object is
+      // stored as fleet history and `scope: full` in it would read as evidence
+      // that a whole suite went green.
+      return {
+        verdict: 'UNPROVEN',
+        ...base,
+        testScope: { ...testScope, scope: 'unknown' },
+        reason,
+      };
     }
     return { verdict: 'UNSAFE', ...base, reason };
   }
@@ -146,7 +169,23 @@ export function fuseVerdict(
     ? `Tests pass, but ${flakyTests.length} test(s) flipped on retry (flaky); a stable green could not be established.`
     : null;
 
-  if (cov.changedLinesCovered === true && !flakyReason) {
+  // C2 (zero-false-SAFE): a green run of a SUBSET is not a green suite. When the
+  // caller's test command names a filter, coverage can report the changed code
+  // as fully exercised while the test that would have caught the change was
+  // never selected. Reproduced in issue #110: the same diff reads UNSAFE under
+  // `python3 -m pytest -q` and SAFE under `python3 -m pytest -q tests/x.py`.
+  //
+  // Only `narrowed` floors. `unknown` does NOT: the commands that land there
+  // are dominated by plugin flags on a full suite (`pytest --doctest-modules`),
+  // and flooring them would turn every unrecognised flag in the wild into a
+  // SAFE-killer fixable only by a PR to us. The residual hole that leaves is
+  // recorded in ADR-12 and tracked, not papered over.
+  const narrowedReason =
+    testScope.scope === 'narrowed'
+      ? `Tests pass, but the test command narrowed the suite (${testScope.signals.join('; ')}), so the tests that ran are a subset the caller chose.`
+      : null;
+
+  if (cov.changedLinesCovered === true && !flakyReason && !narrowedReason) {
     return {
       verdict: 'SAFE',
       ...base,
@@ -187,12 +226,17 @@ export function fuseVerdict(
     : cov.changedLinesCovered === 'unknown'
       ? 'Tests pass, but coverage of the changed code could not be determined.'
       : 'Tests pass, but the changed code is not exercised by any test.';
-  // Tie-break when both a flaky heal and a coverage shortfall could explain the
-  // UNPROVEN: the flaky reason wins ONLY when coverage would otherwise have said
-  // SAFE (changedLinesCovered === true). When coverage already forces UNPROVEN
-  // ('unknown' or false), keep the coverage reason. flakyTests rides on `base`
-  // in every branch, so the report always carries the suspects regardless.
-  const reason = flakyReason && cov.changedLinesCovered === true ? flakyReason : coverageReason;
+  // Tie-break when more than one thing could explain the UNPROVEN. A scope or
+  // flaky reason wins ONLY when coverage would otherwise have said SAFE; when
+  // coverage already forces UNPROVEN ('unknown' or false) the coverage reason
+  // stands, because it is the more specific fact. Scope outranks flaky: if the
+  // suite was narrowed, "a stable green could not be established" understates
+  // the problem, which is that no full green was ever attempted. Both ride on
+  // `base` in every branch, so the report always carries them regardless.
+  const reason =
+    cov.changedLinesCovered === true
+      ? (narrowedReason ?? flakyReason ?? coverageReason)
+      : coverageReason;
   // Cap the hint list. A mass reformat once emitted 3666 hints and an 883 KB
   // JSON report; nobody reads that, and no agent should have to stream it. The
   // shortfall is still reported in full via `missingTestsTruncated.total`, which

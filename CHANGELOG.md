@@ -7,6 +7,41 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [Unreleased]
+
+### Changed
+
+**What `SAFE` means is narrower.** A test command that names a subset of the
+suite can no longer earn `SAFE`.
+
+Passing a `testCmd` such as `pytest tests/unit/test_foo.py`, or one using `-k`,
+`-m`, `-t` or `--onlyChanged`, scopes the entire verification run. Coverage
+could report the changed code as fully exercised while the one test that would
+have caught the change was never selected. Reproduced: one repo, one diff, two
+test files, only the command differing:
+
+```bash
+python3 -m pytest -q                       # UNSAFE — the change breaks a test
+python3 -m pytest -q tests/test_scale.py   # was SAFE, now UNPROVEN
+```
+
+Refactron now classifies the command as `full`, `narrowed` or `unknown` and
+reports it on the new `testScope` field. `narrowed` floors the verdict at
+`UNPROVEN`. `unknown` (an unparsed wrapper such as `make test`) does not floor,
+and that gap is documented rather than hidden. A `PYTHONPATH=` prefix is not
+narrowing, so the remedy for shadow bypass is unaffected.
+
+Exit codes are unchanged: `SAFE` and `UNPROVEN` both exit `0`. Pipelines that
+parse the verdict string will see more `UNPROVEN`.
+
+### Added
+
+- `testScope` on `VerdictReport`, carried by `verify-diff --json` and the MCP
+  `verify_change` tool. Additive; `reportVersion` stays `1`.
+- A CLI note naming the filter that cost a run its `SAFE`.
+
+---
+
 ## [0.4.0] — 2026-08-06
 
 **Breaking, despite being a minor.** Refactron is now only a verification layer.
