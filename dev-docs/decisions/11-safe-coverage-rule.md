@@ -32,7 +32,7 @@ The per-file conjunct is subsumed, not removed: if every coverable changed state
 
 `reportVersion` stays `1`. No field is added, renamed, retyped or removed, so the **shape** contract holds. The **semantics** of `verdict` and `coverage.changedLinesCovered` do change, and a consumer storing fleet history can partition it exactly: a `SAFE` carrying `changedStatements.covered < total` was earned under the old rule. That is strictly more information than a version bump would give, since it identifies *which runs* were affected rather than only *when* the change landed. Tracked separately: an `engineVersion` field is the general answer to semantic tightenings and should be filed rather than solved here.
 
-Semver: **minor**. The project is pre-1.0, where semver puts behaviour changes in the minor. Ships in 0.5.0.
+Version: **patch**, shipping as 0.4.x. Semver would put a behaviour change in the minor for a 0.x project, but this repository reserves the minor for a delivered milestone rather than a mechanical rule (see `COMMIT_CONVENTIONS.md`). One consequence to know rather than debate: `^0.4.0` resolves to `>=0.4.0 <0.5.0`, so a patch reaches existing users automatically where a minor would not. The changelog therefore has to carry the weight a version number is not carrying.
 
 ## Alternatives considered
 
@@ -76,7 +76,7 @@ Rejected. It makes a diff whose only change is inside an excluded block read as 
 
 - **Consumers**: a partially-covered diff that read `SAFE` now reads `UNPROVEN`, with a reason naming the ratio rather than the generic "not exercised by any test", which would be false when some statements did run.
 - **Docs**: five shipped locations state the old per-file rule and are corrected together — `docs/overview.mdx`, `docs/quickstart.mdx`, `docs/verification/verdicts.mdx`, `docs/verification/verify-diff.mdx`, `README.md`.
-- **Release**: 0.5.0, alongside ADR-12's scope rule. Both are tightenings of `SAFE` and the changelog presents them under one "what SAFE now means" heading, because shipping two independent narrowings of the same verdict in one release is otherwise confusing.
+- **Release**: 0.4.x, alongside ADR-12's scope rule. Both are tightenings of `SAFE` and the changelog presents them under one "what SAFE now means" heading, because shipping two independent narrowings of the same verdict in one release is otherwise confusing.
 
 ## Open questions / follow-ups
 

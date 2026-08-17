@@ -44,6 +44,19 @@ Follow `RUNBOOK.md` for the mechanics and `dev-docs/release-v0.3.0-checklist.md`
 - The `refactron.yaml` schema and the `analyze --json` output shape.
 - The PyPI wrapper's behavior, including which Node version it demands and what it does when the CLI is absent.
 
+## Version policy overrides this mapping
+
+**Stay in the current minor. Ship patches (`0.4.1`, `0.4.2`, ...) until the
+milestone the next minor stands for is actually delivered.** See the version
+policy in `COMMIT_CONVENTIONS.md`.
+
+The mapping below describes what each class of change _would_ be under plain
+semver. Use it to reason about **blast radius**, not to pick the number. In
+practice that means a change the mapping calls a minor — a new additive
+`VerdictReport` field, for instance — still ships as a patch, and the changelog
+carries the signal the version number is not carrying. Do not propose a minor
+bump on the mapping alone, and do not re-raise it once the founder has called it.
+
 ## Semver mapping
 
 - **Patch**: bug fixes that change no public surface. New preconditions from a sidecar are patch (additive observability). Tier reassignments are patch. Internal refactors are patch. **A fix that makes the engine refuse something it used to certify is also a patch**, because the old behavior was a defect, not a contract; say so loudly in the changelog rather than hiding it under a version number.

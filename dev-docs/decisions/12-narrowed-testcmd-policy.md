@@ -35,7 +35,7 @@ Classification is three-valued and lives in `src/verify/test-scope.ts` as a pure
 
 This rule is evadable in one step. An agent that wants SAFE can write `sh -c "pytest tests/x.py"` and land in `unknown`. The floor is a mistake-catcher, not an adversary-stopper: careless narrowing is written in the plain form, and that is what it catches. Nobody should read this ADR as claiming otherwise.
 
-The assessment rides on `VerdictReport.testScope` as `{ scope, source, signals }`. The field is additive, so `reportVersion` stays `1`; `src/contracts.ts` is untouched. `fuseVerdict` takes it as a REQUIRED fourth parameter: an optional one would make "a new call site forgot to pass it" a silent false SAFE, which is the mechanism behind two of the three false SAFEs this project has already shipped. The FIELD stays optional, which is load-bearing for a different reason — its absence is how a consumer distinguishes a pre-0.5.0 stored report from one produced by an engine that floors.
+The assessment rides on `VerdictReport.testScope` as `{ scope, source, signals }`. The field is additive, so `reportVersion` stays `1`; `src/contracts.ts` is untouched. `fuseVerdict` takes it as a REQUIRED fourth parameter: an optional one would make "a new call site forgot to pass it" a silent false SAFE, which is the mechanism behind two of the three false SAFEs this project has already shipped. The FIELD stays optional, which is load-bearing for a different reason — its absence is how a consumer distinguishes a stored report from before this change from one produced by an engine that floors.
 
 Because `narrowed` moves a verdict, every unrecognised token degrades to `unknown` rather than being guessed at. A false `narrowed` costs a user their SAFE on a legitimate command, which is the failure mode this classifier must not have.
 
@@ -108,7 +108,7 @@ Rejected as not currently buildable. It requires per-test coverage attribution, 
 
 - **Consumers**: a diff verified with a narrowed `testCmd` that previously read SAFE now reads UNPROVEN. The reason string names the signal and tells the reader to re-run without the filter.
 - **New report field**: `testScope` appears in `--json` and in the MCP tool output. Additive; consumers ignoring unknown keys are unaffected.
-- **Version**: minor. The project is pre-1.0, so behaviour changes land in the minor per semver's 0.x rule. Ships in 0.5.0, intended alongside the issue #109 statement rule, with both called out in the changelog under a single "what SAFE now means" heading, since shipping two independent tightenings of SAFE in one release is otherwise confusing.
+- **Version**: patch, shipping as 0.4.x. The minor is reserved for a delivered milestone in this repository, not spent on a semver mechanic (see `COMMIT_CONVENTIONS.md`). Note that `^0.4.0` matches a patch, so this reaches existing users automatically. Ships alongside the issue #109 statement rule, with both called out in the changelog under a single "what SAFE now means" heading, since shipping two independent tightenings of SAFE in one release is otherwise confusing.
 - **Docs**: `docs/verification/verdicts.mdx` and `docs/mcp/tool-reference.mdx` state that a narrowed `testCmd` cannot reach SAFE, and that `unknown` commands are not floored.
 
 ## Open questions / follow-ups
