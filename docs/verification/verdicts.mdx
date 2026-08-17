@@ -43,6 +43,12 @@ Every gate passed, and at least one changed **statement** in every changed file 
 
 `SAFE` is a per-file check, not a per-statement one. It means every changed file had at least one changed statement run by your suite; it does not mean every changed statement ran. A file with some exercised and some unexercised changed statements still reads as covered, so `SAFE` can leave individual statements unexercised. Requiring **all** changed statements, not one per file, is the roadmap item here. Until then, read `SAFE` as "the change is on a tested path," not "every changed statement is tested."
 
+`SAFE` also requires that the suite was not narrowed. If your `testCmd` names a
+subset of the suite, the verdict floors at `UNPROVEN` no matter how well the
+changed code is covered, because a green run of the tests you selected says
+nothing about the tests you did not. See [A narrowed test command cannot be
+SAFE](#a-narrowed-test-command-cannot-be-safe) below.
+
 `SAFE` reports still list what they did not prove. `coverage.uncovered` is always populated, and `coverage.changedStatements` gives the ratio outright:
 
 ```json
@@ -205,6 +211,46 @@ Refactron cannot turn a weak suite into a strong one, but it refuses to overstat
 A worked example from our own hardening runs, on a real library. Jinja2's `truncate` filter guards its early return with `if len(s) <= length + leeway`. Change that `<=` to `<` and the behavior genuinely changes: at the exact boundary the string is now truncated instead of returned whole. All 911 tests in Jinja2's suite still pass, because none of them lands on that precise boundary, and the changed line is covered, so the verdict is `SAFE`.
 
 That verdict is correct about what it claims (the suite ran this line and stayed green) and it is still not a proof of correctness. Boundary conditions are exactly where suites tend to be thin. Read `SAFE` as "your tests approve this change", then decide separately whether your tests are strong where this change lives.
+
+## A narrowed test command cannot be SAFE
+
+If you pass a `testCmd` that names a subset of the suite, the verdict floors at
+`UNPROVEN`. Coverage can report the changed code as fully exercised while the
+one test that would have caught the change was never selected.
+
+A worked example. One file, one change (`return x * 2` to `return x * 3`), and
+two tests: `test_scale` executes the changed line without pinning its value,
+`test_report` pins it and fails. Only the command differs:
+
+```bash
+# runs both tests; test_report catches the change
+python3 -m pytest -q                       # UNSAFE
+
+# runs only the weak test; the change sails through
+python3 -m pytest -q tests/test_scale.py   # UNPROVEN (previously SAFE)
+```
+
+Every changed statement executed in the second run, so coverage alone cannot
+tell the two apart. The scope of the run is what distinguishes them.
+
+Refactron classifies your command into three buckets, and reports the result on
+`testScope`:
+
+| Scope      | Meaning                                                     | Can be SAFE |
+| ---------- | ----------------------------------------------------------- | ----------- |
+| `full`     | Parsed, and names no filter                                 | yes         |
+| `narrowed` | Names a path, node id, `-k`, `-m`, `-t`, `--onlyChanged`, … | no          |
+| `unknown`  | Not recognised (`make test`, `npm test`, a wrapper script)  | yes         |
+
+`unknown` does not floor the verdict. Flooring every unparsed wrapper would put
+`SAFE` out of reach for most projects, so Refactron reports what it knows rather
+than refusing outright. This is a real gap: narrowing hidden inside a wrapper
+script is not detected. `full` means "this command names no filters", not "this
+run was the whole suite" — narrowing configured in `pytest.ini` `addopts`,
+`PYTEST_ADDOPTS`, or a vitest `include` is invisible here.
+
+The `PYTHONPATH=` prefix recommended below is **not** narrowing.
+`PYTHONPATH=. python3 -m pytest -q` classifies as `full`.
 
 ## Make sure the tests run the code being verified
 

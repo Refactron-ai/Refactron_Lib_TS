@@ -6,6 +6,7 @@ import {
   formatFlakyNote,
   formatUncoveredLines,
   formatCoverageSummary,
+  formatTestScopeNote,
 } from '../../../src/cli/verify-diff-command.js';
 
 describe('formatUncoveredLines', () => {
@@ -162,5 +163,26 @@ describe('formatFlakyNote', () => {
     expect(formatFlakyNote(['t1::a', 't2::b', 't3::c', 't4::d'])).toBe(
       'note: 4 test(s) flipped on retry and were treated as flaky: t1::a, t2::b, t3::c, ...',
     );
+  });
+});
+
+// Issue #110. Unlike the other notes, this one explains a VERDICT, so it has to
+// name the signal that cost the reader their SAFE and tell them what to do.
+describe('formatTestScopeNote', () => {
+  it('is silent when the scope is absent, full, or unparsed', () => {
+    expect(formatTestScopeNote(undefined)).toBeNull();
+    expect(formatTestScopeNote({ scope: 'full', source: 'detected', signals: [] })).toBeNull();
+    expect(formatTestScopeNote({ scope: 'unknown', source: 'override', signals: [] })).toBeNull();
+  });
+
+  it('names the signal and says the run cannot be SAFE', () => {
+    const note = formatTestScopeNote({
+      scope: 'narrowed',
+      source: 'override',
+      signals: ['selects specific paths: tests/test_scale.py'],
+    });
+    expect(note).toContain('tests/test_scale.py');
+    expect(note).toContain('cannot be SAFE');
+    expect(note).toContain('Re-run without the filter');
   });
 });

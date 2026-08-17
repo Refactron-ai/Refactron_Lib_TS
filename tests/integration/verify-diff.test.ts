@@ -130,6 +130,94 @@ async function srcLayoutFixture(): Promise<string> {
 const REORDERED_PKG =
   'def add(a, b):\n    return b + a\n\n\ndef unused_helper(a, b):\n    return a - b\n';
 
+// Issue #110. Two tests over one function: test_scale EXECUTES the changed line
+// without pinning its value, test_report pins it and therefore catches the
+// change. Narrowing the command to test_scale selects the weak test and drops
+// the one that fails, so coverage reports the changed statement as exercised
+// while the regression sails through. The full suite must reach the opposite
+// verdict on the identical diff; that contrast is the whole point of the
+// fixture, so do not "simplify" it to a single test file.
+async function narrowingFixture(): Promise<string> {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'vd-narrow-'));
+  await fs.mkdir(path.join(root, 'tests'), { recursive: true });
+  await fs.writeFile(path.join(root, 'pyproject.toml'), '[project]\nname = "narrow"\n');
+  // A rootdir conftest.py is what puts the project root on sys.path.
+  await fs.writeFile(path.join(root, 'conftest.py'), '');
+  await fs.writeFile(
+    path.join(root, 'calc.py'),
+    'def scale(x):\n    return x * 2\n\n\ndef report(x):\n    return "value=" + str(scale(x))\n',
+  );
+  await fs.writeFile(
+    path.join(root, 'tests', 'test_scale.py'),
+    'from calc import scale\n\n\ndef test_scale_returns_int():\n    assert isinstance(scale(2), int)\n',
+  );
+  await fs.writeFile(
+    path.join(root, 'tests', 'test_report.py'),
+    'from calc import report\n\n\ndef test_report_formats():\n    assert report(2) == "value=4"\n',
+  );
+  return root;
+}
+
+const SCALED_CALC =
+  'def scale(x):\n    return x * 3\n\n\ndef report(x):\n    return "value=" + str(scale(x))\n';
+
+describe('a narrowed testCmd cannot earn SAFE (issue #110)', () => {
+  const roots: string[] = [];
+  afterEach(async () => {
+    for (const r of roots.splice(0)) await fs.rm(r, { recursive: true, force: true });
+  });
+
+  async function run(testCmd: string) {
+    const root = await narrowingFixture();
+    roots.push(root);
+    return verifyDiff({
+      repoRoot: root,
+      edits: [{ path: 'calc.py', newContent: SCALED_CALC }],
+      testCmd,
+    });
+  }
+
+  it.skipIf(NO_COVERAGE)(
+    'the full suite catches the change: UNSAFE',
+    async () => {
+      const report = await run('python3 -m pytest -q');
+      expect(report.verdict).toBe('UNSAFE');
+      expect(report.testScope).toEqual({ scope: 'full', source: 'override', signals: [] });
+    },
+    120_000,
+  );
+
+  it.skipIf(NO_COVERAGE)(
+    'the same diff under a narrowed command is UNPROVEN, not SAFE',
+    async () => {
+      const report = await run('python3 -m pytest -q tests/test_scale.py');
+      // Before this fix the identical call returned SAFE with
+      // "Tests pass and the changed code is covered." on a change that breaks
+      // tests/test_report.py.
+      expect(report.verdict).toBe('UNPROVEN');
+      expect(report.verdict).not.toBe('SAFE');
+      expect(report.testScope?.scope).toBe('narrowed');
+      expect(report.reason).toContain('narrowed the suite');
+    },
+    120_000,
+  );
+
+  // CHARACTERIZATION, not regression: this one passes on main too, by design.
+  // It is here to pin the fact that makes #110 and #109 independent, so a later
+  // reader cannot conclude that the statement-coverage rule subsumes this fix.
+  it.skipIf(NO_COVERAGE)(
+    'the narrowed run still measured full statement coverage, so #109 would not have caught it',
+    async () => {
+      const report = await run('python3 -m pytest -q tests/test_scale.py');
+      // Every changed statement DID execute under the narrowed command, so a
+      // stricter statement-coverage rule leaves this false SAFE untouched.
+      expect(report.coverage.tool).toBe('coverage.py');
+      expect(report.coverage.changedStatements).toEqual({ total: 1, covered: 1 });
+    },
+    120_000,
+  );
+});
+
 describe('verifyDiff with a NAME=VALUE prefix on testCmd (issue #95)', () => {
   // Restored in afterEach, NOT in a finally inside the test body. vitest marks a
   // timed-out test failed and moves on WITHOUT waiting for the awaited call to

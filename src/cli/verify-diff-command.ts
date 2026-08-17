@@ -70,6 +70,19 @@ export function formatTestFilesNote(testFilesChanged: string[]): string | null {
   return `note: this diff modifies test files (${testFilesChanged.length}): ${preview}${suffix}`;
 }
 
+// One-line advisory when the test command named a subset of the suite. Unlike
+// formatTestFilesNote this one explains a VERDICT: a narrowed scope disqualifies
+// SAFE (ADR-12), so the reader needs to know which signal cost them the verdict
+// and what to run instead. Returns null for a full or unparsed command.
+export function formatTestScopeNote(testScope: VerdictReport['testScope']): string | null {
+  if (!testScope || testScope.scope !== 'narrowed') return null;
+  const signals = testScope.signals.join('; ');
+  return (
+    `  note: the test command narrowed the suite (${signals}), so this run cannot be SAFE. ` +
+    `Re-run without the filter to get a verdict on the whole suite.`
+  );
+}
+
 // One line per unexercised STATEMENT (deduped upstream), not per physical line:
 // coverage.py attributes execution to a statement's first line, so a rewrapped
 // statement would otherwise print once per wrapped line. A capped list always
@@ -172,6 +185,10 @@ export async function runVerifyDiffCommand(argv: string[]): Promise<number> {
         process.stdout.write(line + '\n');
       }
     }
+    // Printed before the other notes: when the scope was narrowed it is the
+    // reason the verdict is not SAFE, so it outranks the advisories.
+    const scopeNote = formatTestScopeNote(report.testScope);
+    if (scopeNote) process.stdout.write(scopeNote + '\n');
     const note = formatTestFilesNote(report.testFilesChanged);
     if (note) process.stdout.write(note + '\n');
     const flakyNote = formatFlakyNote(report.flakyTests ?? []);

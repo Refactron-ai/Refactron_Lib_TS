@@ -5,6 +5,7 @@ import {
   type CoverageAssessment,
 } from '../../../src/verify/verdict-fuse.js';
 import type { VerificationResult } from '../../../src/contracts.js';
+import type { TestScopeAssessment } from '../../../src/verify/test-scope.js';
 
 const ok = { passed: true, durationMs: 1 };
 function result(passed: boolean, testsReason?: string): VerificationResult {
@@ -343,3 +344,81 @@ describe('fuseVerdict — testFilesChanged note', () => {
     ]);
   });
 });
+
+// Issue #110 / ADR-12. A caller-supplied `testCmd` that names a subset of the
+// suite scoped the whole verification run. Reproduced: the same diff returns
+// UNSAFE under `python3 -m pytest -q` and SAFE under
+// `python3 -m pytest -q tests/test_scale.py`. A narrowed scope must therefore
+// disqualify SAFE, exactly as a flaky heal does.
+describe('fuseVerdict + test scope', () => {
+  const full: TestScopeAssessment = { scope: 'full', source: 'detected', signals: [] };
+  const narrowed: TestScopeAssessment = {
+    scope: 'narrowed',
+    source: 'override',
+    signals: ['selects specific paths: tests/test_scale.py'],
+  };
+  const unknownScope: TestScopeAssessment = { scope: 'unknown', source: 'override', signals: [] };
+
+  it('narrowed scope + fully covered → UNPROVEN, never SAFE', () => {
+    const r = fuseVerdict(result(true), ['a.py'], covered, narrowed);
+    expect(r.verdict).toBe('UNPROVEN');
+  });
+
+  it('the narrowed reason names the signal, not a generic coverage miss', () => {
+    const r = fuseVerdict(result(true), ['a.py'], covered, narrowed);
+    // "the changed code is not exercised by any test" would be false here: it
+    // WAS exercised, by a subset the caller chose.
+    expect(r.reason).not.toContain('not exercised by any test');
+    expect(r.reason).toContain('tests/test_scale.py');
+  });
+
+  it('full scope + fully covered → still SAFE', () => {
+    expect(fuseVerdict(result(true), ['a.py'], covered, full).verdict).toBe('SAFE');
+  });
+
+  it('unknown scope does not floor: it would make SAFE unreachable for `make test`', () => {
+    expect(fuseVerdict(result(true), ['a.py'], covered, unknownScope).verdict).toBe('SAFE');
+  });
+
+  it('a narrowed scope cannot rescue a failing gate from UNSAFE', () => {
+    // Flooring must only ever LOWER a verdict. UNSAFE stays UNSAFE, and keeps
+    // its own blocking reason rather than being retold as a scoping problem.
+    const r = fuseVerdict(result(false, 'test_x broke'), ['a.py'], covered, narrowed);
+    expect(r.verdict).toBe('UNSAFE');
+    expect(r.reason).toContain('test_x broke');
+  });
+
+  it('when coverage already forces UNPROVEN, the coverage reason stands', () => {
+    const r = fuseVerdict(result(true), ['a.py'], uncovered, narrowed);
+    expect(r.verdict).toBe('UNPROVEN');
+    expect(r.reason).toContain('not exercised by any test');
+    // The hints survive: a narrowed scope must not swallow the missing-test list.
+    expect(r.missingTests?.[0]?.file).toBe('a.py');
+  });
+
+  it('the scope is disclosed on the report in every branch', () => {
+    expect(fuseVerdict(result(true), ['a.py'], covered, full).testScope).toEqual(full);
+    expect(fuseVerdict(result(true), ['a.py'], covered, narrowed).testScope).toEqual(narrowed);
+    expect(fuseVerdict(result(false), ['a.py'], covered, narrowed).testScope).toEqual(narrowed);
+    expect(fuseVerdict(result(true), ['a.py'], uncovered, narrowed).testScope).toEqual(narrowed);
+  });
+
+  // AC-7: omitting the argument must leave every pre-existing verdict and
+  // reason byte-identical, which is what the 3-argument tests above assert.
+  it('omitting the scope changes nothing and adds no field', () => {
+    const r = fuseVerdict(result(true), ['a.py'], covered);
+    expect(r.verdict).toBe('SAFE');
+    expect(r.reason).toBe('Tests pass and the changed code is covered.');
+    expect(r.testScope).toBeUndefined();
+  });
+});
+
+// Issue #110 / ADR-12. A caller-supplied `testCmd` that names a subset of the
+// suite scoped the whole verification run. Coverage was then attributed against
+// that subset, and SAFE was issued on evidence the caller chose. Reproduced:
+// the same diff returns UNSAFE under `python3 -m pytest -q` and SAFE under
+// `python3 -m pytest -q tests/test_scale.py`.
+// Note for reviewers: an earlier draft of this file carried a second, nearly
+// identical `test-scope flooring` block. Its distinct assertions (UNSAFE keeps
+// its own blocking reason; missingTests survive a narrowed UNPROVEN) were folded
+// into the block above rather than left duplicated.
