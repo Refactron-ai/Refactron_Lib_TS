@@ -146,6 +146,30 @@ describe('runVerifyDiffCommand: test-scope note wiring (#120)', () => {
     120_000,
   );
 
+  it.skipIf(NO_PYTEST)(
+    '--json carries engineVersion, matched as a shape not a literal',
+    async () => {
+      // Asserting the literal version would make every release bump break this
+      // test, which trains people to update assertions without reading them.
+      // The claim worth pinning is that the field is present and is a version.
+      const { root, diffPath } = await fixture();
+      await runVerifyDiffCommand([
+        root,
+        '--diff',
+        diffPath,
+        '--json',
+        '--test-cmd',
+        'python3 -m pytest -q',
+      ]);
+      const report = JSON.parse(stdout);
+      expect(report.engineVersion).toMatch(/^\d+\.\d+\.\d+/);
+      // The two version fields answer different questions and must not be
+      // confused: reportVersion is the SHAPE, engineVersion is the RULES.
+      expect(report.reportVersion).toBe(1);
+    },
+    120_000,
+  );
+
   it('discloses an unparsed command instead of letting it read as clean', async () => {
     const { root, diffPath } = await fixture();
     await runVerifyDiffCommand([root, '--diff', diffPath, '--test-cmd', 'make test']);

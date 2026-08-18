@@ -49,6 +49,12 @@ describe('handleVerifyChange', () => {
         source: 'override',
         signals: [],
       });
+      // Shape, not literal: a release bump must not break this. reportVersion
+      // says which SHAPE the consumer holds; engineVersion says which RULES
+      // produced the verdict, which is what two SAFE-semantics changes in one
+      // release line made necessary.
+      expect(report.engineVersion).toMatch(/^\d+\.\d+\.\d+/);
+      expect(report.reportVersion).toBe(1);
     },
     180_000,
   );
