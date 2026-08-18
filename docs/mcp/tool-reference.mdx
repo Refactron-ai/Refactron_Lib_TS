@@ -75,6 +75,7 @@ The tool returns the same report `verify-diff --json` prints, serialized as text
 {
   "verdict": "UNPROVEN",
   "reportVersion": 1,
+  "engineVersion": "0.4.0",
   "gates": {
     "syntax": { "passed": true, "durationMs": 108 },
     "imports": { "passed": true, "durationMs": 45 },
@@ -100,7 +101,8 @@ The tool returns the same report `verify-diff --json` prints, serialized as text
 | Field                          | Meaning                                                                                                                               |
 | ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------- |
 | `verdict`                      | `SAFE`, `UNSAFE`, or `UNPROVEN`. See [Verdicts](/verification/verdicts).                                                              |
-| `reportVersion`                | Schema version, currently `1`. Read it before relying on any field below.                                                             |
+| `reportVersion`                | Schema version, currently `1`. Which **shape** you are holding: read it before relying on any field below.                            |
+| `engineVersion`                | Version of the engine that produced this report. Which **rules** produced the verdict. Absent on reports written before 0.4.1.        |
 | `gates`                        | `syntax`, `imports`, `tests`, each with `passed` and `durationMs`. A failed gate also carries `blockingReason`.                       |
 | `changedFiles`                 | Repo-relative paths the change touches.                                                                                               |
 | `testFilesChanged`             | Subset of `changedFiles` matching test conventions. A note, never a verdict input.                                                    |

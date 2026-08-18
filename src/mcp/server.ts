@@ -2,9 +2,6 @@
 // src/mcp/server.ts
 // Refactron MCP server (stdio). Exposes `verify_change` so an AI agent can verify
 // a proposed change before it lands. Runs entirely local.
-import { readFileSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
-import * as path from 'node:path';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import {
@@ -12,11 +9,9 @@ import {
   handleVerifyChange,
   type VerifyChangeArgs,
 } from './tools/verify-change.js';
+import { ENGINE_VERSION } from '../engine-version.js';
 
-const pkgPath = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../package.json');
-const version = (JSON.parse(readFileSync(pkgPath, 'utf8')) as { version: string }).version;
-
-const server = new McpServer({ name: 'refactron', version });
+const server = new McpServer({ name: 'refactron', version: ENGINE_VERSION });
 
 // `McpServer.tool(...)` is deprecated in @modelcontextprotocol/sdk >=1.x; the
 // current registration API is `registerTool(name, config, cb)`.

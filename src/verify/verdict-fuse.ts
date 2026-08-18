@@ -65,6 +65,13 @@ export interface VerdictReport {
   // retry. The tests gate treated them as flaky rather than blaming the diff; we
   // surface them so the human/JSON report can note them. Not a verdict input.
   flakyTests?: string[];
+  // The engine version that produced this report. `reportVersion` says which
+  // SHAPE you are holding; this says which RULES produced it. Two releases have
+  // now changed what `SAFE` means without changing the shape, so a consumer
+  // storing reports as history needs both. Attached by verify-diff.ts, which is
+  // the I/O layer; this module stays pure. Absent on reports from before it
+  // existed, and on direct fuseVerdict callers.
+  engineVersion?: string;
   // What the test command actually ran. IS a verdict input: a `narrowed` scope
   // disqualifies SAFE (see the fusion rule below and ADR-12). Present whenever
   // the caller supplied an assessment; absent only for direct callers of

@@ -11,6 +11,7 @@ import { attributeChangedLines } from './coverage-attribution.js';
 import { buildStatementMap } from './statement-map.js';
 import { fuseVerdict, type CoverageAssessment, type VerdictReport } from './verdict-fuse.js';
 import { assessTestScope } from './test-scope.js';
+import { ENGINE_VERSION } from '../engine-version.js';
 import { changedLinesForEdits, editsFromUnifiedDiff, type FileEdit } from './diff-input.js';
 import type { FileChange, RefactorPlan, TransformId } from '../contracts.js';
 
@@ -73,7 +74,13 @@ export async function verifyDiff(input: VerifyDiffInput): Promise<VerdictReport>
 
   // 3. Fuse. The scope of the run is a verdict input, not a note: a green run of
   // a caller-chosen subset cannot earn SAFE (issue #110, ADR-12).
-  return fuseVerdict(result, changedFiles, cov, assessTestScope(input.testCmd));
+  //
+  // engineVersion is stamped HERE rather than inside fuseVerdict, which
+  // documents itself as pure with no I/O. This is already the I/O layer.
+  return {
+    ...fuseVerdict(result, changedFiles, cov, assessTestScope(input.testCmd)),
+    engineVersion: ENGINE_VERSION,
+  };
 }
 
 /** Coverage we could not establish. A fresh object each time: callers own it.

@@ -148,6 +148,7 @@ This is a note, not a verdict change. A green verdict on a diff that also weaken
 ```json
 {
   "reportVersion": 1,
+  "engineVersion": "0.4.0",
   "verdict": "UNPROVEN",
   "gates": {
     "syntax": { "passed": true, "durationMs": 12 },
@@ -170,6 +171,7 @@ This is a note, not a verdict change. A green verdict on a diff that also weaken
 ```
 
 - `reportVersion`: schema version of this report. The shape below is a public contract; the version tells a consumer that stores reports which shape it is holding.
+- `engineVersion`: the version of Refactron that produced this report. The two are not interchangeable and you will want both if you keep reports as history. `reportVersion` says which **shape** you are holding. `engineVersion` says which **rules** produced the verdict, which matters because what earns a `SAFE` has changed without the shape changing: 0.4.1 stopped a narrowed `--test-cmd` from earning `SAFE`, and started requiring every coverable changed statement to have run. Absent on reports written before 0.4.1.
 - `gates`: each gate's `passed` flag and wall-clock. A failed gate also carries a `blockingReason`.
 - `testFilesChanged`: changed files matching test conventions. A note that the diff touched tests, never a verdict input.
 - `coverage.tool`: `coverage.py` when coverage was assessed, `none` when it couldn't be (non-Python diff, or no `coverage.py` installed).
