@@ -77,6 +77,21 @@ The last two rows are the price of that rejection: they are live false SAFEs of 
 
 Flooring only bucket 3 closes the unittest and Django-style holes, leaves bucket 2 untouched, and degrades with a named reason rather than a guess, which is the house doctrine everywhere else in this engine.
 
+**Amendment, 2026-08-18 (issue #115).** Implemented, but not as bucket 3 was framed above. Flooring "an unrecognised runner carrying positional arguments" is undecidable: for an unrecognised runner you do not know any flag's arity, so you cannot distinguish a positional from a flag's value. The example in this very section proves it — in `python3 -m unittest discover -s tests`, `discover` is a bare word and `tests` is `-s`'s value, so a generic rule would floor a whole suite and steal a deserved `SAFE`.
+
+Shipped instead as two **recognitions**, which make the acceptance rows fall out of the existing scanner rather than out of a new heuristic:
+
+1. **`unittest` became a fourth recognised runner**, with a flag table transcribed from `python3 -m unittest --help` on 3.13. `discover` is a subcommand; `-k` narrows; `-h`/`--help` run zero tests; `-s`/`-p`/`-t` take values; a bare non-subcommand positional is a test module, class or method and therefore a filter.
+
+2. **A script-form rule** for `python3 path/to/script.py [args]`, which `parseRunner` previously rejected outright: no arguments is `full`, a bare positional is `narrowed`, and **any flag at all is `unknown`**. That last case deliberately under-floors `runtests.py --parallel 4`, which is the safe direction — guessing an unknown flag's arity could read its value as a path and cost a user a deserved `SAFE`.
+
+Two calls inside the unittest table that are not obvious:
+
+- **`-s tests` is `full`, unlike `pytest tests/`.** Bare `discover` starts from `.`, so pointing it at the test directory is how a full unittest run is normally written. Flooring it would put `SAFE` out of reach for essentially every unittest project — the same "makes SAFE unreachable" argument this ADR used against flooring `unknown`.
+- **`-p`/`--pattern` is treated as an ordinary value flag** even though a non-default pattern does narrow discovery. Detecting "non-default" reliably is not worth a false `narrowed`. Recorded here as a residual under-floor rather than hidden.
+
+Residual holes after #115: a flag on a script-form runner (`unknown`, unfloored), `-p` with a custom pattern, and everything already listed under the `unknown` policy above.
+
 Not rejected on merit, deferred on risk. This branch already ships one change to what SAFE means, alongside the statement rule proposed in issue #109. A third, resting on a heuristic about positional arguments to an unrecognised runner, needs its own red-first evidence: a Django-shaped fixture proving the false SAFE before the fix. Tracked as a follow-up.
 
 ### Alternative D: per-test attribution — floor only when the changed statements were covered solely by tests the narrowing selected
