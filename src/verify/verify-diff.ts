@@ -78,7 +78,7 @@ export async function verifyDiff(input: VerifyDiffInput): Promise<VerdictReport>
   // engineVersion is stamped HERE rather than inside fuseVerdict, which
   // documents itself as pure with no I/O. This is already the I/O layer.
   return {
-    ...fuseVerdict(result, changedFiles, cov, assessTestScope(input.testCmd)),
+    ...fuseVerdict(result, changedFiles, cov, assessTestScope(input.testCmd, process.env)),
     engineVersion: ENGINE_VERSION,
   };
 }

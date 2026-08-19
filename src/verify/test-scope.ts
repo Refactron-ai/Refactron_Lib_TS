@@ -361,6 +361,17 @@ interface ParsedRunner {
  *  remedy this classifier is required to leave alone. */
 const OPTION_ENV_NAMES = new Set(['PYTEST_ADDOPTS', 'VITEST_ADDOPTS', 'JEST_ADDOPTS']);
 
+/** Which runner each option-carrying variable actually feeds. The AMBIENT
+ *  environment reaches every command, so without this gate a `PYTEST_ADDOPTS`
+ *  exported in a shell would floor a vitest project's verdict for a variable its
+ *  runner never reads. Inline assignments are already scoped by position; this is
+ *  only for values arriving from the surrounding environment. */
+const OPTION_ENV_RUNNERS: Record<string, ReadonlySet<string>> = {
+  PYTEST_ADDOPTS: new Set(['pytest', 'py.test', 'unittest']),
+  VITEST_ADDOPTS: new Set(['vitest']),
+  JEST_ADDOPTS: new Set(['jest']),
+};
+
 /** Identify the runner and return its arguments, or null when unrecognised. */
 function parseRunner(tokens: string[]): ParsedRunner | null {
   let rest = tokens;
@@ -631,14 +642,64 @@ function scanArgs(table: FlagTable, args: string[]): { scope: TestScope; signals
  * form in src/verify/runners/detect.ts is whole-suite by construction: no path
  * arguments, no `-k`, no filters. That path is `full` without inspection.
  */
-export function assessTestScope(override?: string): TestScopeAssessment {
+export function assessTestScope(
+  override?: string,
+  env: Readonly<Record<string, string | undefined>> = {},
+  detectedCommand?: string,
+): TestScopeAssessment {
   // `detectRunner` guards with `if (opts.override)`, so an empty or
   // whitespace-only string is falsy there and the engine runs its OWN detected,
   // whole-suite command. Reporting `override` for that run would put a false
   // statement in a report the ADR sells as auditable history.
-  if (override === undefined || override.trim() === '') {
-    return { scope: 'full', source: 'detected', signals: [] };
+  const hasOverride = override !== undefined && override.trim() !== '';
+  const command = hasOverride ? (override as string) : (detectedCommand ?? '');
+  const source: 'detected' | 'override' = hasOverride ? 'override' : 'detected';
+
+  // A detected runner with no ambient option variables is whole-suite by
+  // construction and needs no parse.
+  if (!hasOverride && command === '') {
+    const ambient = ambientSignals(env, null);
+    return ambient.length > 0
+      ? { scope: 'narrowed', source, signals: ambient }
+      : { scope: 'full', source, signals: [] };
   }
-  const { scope, signals } = classifyTestCommand(override);
-  return { scope, source: 'override', signals };
+
+  const { scope, signals } = classifyTestCommand(command);
+  // The ambient environment reaches the runner whatever the command said, so a
+  // `full` command can still be narrowed by an exported PYTEST_ADDOPTS. Only
+  // consulted when the runner is known: `unknown` already declines to claim
+  // anything, and adding an ambient signal to it would not change the verdict.
+  if (scope === 'full') {
+    const ambient = ambientSignals(env, runnerNameOf(command));
+    if (ambient.length > 0) return { scope: 'narrowed', source, signals: ambient };
+  }
+  return { scope, source, signals };
+}
+
+/** Filters arriving from the surrounding environment rather than the command.
+ *  `runner` null means we could not resolve one, in which case every
+ *  option-carrying variable is considered, since any of them might apply. */
+function ambientSignals(
+  env: Readonly<Record<string, string | undefined>>,
+  runner: string | null,
+): string[] {
+  const out: string[] = [];
+  for (const name of OPTION_ENV_NAMES) {
+    const value = env[name];
+    if (!value || value.trim() === '') continue;
+    if (runner !== null && !OPTION_ENV_RUNNERS[name]?.has(runner)) continue;
+    const table = runner !== null ? tableFor(runner) : PYTEST;
+    if (!table) continue;
+    const inner = scanArgs(table, tokenize(value));
+    if (inner.scope === 'narrowed') {
+      out.push(`${inner.signals[0] ?? 'a filter'} (from ${name} in the environment)`);
+    }
+  }
+  return out;
+}
+
+/** The runner a command resolves to, for gating ambient variables. */
+function runnerNameOf(command: string): string | null {
+  const parsed = parseRunner(tokenize(command));
+  return parsed ? basename(parsed.name).replace(/\.py$/, '') : null;
 }

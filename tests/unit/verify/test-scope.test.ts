@@ -573,3 +573,56 @@ describe('assessTestScope', () => {
     expect(assessTestScope('make test').scope).toBe('unknown');
   });
 });
+
+// Issue #118a. The AMBIENT environment reaches the runner whatever the command
+// string says, so an exported PYTEST_ADDOPTS narrows a command that names no
+// filter. Inline assignments were already handled (#112); this is the same
+// narrowing arriving from the surrounding shell, which is the form an agent or a
+// CI env block can set without it appearing anywhere in the command.
+describe('ambient option-carrying environment (#118a)', () => {
+  it('narrows a full pytest command', () => {
+    const a = assessTestScope('python3 -m pytest -q', { PYTEST_ADDOPTS: '-k test_scale' });
+    expect(a.scope).toBe('narrowed');
+    expect(a.signals.join(' ')).toContain('PYTEST_ADDOPTS');
+  });
+
+  it('narrows a DETECTED run too, where there is no command to inspect', () => {
+    const a = assessTestScope(undefined, { PYTEST_ADDOPTS: '-k test_scale' });
+    expect(a.scope).toBe('narrowed');
+    expect(a.source).toBe('detected');
+  });
+
+  it('leaves a detected run alone when nothing is exported', () => {
+    expect(assessTestScope(undefined, {})).toEqual({
+      scope: 'full',
+      source: 'detected',
+      signals: [],
+    });
+  });
+
+  it('ignores a value that carries no filter', () => {
+    expect(
+      assessTestScope('python3 -m pytest -q', { PYTEST_ADDOPTS: '-q --strict-markers' }).scope,
+    ).toBe('full');
+    expect(assessTestScope('python3 -m pytest -q', { PYTEST_ADDOPTS: '' }).scope).toBe('full');
+  });
+
+  // The gate that stops this becoming a false `narrowed` factory: the ambient
+  // environment reaches EVERY command, so an exported PYTEST_ADDOPTS left in a
+  // shell must not floor a JS project for a variable its runner never reads.
+  it('is gated on the resolved runner', () => {
+    expect(assessTestScope('npx vitest run', { PYTEST_ADDOPTS: '-k x' }).scope).toBe('full');
+    expect(assessTestScope('npx jest', { PYTEST_ADDOPTS: '-k x' }).scope).toBe('full');
+    expect(assessTestScope('npx vitest run', { VITEST_ADDOPTS: '-t x' }).scope).toBe('narrowed');
+  });
+
+  it('does not override a command that already names a filter', () => {
+    const a = assessTestScope('pytest tests/test_a.py', { PYTEST_ADDOPTS: '-k x' });
+    expect(a.scope).toBe('narrowed');
+    expect(a.signals.join(' ')).toContain('tests/test_a.py');
+  });
+
+  it('leaves PYTHONPATH alone, which is not an option source', () => {
+    expect(assessTestScope('python3 -m pytest -q', { PYTHONPATH: '.' }).scope).toBe('full');
+  });
+});
