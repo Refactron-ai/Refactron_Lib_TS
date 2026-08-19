@@ -10,7 +10,8 @@ import { reportCoverage, normalizePath } from '../analyze/coverage/index.js';
 import { attributeChangedLines } from './coverage-attribution.js';
 import { buildStatementMap } from './statement-map.js';
 import { fuseVerdict, type CoverageAssessment, type VerdictReport } from './verdict-fuse.js';
-import { assessTestScope } from './test-scope.js';
+import { assessTestScope, type TestScopeAssessment } from './test-scope.js';
+import { detectRunner } from './runners/detect.js';
 import { ENGINE_VERSION } from '../engine-version.js';
 import { changedLinesForEdits, editsFromUnifiedDiff, type FileEdit } from './diff-input.js';
 import type { FileChange, RefactorPlan, TransformId } from '../contracts.js';
@@ -78,9 +79,26 @@ export async function verifyDiff(input: VerifyDiffInput): Promise<VerdictReport>
   // engineVersion is stamped HERE rather than inside fuseVerdict, which
   // documents itself as pure with no I/O. This is already the I/O layer.
   return {
-    ...fuseVerdict(result, changedFiles, cov, assessTestScope(input.testCmd, process.env)),
+    ...fuseVerdict(result, changedFiles, cov, await resolveTestScope(input)),
     engineVersion: ENGINE_VERSION,
   };
+}
+
+/** Resolve the scope of the run, including the runner the engine WOULD pick when
+ *  the caller supplied no command.
+ *
+ *  Without the detected command, ambient option variables were scanned with the
+ *  pytest table for every project, so a `PYTEST_ADDOPTS` left in a shell floored
+ *  a vitest project - the exact thing docs/verification/verdicts.mdx promises it
+ *  will not do. `detectRunner` is a few fs.access calls; the tests gate calls it
+ *  again with the same inputs and gets the same answer. */
+async function resolveTestScope(input: VerifyDiffInput): Promise<TestScopeAssessment> {
+  if (input.testCmd !== undefined && input.testCmd.trim() !== '') {
+    return assessTestScope(input.testCmd, process.env);
+  }
+  const spec = await detectRunner(input.repoRoot);
+  const detected = spec ? [spec.cmd, ...spec.args].join(' ') : undefined;
+  return assessTestScope(undefined, process.env, detected);
 }
 
 /** Coverage we could not establish. A fresh object each time: callers own it.
@@ -96,6 +114,17 @@ function unknownCoverage(reason?: string): CoverageAssessment {
   };
 }
 
+/** Ceiling on how many paths a reason string names before it summarises. A
+ *  reason is read by a human in a terminal and by an agent paying for context;
+ *  a 200-file reformat must not spend either on a comma-separated wall. The
+ *  shortfall is always stated, never silently dropped. */
+const REASON_FILE_CAP = 5;
+
+function listFiles(paths: string[]): string {
+  if (paths.length <= REASON_FILE_CAP) return paths.join(', ');
+  return `${paths.slice(0, REASON_FILE_CAP).join(', ')} and ${paths.length - REASON_FILE_CAP} more`;
+}
+
 async function assessCoverage(
   input: VerifyDiffInput,
   edits: FileEdit[],
@@ -107,7 +136,19 @@ async function assessCoverage(
   // false SAFE, which is forbidden. Bail to 'unknown' (→ UNPROVEN) unless every
   // edit is a `.py` file we can actually assess.
   if (pyEdits.length !== edits.length || pyEdits.length === 0) {
-    return unknownCoverage();
+    // Say WHICH files, and say it every time. A bare `unknown` here is
+    // indistinguishable from a coverage.py crash or a declined test command,
+    // and this is the most common bail of the three on real diffs: a commit
+    // touching a `.py` and its `.pyi` stub, a README, or a YAML fixture lands
+    // here, and that describes most commits. Naming the offenders is also what
+    // stops a reader concluding the tool is broken when it is working exactly
+    // as designed.
+    const nonPy = edits.filter((e) => !e.path.endsWith('.py')).map((e) => e.path);
+    return unknownCoverage(
+      nonPy.length === 0
+        ? 'the change contains no Python files, and changed-line coverage is measured only for Python (coverage.py)'
+        : `changed-line coverage is measured only for Python (coverage.py), and this change also touches ${listFiles(nonPy)}`,
+    );
   }
   const shadow = await createShadowTree(input.repoRoot, toChanges(input.repoRoot, edits));
   try {

@@ -127,14 +127,17 @@ describe('classifyTestCommand', () => {
       expect(scopeOf('python -m pytest -m slow')).toBe('narrowed');
     });
 
-    it('running a script directly with no arguments is full (changed by #115)', () => {
-      // This asserted `unknown` before #115, when parseRunner rejected the script
-      // form outright. It is now recognised: a script invoked with no arguments
-      // NAMES no filter, and that is exactly what `full` means here — the docs say
-      // `full` is a claim about the command, not a promise the run was the whole
-      // suite. Arguments after the script are a filter (see the script-form
-      // table), and any flag stays `unknown` because we cannot know its arity.
-      expect(scopeOf('python3 run_tests.py')).toBe('full');
+    it('running a script directly with no arguments is unknown', () => {
+      // Reversed twice, and the second reversal is the right one. #115 made this
+      // `full` on the reasoning that a script with no arguments NAMES no filter.
+      // Review caught the flaw: `full` is the permission to be SAFE, and we never
+      // opened the script - it may run only its unit suite. Granting the
+      // classifier's strongest claim to a file we did not read also contradicts
+      // this module's own invariant, that anything unrecognised is `unknown`.
+      //
+      // No verdict changes: `unknown` does not floor. The report simply stops
+      // asserting something it cannot know.
+      expect(scopeOf('python3 run_tests.py')).toBe('unknown');
       expect(scopeOf('python3 run_tests.py unit')).toBe('narrowed');
       expect(scopeOf('python3 run_tests.py --only unit')).toBe('unknown');
     });
@@ -465,8 +468,9 @@ describe('classifyTestCommand', () => {
     const ROWS: Array<[string, string]> = [
       ['python3 tests/runtests.py auth', 'narrowed'],
       ['python3 tests/runtests.py auth sessions', 'narrowed'],
-      ['python3 runtests.py', 'full'],
-      ['python3 tests/runtests.py', 'full'],
+      // Unknown, not full: we never opened the script. See the note above.
+      ['python3 runtests.py', 'unknown'],
+      ['python3 tests/runtests.py', 'unknown'],
       ['python3 tests/runtests.py --parallel 4', 'unknown'],
       ['python3 tests/runtests.py --verbosity=2', 'unknown'],
       ['PYTHONPATH=. python3 tests/runtests.py auth', 'narrowed'],
@@ -624,5 +628,115 @@ describe('ambient option-carrying environment (#118a)', () => {
 
   it('leaves PYTHONPATH alone, which is not an option source', () => {
     expect(assessTestScope('python3 -m pytest -q', { PYTHONPATH: '.' }).scope).toBe('full');
+  });
+});
+
+// Findings from the adversarial review of shipped 0.4.1. Each of these is a
+// command the classifier PARSES and confidently mislabels, so the documented
+// hedge ("full means this command names no filters") does not cover them.
+describe('0.4.1 classifier defects (post-release review)', () => {
+  // F1. scanArgs returned on the first unrecognised flag, discarding filters it
+  // had not read yet. `--durations-min` is stock pytest; so are --asyncio-mode,
+  // --forked, --randomly-seed. One extra token defeated the whole ADR-12 gate.
+  describe('F1: an unrecognised flag must not erase a filter behind it', () => {
+    const ROWS: Array<[string, string]> = [
+      ['python3 -m pytest -q --durations-min=0.5 tests/test_scale.py', 'narrowed'],
+      ['python3 -m pytest -q --durations-min=0.5 -k test_scale', 'narrowed'],
+      ['pytest --asyncio-mode=auto tests/test_a.py', 'narrowed'],
+      ['pytest --forked -k parser', 'narrowed'],
+      // A separated value must still be consumed, not read as a path.
+      ['pytest --randomly-seed 1234 -k parser', 'narrowed'],
+      // And with no filter present it stays unknown, preserving the ADR-12
+      // carve-out: an unrecognised plugin flag alone must not floor.
+      ['pytest --doctest-modules', 'unknown'],
+      ['pytest -q --forked', 'unknown'],
+    ];
+    for (const [cmd, want] of ROWS) {
+      it(`${want}: ${cmd}`, () => expect(scopeOf(cmd)).toBe(want));
+    }
+  });
+
+  // F2. `-s <the test root>` is unittest's canonical whole-suite spelling, and
+  // that justified treating -s as full. It does NOT generalise to an arbitrary
+  // subdirectory, and it contradicted the rule applied to `pytest tests/` one
+  // screen away in the same file.
+  describe('F2: unittest -s must not bless an arbitrary subdirectory', () => {
+    const ROWS: Array<[string, string]> = [
+      ['python3 -m unittest discover -s tests/unit', 'narrowed'],
+      ['python3 -m unittest discover -s tests -p test_scale.py', 'narrowed'],
+      ['python3 -m unittest discover --pattern test_scale.py', 'narrowed'],
+      // The whole-tree spellings stay full.
+      ['python3 -m unittest discover -s .', 'full'],
+      ['python3 -m unittest discover -s ./', 'full'],
+      ['python3 -m unittest discover', 'full'],
+    ];
+    for (const [cmd, want] of ROWS) {
+      it(`${want}: ${cmd}`, () => expect(scopeOf(cmd)).toBe(want));
+    }
+  });
+
+  // F3. SCRIPT_FORM has empty tables precisely because we know nothing about
+  // the script. Granting `full` to a file we never opened is the strongest
+  // claim the classifier makes, and it contradicts this module's own stated
+  // invariant: anything not recognised returns `unknown`, never `full`.
+  describe('F3: a script we never read cannot be full', () => {
+    it('bare script form is unknown, not full', () => {
+      expect(scopeOf('python3 runtests.py')).toBe('unknown');
+      expect(scopeOf('python3 tests/runtests.py')).toBe('unknown');
+    });
+    it('but a positional after it is still narrowing', () => {
+      expect(scopeOf('python3 tests/runtests.py auth')).toBe('narrowed');
+    });
+  });
+
+  // F4. A value flag consumed the next token unconditionally, even when that
+  // token was itself a flag - which argparse would never do. Latent only by
+  // luck: --cov collides with the outer coverage run, so it degraded to
+  // UNPROVEN rather than SAFE. One optional-value flag away from live.
+  describe('F4: a value flag must not swallow a following flag', () => {
+    const ROWS: Array<[string, string]> = [
+      ['pytest --cov --collect-only', 'narrowed'],
+      ['pytest --cov --ignore=tests/integration', 'narrowed'],
+      ['pytest --cov --lf', 'narrowed'],
+      ['pytest --cov -k parser', 'narrowed'],
+      // A real value is still consumed and must not read as a path filter.
+      ['pytest --cov src', 'full'],
+      ['pytest -n 4', 'full'],
+    ];
+    for (const [cmd, want] of ROWS) {
+      it(`${want}: ${cmd}`, () => expect(scopeOf(cmd)).toBe(want));
+    }
+  });
+});
+
+// F5. assessTestScope grew a `detectedCommand` parameter so ambient option
+// variables could be gated on the runner that actually reads them. It had ZERO
+// production callers: verify-diff passed only (testCmd, env). So on the common
+// path - no override, the default MCP case - `runner` was null and every
+// variable was scanned with the pytest table regardless of the project.
+//
+// docs/verification/verdicts.mdx states the opposite as a guarantee. The test
+// that pinned the gate only exercised the override path, so it passed while the
+// shipped path was ungated.
+describe('F5: the ambient runner gate must apply on the DETECTED path too', () => {
+  it('does not floor a vitest project for a stray PYTEST_ADDOPTS', () => {
+    expect(assessTestScope(undefined, { PYTEST_ADDOPTS: '-k x' }, 'npx vitest run').scope).toBe(
+      'full',
+    );
+    expect(assessTestScope(undefined, { PYTEST_ADDOPTS: '-k x' }, 'npx jest').scope).toBe('full');
+  });
+
+  it('still floors the runner the variable really feeds', () => {
+    expect(
+      assessTestScope(undefined, { PYTEST_ADDOPTS: '-k x' }, 'python3 -m pytest -q').scope,
+    ).toBe('narrowed');
+    expect(assessTestScope(undefined, { VITEST_ADDOPTS: '-t x' }, 'npx vitest run').scope).toBe(
+      'narrowed',
+    );
+  });
+
+  it('reports the detected source, not override', () => {
+    const a = assessTestScope(undefined, { PYTEST_ADDOPTS: '-k x' }, 'python3 -m pytest -q');
+    expect(a.source).toBe('detected');
   });
 });
