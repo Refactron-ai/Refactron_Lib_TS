@@ -1,4 +1,5 @@
 import * as fs from 'node:fs/promises';
+import { constants as fsConstants } from 'node:fs';
 import * as path from 'node:path';
 import * as os from 'node:os';
 import type { FileChange } from '../contracts.js';
@@ -78,11 +79,19 @@ async function copyTree(src: string, dest: string, skipChanged: Set<string>): Pr
       await copyTree(s, d, skipChanged);
     } else if (entry.isFile()) {
       if (skipChanged.has(path.resolve(s))) continue;
-      try {
-        await fs.link(s, d);
-      } catch {
-        await fs.copyFile(s, d);
-      }
+      // COPY, never hardlink. A hardlink shares the inode with the caller's real
+      // file, and the tests gate executes code the DIFF supplied - a diff may
+      // edit conftest.py, a fixture, or any test file. Any in-place write from
+      // that suite then lands in the user's repository, silently, while the
+      // verdict says SAFE. Reproduced: a diff naming only tests/test_app.py
+      // rewrote app.py in the source tree. It also fires by accident, on any
+      // suite with a snapshot updater or a test that writes a fixture.
+      //
+      // COPYFILE_FICLONE asks for a copy-on-write clone, so on APFS, Btrfs and
+      // XFS this keeps the speed a hardlink was chosen for while giving each
+      // tree its own inode on first write. On filesystems without reflink
+      // support the flag is ignored and this degrades to a normal copy.
+      await fs.copyFile(s, d, fsConstants.COPYFILE_FICLONE);
     } else if (entry.isSymbolicLink()) {
       // Mirror the symlink (target may be absolute or relative; either works).
       try {
