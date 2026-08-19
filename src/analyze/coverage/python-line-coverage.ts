@@ -1,4 +1,5 @@
 import { spawn } from 'node:child_process';
+import { redactEnvForRunner } from '../../verify/runners/run.js';
 import * as fs from 'node:fs/promises';
 import * as fsSync from 'node:fs';
 import * as os from 'node:os';
@@ -513,7 +514,7 @@ export async function reportCoverage(input: CoverageReportInput): Promise<Covera
     // interpreter, and probing without it declines a measurable command
     // while telling the user to install something they already have.
     const usable = await probeCoverage(plan.interpreter, input.projectRoot, {
-      ...process.env,
+      ...redactEnvForRunner(process.env),
       ...plan.env,
     });
     if (!usable) {
@@ -546,7 +547,11 @@ export async function reportCoverage(input: CoverageReportInput): Promise<Covera
   // `--data-file` is passed on argv to both `coverage run` and `coverage json`
   // below and argv beats the environment. Both are kept: the ordering states
   // the intent, `--data-file` enforces it.
-  const env = { ...process.env, ...plan.env, COVERAGE_FILE: dataFile };
+  // Redacted for the same reason as the tests gate (SEC-3): this spawn executes
+  // the repository's own test suite, which the diff under verification defines.
+  // Fixing only the gate left the leak wide open here - the end-to-end probe
+  // still read every credential - because coverage runs the suite a second time.
+  const env = { ...redactEnvForRunner(process.env), ...plan.env, COVERAGE_FILE: dataFile };
 
   const covered = new Set<string>();
   const measured = new Set<string>();
