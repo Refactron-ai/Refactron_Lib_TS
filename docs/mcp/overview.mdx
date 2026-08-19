@@ -124,8 +124,8 @@ The loop:
 3. Read the `verdict` field and act on it.
 
    SAFE     Apply the change. Report the verdict and quote the `reason`. Also
-            say what SAFE does not cover: every changed FILE had at least one
-            changed statement executed, not every changed statement. If
+            say what SAFE does not cover: your suite ran the changed code and
+            stayed green, which is only as strong as its assertions. If
             coverage.changedStatements shows a low covered/total ratio, say so
             rather than presenting SAFE as full coverage.
 
@@ -198,9 +198,9 @@ tree copies the working tree, so a diff of an already-written change will not
 apply.
 
 - `SAFE`: apply it, and report the verdict. `SAFE` means the project's tests ran
-  the changed code and stayed green. It is suite-approved, not proven correct,
-  and it is a per-file check: every changed file had at least one changed
-  statement executed, not every changed statement.
+  the changed code and stayed green. It is suite-approved, not proven correct:
+  every changed statement a test could reach was executed, but a green suite is
+  only as strong as its assertions.
 - `UNSAFE`: do not apply. Fix the change and re-verify. Never weaken a test to
   turn a verdict green.
 - `UNPROVEN`: do not apply yet. If the reason names uncovered code, write the

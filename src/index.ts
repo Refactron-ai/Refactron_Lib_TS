@@ -31,6 +31,9 @@ export type { VerifyDiffInput } from './verify/verify-diff.js';
 export type { FileEdit } from './verify/diff-input.js';
 
 export type { VerdictReport, Verdict, CoverageAssessment } from './verify/verdict-fuse.js';
+// `testScope` is on the public report, so its types must be reachable without
+// spelling NonNullable<VerdictReport['testScope']>.
+export type { TestScope, TestScopeAssessment } from './verify/test-scope.js';
 
 export { checkPythonSyntax } from './verify/checks/syntax-python.js';
 export { checkTypescriptSyntax } from './verify/checks/syntax-typescript.js';

@@ -39,21 +39,53 @@ The fusion rule:
 
 ## SAFE
 
-Every gate passed, and at least one changed **statement** in every changed file was executed by your test suite. The change is on a tested path, and that path is green.
+Every gate passed, and every changed **statement** your suite could reach was executed by it. The change is on a tested path, and that path is green.
 
-`SAFE` is a per-file check, not a per-statement one. It means every changed file had at least one changed statement run by your suite; it does not mean every changed statement ran. A file with some exercised and some unexercised changed statements still reads as covered, so `SAFE` can leave individual statements unexercised. Requiring **all** changed statements, not one per file, is the roadmap item here. Until then, read `SAFE` as "the change is on a tested path," not "every changed statement is tested."
+`SAFE` is a per-**statement** check. Every changed statement your suite could
+have executed did execute. A file with some exercised and some unexercised
+changed statements reads as `UNPROVEN`, and the reason names the ratio:
+
+```
+[UNPROVEN] Tests pass, but only 3 of 14 changed statements were exercised.
+```
+
+Statements coverage.py **excluded** are subtracted from the count rather than
+held against you. `# pragma: no cover` bodies and `if TYPE_CHECKING:` blocks can
+never be executed by any test, so requiring them would put `SAFE` out of reach
+for any change that adds a typing-only import. They are still listed in
+`coverage.uncovered`, tagged `excluded`, with a hint telling you to review them
+by hand instead of asking for an impossible test.
+
+A change consisting _entirely_ of excluded statements does not reach `SAFE`:
+there is nothing a test could have proven about it.
+
+<Note>
+  This is stricter than it was in 0.4.0. The old rule cleared a whole file as
+  soon as **one** changed statement in it ran, so a diff changing 40 statements
+  with 1 exercised returned `SAFE`. If you are comparing against stored reports,
+  a `SAFE` whose `coverage.changedStatements` shows `covered < total` was earned
+  under the old rule.
+</Note>
+
+`SAFE` also requires that the suite was not narrowed. If your `testCmd` names a
+subset of the suite, the verdict floors at `UNPROVEN` no matter how well the
+changed code is covered, because a green run of the tests you selected says
+nothing about the tests you did not. See [A narrowed test command cannot be
+SAFE](#a-narrowed-test-command-cannot-be-safe) below.
 
 `SAFE` reports still list what they did not prove. `coverage.uncovered` is always populated, and `coverage.changedStatements` gives the ratio outright:
 
 ```json
 "coverage": {
   "changedLinesCovered": true,
-  "changedStatements": { "total": 40, "covered": 12 },
-  "uncovered": [{ "file": "calc.py", "line": 31 }]
+  "changedStatements": { "total": 40, "covered": 39 },
+  "uncovered": [{ "file": "calc.py", "line": 31, "excluded": true }]
 }
 ```
 
-Twelve of forty changed statements ran. That is a real `SAFE` under the per-file rule and also a clear picture of its limits. A verdict that hid the other twenty-eight would be easier to read and worth less.
+Thirty-nine of forty changed statements ran. The fortieth sits in a `# pragma: no cover` or `if TYPE_CHECKING:` block that no test can reach, so it is subtracted from what `SAFE` requires and still listed rather than hidden. That is the only shape of gap a `SAFE` can now carry: a verdict that concealed it would be easier to read and worth less.
+
+A report showing `changedLinesCovered: true` with a genuinely unexercised statement (`"total": 40, "covered": 12` and no `excluded` flag) was produced by Refactron 0.4.0 or earlier, under the older per-file rule noted above.
 
 `SAFE` requires coverage, and [coverage is Python-only](#the-python-only-limitation). A change that isn't entirely Python can't reach `SAFE` today.
 
@@ -205,6 +237,83 @@ Refactron cannot turn a weak suite into a strong one, but it refuses to overstat
 A worked example from our own hardening runs, on a real library. Jinja2's `truncate` filter guards its early return with `if len(s) <= length + leeway`. Change that `<=` to `<` and the behavior genuinely changes: at the exact boundary the string is now truncated instead of returned whole. All 911 tests in Jinja2's suite still pass, because none of them lands on that precise boundary, and the changed line is covered, so the verdict is `SAFE`.
 
 That verdict is correct about what it claims (the suite ran this line and stayed green) and it is still not a proof of correctness. Boundary conditions are exactly where suites tend to be thin. Read `SAFE` as "your tests approve this change", then decide separately whether your tests are strong where this change lives.
+
+## A narrowed test command cannot be SAFE
+
+If you pass a `testCmd` that names a subset of the suite, the verdict floors at
+`UNPROVEN`. Coverage can report the changed code as fully exercised while the
+one test that would have caught the change was never selected.
+
+A worked example. One file, one change (`return x * 2` to `return x * 3`), and
+two tests: `test_scale` executes the changed line without pinning its value,
+`test_report` pins it and fails. Only the command differs:
+
+```bash
+# runs both tests; test_report catches the change
+python3 -m pytest -q                       # UNSAFE
+
+# runs only the weak test; the change sails through
+python3 -m pytest -q tests/test_scale.py   # UNPROVEN (previously SAFE)
+```
+
+Every changed statement executed in the second run, so coverage alone cannot
+tell the two apart. The scope of the run is what distinguishes them.
+
+Refactron classifies your command into three buckets, and reports the result on
+`testScope`:
+
+| Scope      | Meaning                                                     | Can be SAFE |
+| ---------- | ----------------------------------------------------------- | ----------- |
+| `full`     | Parsed, and names no filter                                 | yes         |
+| `narrowed` | Names a path, node id, `-k`, `-m`, `-t`, `--onlyChanged`, … | no          |
+| `unknown`  | Not recognised (`make test`, `npm test`, a flag on a wrapper script) | yes         |
+
+**Naming a directory counts as narrowing**, including `pytest tests/`. Tests can
+live outside any single directory, so Refactron cannot treat that as the whole
+suite without risking a false `SAFE`. Run the bare command (`pytest -q`) to get a
+`SAFE`-eligible verdict. `pytest .` is fine: `.` collects from the root, so it is
+never narrower than the default.
+
+For `unittest` the canonical whole-suite form is different, and Refactron treats
+it accordingly: `python3 -m unittest discover -s tests` is `full`. Bare `discover`
+starts from the current directory, so pointing it at the test directory is how a
+complete unittest run is normally written, not a narrowing of one. Naming a
+module, class or method (`python3 -m unittest tests.test_scale`) is `narrowed`.
+
+**A run that executes no tests is narrowing too.** `--collect-only` and `--help`
+exit successfully while selecting zero tests, and they still import your test
+modules, so coverage can mark module-level changed lines as executed. Those are
+classified `narrowed`.
+
+`unknown` does not floor the verdict. Most commands that land there are a full
+suite carrying a flag we do not recognise (`pytest --doctest-modules`), and
+refusing `SAFE` for every unrecognised plugin flag would be worse than the gap it
+closes. The CLI says so explicitly rather than staying quiet:
+
+```
+  note: could not determine whether the test command runs the whole suite
+        (make is not a recognised test runner, so the scope is unknown);
+        the verdict assumes it does.
+```
+
+Refactron recognises `pytest`, `unittest`, `vitest` and `jest` by name, so
+`python -m unittest tests.test_foo` and `python3 tests/runtests.py auth` are both
+`narrowed`. A **flag** on an unrecognised script stays `unknown` and is not
+floored: `python3 tests/runtests.py --parallel 4` could be a whole suite, and we
+do not know that flag well enough to guess.
+
+An exported `PYTEST_ADDOPTS` (or `VITEST_ADDOPTS` / `JEST_ADDOPTS`) **is** seen:
+its value is scanned with the same rules as the command line, and it is checked
+against the runner that variable actually feeds, so a `PYTEST_ADDOPTS` left in
+your shell will not floor a vitest project.
+
+`full` still means "this command names no filters", not "this run was the whole
+suite". Narrowing configured in `pytest.ini` `addopts` or `testpaths`, a vitest
+`include`, or a jest `testMatch` is **not** seen — Refactron reads the command
+and the environment, not your config files.
+
+The `PYTHONPATH=` prefix recommended below is **not** narrowing.
+`PYTHONPATH=. python3 -m pytest -q` classifies as `full`.
 
 ## Make sure the tests run the code being verified
 

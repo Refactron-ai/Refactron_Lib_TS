@@ -19,7 +19,7 @@ Refactron applies the diff in an isolated shadow tree, runs the syntax, imports,
 
 | Verdict    | Meaning                                                                                                   | Exit |
 | ---------- | --------------------------------------------------------------------------------------------------------- | ---- |
-| `SAFE`     | Every gate passed **and** your tests exercise the changed code (at least one changed statement per file). | `0`  |
+| `SAFE`     | Every gate passed **and** your tests exercised every coverable changed statement. | `0`  |
 | `UNSAFE`   | A gate failed: the change broke something.                                                                | `1`  |
 | `UNPROVEN` | Tests pass, but the changed code isn't exercised (or coverage couldn't be assessed).                      | `0`  |
 
@@ -148,6 +148,7 @@ This is a note, not a verdict change. A green verdict on a diff that also weaken
 ```json
 {
   "reportVersion": 1,
+  "engineVersion": "0.4.0",
   "verdict": "UNPROVEN",
   "gates": {
     "syntax": { "passed": true, "durationMs": 12 },
@@ -170,10 +171,11 @@ This is a note, not a verdict change. A green verdict on a diff that also weaken
 ```
 
 - `reportVersion`: schema version of this report. The shape below is a public contract; the version tells a consumer that stores reports which shape it is holding.
+- `engineVersion`: the version of Refactron that produced this report. The two are not interchangeable and you will want both if you keep reports as history. `reportVersion` says which **shape** you are holding. `engineVersion` says which **rules** produced the verdict, which matters because what earns a `SAFE` has changed without the shape changing: 0.4.1 stopped a narrowed `--test-cmd` from earning `SAFE`, and started requiring every coverable changed statement to have run. Absent on reports written before 0.4.1.
 - `gates`: each gate's `passed` flag and wall-clock. A failed gate also carries a `blockingReason`.
 - `testFilesChanged`: changed files matching test conventions. A note that the diff touched tests, never a verdict input.
 - `coverage.tool`: `coverage.py` when coverage was assessed, `none` when it couldn't be (non-Python diff, or no `coverage.py` installed).
-- `coverage.uncovered`: one entry per unexercised **statement**, at the statement's first line, mapped from the changed line by AST containment. A multi-line statement reports once rather than once per wrapped line. Present on `SAFE` too: the per-file rule clears `SAFE` on one exercised statement per file, so a `SAFE` change can still hold statements no test ran, and hiding them would make the verdict read stronger than it is. An entry marked `"excluded": true` sits in a `# pragma: no cover` or `if TYPE_CHECKING:` block that no test can reach.
+- `coverage.uncovered`: one entry per unexercised **statement**, at the statement's first line, mapped from the changed line by AST containment. A multi-line statement reports once rather than once per wrapped line. Present on `SAFE` too: a `SAFE` can still carry statements coverage.py **excluded**, which no test could reach, and hiding them would make the verdict read stronger than it is. An entry marked `"excluded": true` sits in a `# pragma: no cover` or `if TYPE_CHECKING:` block that no test can reach.
 - `coverage.changedStatements`: `{ total, covered }` across the whole diff, so you can read the ratio ("12 of 40 changed statements exercised") rather than only the boolean.
 - `coverage.filesWithUncovered`: distinct files with at least one uncovered statement, counted **before** the cap.
 - `coverage.inertOnlyFiles` / `coverage.removalOnlyFiles`: changed files with nothing for coverage to attest, because their added lines are all blank/comment lines, or because the file only had lines removed.

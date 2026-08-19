@@ -102,7 +102,7 @@ Point Refactron at a repo and a unified diff. The diff can come from anywhere: a
 
 What just happened:
 
-- **`SAFE`**: the gates passed _and_ your tests run the changed code (at least one changed line per file). Proven.
+- **`SAFE`**: the gates passed _and_ your tests ran every changed statement they could reach. Proven.
 - **`UNPROVEN`**: the gates passed, but the change isn't proven. Two causes, two responses:
   - A line is named in the output (`uncovered: calc.py:14`): add a test that exercises it, then re-run to earn `SAFE`.
   - The reason is "coverage of the changed code could not be determined": that's the [Python-only limit](/verification/verdicts#the-python-only-limitation) (a non-Python or mixed diff, or no `coverage.py`). The gates still passed, but no added test changes the verdict today.

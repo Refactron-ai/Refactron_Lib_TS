@@ -6,6 +6,7 @@ import {
   formatFlakyNote,
   formatUncoveredLines,
   formatCoverageSummary,
+  formatTestScopeNote,
 } from '../../../src/cli/verify-diff-command.js';
 
 describe('formatUncoveredLines', () => {
@@ -66,17 +67,19 @@ describe('formatCoverageSummary', () => {
   // still hold statements no test ran. The terminal gets the ratio; `--json` keeps
   // the full list. What it must never do is imply everything was proven.
   it('states the shortfall behind a SAFE verdict', () => {
+    // Since ADR-11 the only shortfall a SAFE can carry is statements coverage.py
+    // EXCLUDED, so the note names that cause rather than the old per-file rule.
     expect(
       formatCoverageSummary({
         tool: 'coverage.py',
         changedLinesCovered: true,
-        uncovered: [{ file: 'a.py', line: 31 }],
+        uncovered: [{ file: 'a.py', line: 31, excluded: true }],
         changedStatements: { total: 40, covered: 12 },
         filesWithUncovered: 3,
       }),
     ).toBe(
-      '  note: 12 of 40 changed statements were exercised; 28 were not across 3 files ' +
-        '(SAFE requires one per file). See --json for the list.',
+      '  note: 12 of 40 changed statements were exercised; 28 could not be across 3 files ' +
+        '(excluded from coverage). See --json for the list.',
     );
   });
 
@@ -162,5 +165,44 @@ describe('formatFlakyNote', () => {
     expect(formatFlakyNote(['t1::a', 't2::b', 't3::c', 't4::d'])).toBe(
       'note: 4 test(s) flipped on retry and were treated as flaky: t1::a, t2::b, t3::c, ...',
     );
+  });
+});
+
+// Issue #110. Unlike the other notes, this one explains a VERDICT, so it has to
+// name the signal that cost the reader their SAFE and tell them what to do.
+describe('formatTestScopeNote', () => {
+  it('is silent when the scope is absent or full', () => {
+    expect(formatTestScopeNote(undefined)).toBeNull();
+    expect(formatTestScopeNote({ scope: 'full', source: 'detected', signals: [] })).toBeNull();
+    expect(formatTestScopeNote({ scope: 'full', source: 'override', signals: [] })).toBeNull();
+  });
+
+  it('is silent for a detected runner even if unknown: the engine chose it', () => {
+    expect(formatTestScopeNote({ scope: 'unknown', source: 'detected', signals: [] })).toBeNull();
+  });
+
+  it('speaks up on an unparsed override rather than letting SAFE read as clean', () => {
+    // `unknown` does not floor the verdict, so a SAFE here rests on a command we
+    // could not parse. Silence would be the same mistake `coverage.unknownReason`
+    // exists to prevent: a failed measurement reading as a clean one.
+    const note = formatTestScopeNote({
+      scope: 'unknown',
+      source: 'override',
+      signals: ['make is not a recognised test runner, so the scope is unknown'],
+    });
+    expect(note).toContain('could not determine');
+    expect(note).toContain('make');
+    expect(note).toContain('assumes it does');
+  });
+
+  it('names the signal and says the run cannot be SAFE', () => {
+    const note = formatTestScopeNote({
+      scope: 'narrowed',
+      source: 'override',
+      signals: ['selects specific paths: tests/test_scale.py'],
+    });
+    expect(note).toContain('tests/test_scale.py');
+    expect(note).toContain('cannot be SAFE');
+    expect(note).toContain('Re-run without the filter');
   });
 });

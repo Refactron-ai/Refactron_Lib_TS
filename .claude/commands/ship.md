@@ -35,6 +35,7 @@ Then check the invariants that CI enforces late and cheaply here:
 - `node dist/cli/index.js analyze src/ --fail-on high` after a build, since our own self-analysis gate blocks the PR and has caught real style violations in new sidecar code.
 - Locked files untouched: `git diff --name-only main...HEAD | grep -E 'src/(contracts|core/models|adapters/interface)\.ts'` must be empty.
 - Commit hygiene: Conventional Commits, subjects under 72 characters, no AI names, no co-author trailers.
+- Commit granularity: one logical change per commit. Read `git log --oneline main..HEAD` and check no single commit bundles several independent fixes. A commit you could not revert without taking unrelated work with it was too big. Split it before the PR opens, not after.
 
 ## 3. Verify the work against its issue
 

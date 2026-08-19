@@ -135,11 +135,19 @@ interface FileAccumulator {
   displayPath: string;
   seen: Set<number>;
   uncovered: UncoveredStatement[];
-  exercised: boolean;
   /** Saw at least one changed line that was not inert. */
   attributable: boolean;
   /** Saw at least one changed line at all (false => removal-only). */
   hadChangedLines: boolean;
+  /** Distinct changed statements in this file. */
+  statements: number;
+  /** How many of them coverage.py saw execute. */
+  covered: number;
+  /** How many coverage.py EXCLUDED (`# pragma: no cover`, `if TYPE_CHECKING:`).
+   *  Subtracted from this file's denominator: no test can execute them, so
+   *  counting them would make SAFE unreachable for any diff adding a
+   *  typing-only import block. */
+  excluded: number;
 }
 
 export function attributeChangedLines(input: CoverageAttributionInput): CoverageAttribution {
@@ -160,9 +168,11 @@ export function attributeChangedLines(input: CoverageAttributionInput): Coverage
         displayPath: range.path,
         seen: new Set(),
         uncovered: [],
-        exercised: false,
         attributable: false,
         hadChangedLines: false,
+        statements: 0,
+        covered: 0,
+        excluded: 0,
       };
       files.set(rel, acc);
     }
@@ -188,36 +198,54 @@ export function attributeChangedLines(input: CoverageAttributionInput): Coverage
       if (acc.seen.has(key)) continue;
       acc.seen.add(key);
       changedStatements.total += 1;
+      acc.statements += 1;
 
       if (run.owner !== UNATTRIBUTABLE_OWNER && input.coveredLines.has(`${rel}:${run.owner}`)) {
         changedStatements.covered += 1;
-        acc.exercised = true;
+        acc.covered += 1;
         continue;
       }
+      const isExcluded = excluded?.has(key) === true;
+      if (isExcluded) acc.excluded += 1;
       acc.uncovered.push({
         file: acc.displayPath,
         line: key,
-        ...(excluded?.has(key) ? { excluded: true } : {}),
+        ...(isExcluded ? { excluded: true } : {}),
       });
     }
   }
 
   const inertOnlyFiles: string[] = [];
-  let allFilesExercised = true;
+  let allFilesProven = true;
   for (const acc of files.values()) {
     // A file with changed lines but nothing attributable among them has nothing
     // to attest. Same treatment as removal-only: conservative, with its own
     // bucket so the verdict reason can say what actually happened.
     if (acc.hadChangedLines && !acc.attributable) inertOnlyFiles.push(acc.displayPath);
-    if (!acc.exercised) allFilesExercised = false;
+
+    // ADR-11. A file is proven when it has at least one COVERABLE changed
+    // statement and every one of them executed.
+    //
+    // The `coverable === 0` arm is what keeps this a strict tightening. Under
+    // the old per-file rule a file with no exercised statement always blocked,
+    // which is how removal-only files (no changed lines at all) and inert-only
+    // files (blank/comment lines only) stayed conservative. A statement-ratio
+    // rule alone would let both slip through as vacuously satisfied, turning
+    // today's UNPROVEN into SAFE — a LOOSENING, and the one direction this
+    // change must never move. It also covers a file whose changed statements
+    // are ALL excluded: nothing was proven about it, and `0 === 0` must not
+    // read as proof.
+    const coverable = acc.statements - acc.excluded;
+    if (coverable === 0 || acc.covered < coverable) allFilesProven = false;
   }
 
   return {
-    // v1 heuristic, unchanged in strength: the change is covered iff EVERY
-    // changed file has at least one changed STATEMENT that executed. Documented
-    // limitation: partial per-file coverage still reads as covered, which is why
-    // `uncovered` is always disclosed and `changedStatements` carries the ratio.
-    changedLinesCovered: allFilesExercised,
+    // ADR-11: the change is covered iff EVERY changed file has at least one
+    // coverable changed statement and ALL of its coverable statements executed.
+    // The v1 rule cleared a whole file on ONE exercised statement, so a diff
+    // changing 40 statements with 1 executed read SAFE while the reason string
+    // claimed "the changed code is covered".
+    changedLinesCovered: allFilesProven,
     ...selectUncovered([...files.values()], cap, perFileCap),
     changedStatements,
     inertOnlyFiles,

@@ -70,6 +70,32 @@ export function formatTestFilesNote(testFilesChanged: string[]): string | null {
   return `note: this diff modifies test files (${testFilesChanged.length}): ${preview}${suffix}`;
 }
 
+// One-line advisory when the test command named a subset of the suite. Unlike
+// formatTestFilesNote this one explains a VERDICT: a narrowed scope disqualifies
+// SAFE (ADR-12), so the reader needs to know which signal cost them the verdict
+// and what to run instead. Returns null for a full or unparsed command.
+export function formatTestScopeNote(testScope: VerdictReport['testScope']): string | null {
+  if (!testScope) return null;
+  const signals = testScope.signals.join('; ');
+  if (testScope.scope === 'narrowed') {
+    return (
+      `  note: the test command narrowed the suite (${signals}), so this run cannot be SAFE. ` +
+      `Re-run without the filter to get a verdict on the whole suite.`
+    );
+  }
+  // An `unknown` scope does NOT change the verdict, so a SAFE here rests on a
+  // command we could not parse. Staying silent about that is the same mistake
+  // `coverage.unknownReason` exists to prevent: a failed measurement must not
+  // read as a clean one.
+  if (testScope.scope === 'unknown' && testScope.source === 'override') {
+    return (
+      `  note: could not determine whether the test command runs the whole suite` +
+      `${signals ? ` (${signals})` : ''}; the verdict assumes it does.`
+    );
+  }
+  return null;
+}
+
 // One line per unexercised STATEMENT (deduped upstream), not per physical line:
 // coverage.py attributes execution to a statement's first line, so a rewrapped
 // statement would otherwise print once per wrapped line. A capped list always
@@ -97,12 +123,12 @@ export function formatUncoveredLines(coverage: VerdictReport['coverage']): strin
   return out;
 }
 
-// What a SAFE verdict did NOT prove, in one line. SAFE clears on one exercised
-// statement per changed file, so a SAFE change can still hold statements no test
-// ran. Saying so is the difference between a verdict you can audit and one you
-// have to take on faith; suppressing it entirely is how a false SAFE stays
-// invisible. Returns null when every changed statement ran, or when there is no
-// ratio to report.
+// What a SAFE verdict did NOT prove, in one line. Since ADR-11 a SAFE requires
+// every COVERABLE changed statement to have run, so the only gap a SAFE can now
+// carry is statements coverage.py excluded (`# pragma: no cover`,
+// `if TYPE_CHECKING:`), which no test could ever reach. Saying so is the
+// difference between a verdict you can audit and one you have to take on faith.
+// Returns null when every changed statement ran, or when there is no ratio.
 export function formatCoverageSummary(coverage: VerdictReport['coverage']): string | null {
   const stats = coverage.changedStatements;
   if (!stats || stats.total === 0 || stats.covered >= stats.total) return null;
@@ -111,7 +137,7 @@ export function formatCoverageSummary(coverage: VerdictReport['coverage']): stri
   const spread = files !== undefined && files > 1 ? ` across ${files} files` : '';
   return (
     `  note: ${stats.covered} of ${stats.total} changed statements were exercised; ` +
-    `${gap} were not${spread} (SAFE requires one per file). See --json for the list.`
+    `${gap} could not be${spread} (excluded from coverage). See --json for the list.`
   );
 }
 
@@ -172,6 +198,10 @@ export async function runVerifyDiffCommand(argv: string[]): Promise<number> {
         process.stdout.write(line + '\n');
       }
     }
+    // Printed before the other notes: when the scope was narrowed it is the
+    // reason the verdict is not SAFE, so it outranks the advisories.
+    const scopeNote = formatTestScopeNote(report.testScope);
+    if (scopeNote) process.stdout.write(scopeNote + '\n');
     const note = formatTestFilesNote(report.testFilesChanged);
     if (note) process.stdout.write(note + '\n');
     const flakyNote = formatFlakyNote(report.flakyTests ?? []);

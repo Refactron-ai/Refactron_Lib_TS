@@ -130,6 +130,313 @@ async function srcLayoutFixture(): Promise<string> {
 const REORDERED_PKG =
   'def add(a, b):\n    return b + a\n\n\ndef unused_helper(a, b):\n    return a - b\n';
 
+// Issue #110. Two tests over one function: test_scale EXECUTES the changed line
+// without pinning its value, test_report pins it and therefore catches the
+// change. Narrowing the command to test_scale selects the weak test and drops
+// the one that fails, so coverage reports the changed statement as exercised
+// while the regression sails through. The full suite must reach the opposite
+// verdict on the identical diff; that contrast is the whole point of the
+// fixture, so do not "simplify" it to a single test file.
+async function narrowingFixture(): Promise<string> {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'vd-narrow-'));
+  await fs.mkdir(path.join(root, 'tests'), { recursive: true });
+  await fs.writeFile(path.join(root, 'pyproject.toml'), '[project]\nname = "narrow"\n');
+  // A rootdir conftest.py is what puts the project root on sys.path.
+  await fs.writeFile(path.join(root, 'conftest.py'), '');
+  await fs.writeFile(
+    path.join(root, 'calc.py'),
+    'def scale(x):\n    return x * 2\n\n\ndef report(x):\n    return "value=" + str(scale(x))\n',
+  );
+  await fs.writeFile(
+    path.join(root, 'tests', 'test_scale.py'),
+    'from calc import scale\n\n\ndef test_scale_returns_int():\n    assert isinstance(scale(2), int)\n',
+  );
+  await fs.writeFile(
+    path.join(root, 'tests', 'test_report.py'),
+    'from calc import report\n\n\ndef test_report_formats():\n    assert report(2) == "value=4"\n',
+  );
+  return root;
+}
+
+const SCALED_CALC =
+  'def scale(x):\n    return x * 3\n\n\ndef report(x):\n    return "value=" + str(scale(x))\n';
+
+// Issue #109 / ADR-11. `helper` is called by the suite; `report` is called by
+// nothing. Under the v1 per-file rule the single exercised statement in
+// `helper` cleared the WHOLE FILE, so a diff rewriting every line of `report`
+// read SAFE with "the changed code is covered" while ten statements had never
+// run. This is the classic false SAFE the rule change closes.
+const PARTIAL_BASE = `def helper(x):
+    return x + 1
+
+
+def report(a, b):
+    total = a + b
+    doubled = total * 2
+    tripled = doubled + total
+    label = "sum"
+    prefix = label.upper()
+    suffix = str(tripled)
+    joined = prefix + suffix
+    trimmed = joined.strip()
+    final = trimmed.lower()
+    return final
+`;
+
+// `helper` is rewritten but SEMANTICS-PRESERVING (`x + 1` -> `1 + x`), so its
+// test still passes and the tests gate stays green. That is what isolates the
+// coverage rule: the only reason this diff is not SAFE is the ten statements in
+// `report` that no test executes. Break helper's behaviour instead and the
+// verdict is UNSAFE for an unrelated reason, proving nothing.
+const PARTIAL_CHANGED = `def helper(x):
+    return 1 + x
+
+
+def report(a, b):
+    total = a - b
+    doubled = total * 3
+    tripled = doubled + total + 1
+    label = "difference"
+    prefix = label.lower()
+    suffix = str(tripled) + "!"
+    joined = suffix + prefix
+    trimmed = joined.rstrip()
+    final = trimmed.upper()
+    return final
+`;
+
+describe('SAFE requires every coverable changed statement (issue #109)', () => {
+  const roots: string[] = [];
+  afterEach(async () => {
+    for (const r of roots.splice(0)) await fs.rm(r, { recursive: true, force: true });
+  });
+
+  async function partialFixture(): Promise<string> {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'vd-partial-'));
+    roots.push(root);
+    await fs.mkdir(path.join(root, 'tests'), { recursive: true });
+    await fs.writeFile(path.join(root, 'pyproject.toml'), '[project]\nname = "partial"\n');
+    await fs.writeFile(path.join(root, 'conftest.py'), '');
+    await fs.writeFile(path.join(root, 'calc.py'), PARTIAL_BASE);
+    await fs.writeFile(
+      path.join(root, 'tests', 'test_helper.py'),
+      'from calc import helper\n\n\ndef test_helper():\n    assert helper(1) == 2\n',
+    );
+    return root;
+  }
+
+  it.skipIf(NO_COVERAGE)(
+    'one exercised statement no longer clears a file of ten unexercised ones',
+    async () => {
+      const root = await partialFixture();
+      const report = await verifyDiff({
+        repoRoot: root,
+        edits: [{ path: 'calc.py', newContent: PARTIAL_CHANGED }],
+        testCmd: TEST_CMD,
+      });
+      // Before ADR-11 this was SAFE, reason "Tests pass and the changed code is
+      // covered.", with the shortfall visible only in coverage.uncovered.
+      expect(report.verdict).toBe('UNPROVEN');
+      expect(report.coverage.tool).toBe('coverage.py');
+      const stats = report.coverage.changedStatements;
+      expect(stats).toBeDefined();
+      expect(stats!.covered).toBeLessThan(stats!.total);
+      // The reason must name the ratio: "not exercised by any test" would be
+      // false here, because helper's statement did run.
+      expect(report.reason).toContain('changed statements were exercised');
+      expect(report.reason).not.toContain('not exercised by any test');
+    },
+    120_000,
+  );
+
+  it.skipIf(NO_COVERAGE)(
+    'a fully exercised change is still SAFE',
+    async () => {
+      // The tightening must not swallow the legitimate case: change ONLY the
+      // function the suite actually calls.
+      const root = await partialFixture();
+      const report = await verifyDiff({
+        repoRoot: root,
+        edits: [
+          { path: 'calc.py', newContent: PARTIAL_BASE.replace('return x + 1', 'return x + 1 + 0') },
+        ],
+        testCmd: TEST_CMD,
+      });
+      expect(report.verdict).toBe('SAFE');
+      expect(report.coverage.changedStatements).toEqual({ total: 1, covered: 1 });
+    },
+    120_000,
+  );
+});
+
+// Issue #115. Same shape as #110 under a runner the classifier did not
+// recognise. Reproduced on main before the fix: `python3 -m unittest
+// tests.test_scale` returned SAFE with coverage 1/1 on a diff that
+// `python3 -m unittest discover -s tests` called UNSAFE.
+describe('an unparsed runner with arguments cannot earn SAFE (issue #115)', () => {
+  const roots: string[] = [];
+  afterEach(async () => {
+    for (const r of roots.splice(0)) await fs.rm(r, { recursive: true, force: true });
+  });
+
+  async function unittestFixture(): Promise<string> {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'vd-unittest-'));
+    roots.push(root);
+    await fs.mkdir(path.join(root, 'tests'), { recursive: true });
+    await fs.writeFile(path.join(root, 'pyproject.toml'), '[project]\nname = "ut"\n');
+    await fs.writeFile(path.join(root, 'conftest.py'), '');
+    await fs.writeFile(path.join(root, 'tests', '__init__.py'), '');
+    await fs.writeFile(
+      path.join(root, 'calc.py'),
+      'def scale(x):\n    return x * 2\n\n\ndef report(x):\n    return "value=" + str(scale(x))\n',
+    );
+    // Executes the changed line without pinning its value.
+    await fs.writeFile(
+      path.join(root, 'tests', 'test_scale.py'),
+      'import unittest\nfrom calc import scale\n\n\nclass T(unittest.TestCase):\n    def test_scale(self):\n        self.assertIsInstance(scale(2), int)\n',
+    );
+    // Pins it, so it catches the change.
+    await fs.writeFile(
+      path.join(root, 'tests', 'test_report.py'),
+      'import unittest\nfrom calc import report\n\n\nclass T(unittest.TestCase):\n    def test_report(self):\n        self.assertEqual(report(2), "value=4")\n',
+    );
+    return root;
+  }
+
+  const SCALED =
+    'def scale(x):\n    return x * 3\n\n\ndef report(x):\n    return "value=" + str(scale(x))\n';
+
+  async function run(testCmd: string) {
+    const root = await unittestFixture();
+    return verifyDiff({
+      repoRoot: root,
+      edits: [{ path: 'calc.py', newContent: SCALED }],
+      testCmd,
+    });
+  }
+
+  it.skipIf(NO_COVERAGE)(
+    'the whole unittest suite catches the change: UNSAFE',
+    async () => {
+      const report = await run('python3 -m unittest discover -s tests');
+      expect(report.verdict).toBe('UNSAFE');
+      expect(report.testScope?.scope).toBe('full');
+      // UNSAFE because the SUITE caught it, not because the command was rejected.
+      expect(report.gates.tests.passed).toBe(false);
+    },
+    120_000,
+  );
+
+  it.skipIf(NO_COVERAGE)(
+    'the same diff under a single unittest module is UNPROVEN, not SAFE',
+    async () => {
+      const report = await run('python3 -m unittest tests.test_scale');
+      expect(report.verdict).toBe('UNPROVEN');
+      expect(report.verdict).not.toBe('SAFE');
+      expect(report.testScope?.scope).toBe('narrowed');
+      expect(report.reason).toContain('narrowed the suite');
+      // Pin the MECHANISM, so this cannot later pass for the wrong reason. The
+      // tests gate PASSED and coverage measured every changed statement, so the
+      // scope floor is the only thing standing between this and SAFE - which is
+      // also why the ADR-11 statement rule does not cover this case.
+      expect(report.gates.tests.passed).toBe(true);
+      expect(report.coverage.tool).toBe('coverage.py');
+      expect(report.coverage.changedStatements).toEqual({ total: 1, covered: 1 });
+    },
+    120_000,
+  );
+});
+
+describe('a narrowed testCmd cannot earn SAFE (issue #110)', () => {
+  const roots: string[] = [];
+  afterEach(async () => {
+    for (const r of roots.splice(0)) await fs.rm(r, { recursive: true, force: true });
+  });
+
+  async function run(testCmd: string) {
+    const root = await narrowingFixture();
+    roots.push(root);
+    return verifyDiff({
+      repoRoot: root,
+      edits: [{ path: 'calc.py', newContent: SCALED_CALC }],
+      testCmd,
+    });
+  }
+
+  it.skipIf(NO_COVERAGE)(
+    'the full suite catches the change: UNSAFE',
+    async () => {
+      const report = await run('python3 -m pytest -q');
+      expect(report.verdict).toBe('UNSAFE');
+      expect(report.testScope).toEqual({ scope: 'full', source: 'override', signals: [] });
+    },
+    120_000,
+  );
+
+  it.skipIf(NO_COVERAGE)(
+    'the same diff under a narrowed command is UNPROVEN, not SAFE',
+    async () => {
+      const report = await run('python3 -m pytest -q tests/test_scale.py');
+      // Before this fix the identical call returned SAFE with
+      // "Tests pass and the changed code is covered." on a change that breaks
+      // tests/test_report.py.
+      expect(report.verdict).toBe('UNPROVEN');
+      expect(report.verdict).not.toBe('SAFE');
+      expect(report.testScope?.scope).toBe('narrowed');
+      expect(report.reason).toContain('narrowed the suite');
+    },
+    120_000,
+  );
+
+  // Found in review. `--collect-only` is the maximal narrowing: it selects zero
+  // tests, exits 0 so the tests gate passes on exit code alone, and still
+  // IMPORTS every test module, so coverage.py marks module-level changed lines
+  // as executed. Before the fix this returned SAFE with coverage 1/1 on a diff
+  // the full suite calls UNSAFE. The fixture uses a module-level constant
+  // because that is what collection alone can execute.
+  it.skipIf(NO_COVERAGE)(
+    'a collect-only run selects zero tests and cannot be SAFE',
+    async () => {
+      const root = await fs.mkdtemp(path.join(os.tmpdir(), 'vd-collect-'));
+      roots.push(root);
+      await fs.mkdir(path.join(root, 'tests'), { recursive: true });
+      await fs.writeFile(path.join(root, 'pyproject.toml'), '[project]\nname = "co"\n');
+      await fs.writeFile(path.join(root, 'conftest.py'), '');
+      await fs.writeFile(
+        path.join(root, 'calc.py'),
+        'LIMIT = 4\n\n\ndef limit():\n    return LIMIT\n',
+      );
+      await fs.writeFile(
+        path.join(root, 'tests', 'test_limit.py'),
+        'from calc import limit\n\n\ndef test_limit():\n    assert limit() == 4\n',
+      );
+      const report = await verifyDiff({
+        repoRoot: root,
+        edits: [{ path: 'calc.py', newContent: 'LIMIT = 6\n\n\ndef limit():\n    return LIMIT\n' }],
+        testCmd: 'python3 -m pytest -q --collect-only',
+      });
+      expect(report.verdict).not.toBe('SAFE');
+      expect(report.testScope?.scope).toBe('narrowed');
+    },
+    120_000,
+  );
+
+  // CHARACTERIZATION, not regression: this one passes on main too, by design.
+  // It is here to pin the fact that makes #110 and #109 independent, so a later
+  // reader cannot conclude that the statement-coverage rule subsumes this fix.
+  it.skipIf(NO_COVERAGE)(
+    'the narrowed run still measured full statement coverage, so #109 would not have caught it',
+    async () => {
+      const report = await run('python3 -m pytest -q tests/test_scale.py');
+      // Every changed statement DID execute under the narrowed command, so a
+      // stricter statement-coverage rule leaves this false SAFE untouched.
+      expect(report.coverage.tool).toBe('coverage.py');
+      expect(report.coverage.changedStatements).toEqual({ total: 1, covered: 1 });
+    },
+    120_000,
+  );
+});
+
 describe('verifyDiff with a NAME=VALUE prefix on testCmd (issue #95)', () => {
   // Restored in afterEach, NOT in a finally inside the test body. vitest marks a
   // timed-out test failed and moves on WITHOUT waiting for the awaited call to
@@ -683,10 +990,15 @@ describe('verifyDiff (python three-way, real coverage)', () => {
       180_000,
     );
 
-    // A SAFE report must still disclose the changed statements that provably did
-    // not run. Suppressing them is what made the false SAFE invisible.
+    // VERDICT CHANGED BY ADR-11 (issue #109), deliberately. This fixture pairs a
+    // covered edit with a behaviour break inside a function no test calls, and
+    // it used to assert SAFE: the per-file rule let the one exercised statement
+    // clear the file. That is the false SAFE the statement rule closes, so the
+    // expectation is inverted rather than the test deleted. Everything it was
+    // originally written to prove — that the report still DISCLOSES what it did
+    // not run — is asserted unchanged below.
     it.skipIf(NO_COVERAGE)(
-      'a SAFE verdict still discloses its unexercised statements and the ratio',
+      'a partially exercised change is UNPROVEN and discloses the ratio',
       async () => {
         const report = await runInert(
           (await inertSource())
@@ -696,9 +1008,10 @@ describe('verifyDiff (python three-way, real coverage)', () => {
             )
             .replace(...BREAK_UNTESTED),
         );
-        expect(report.verdict).toBe('SAFE');
+        expect(report.verdict).toBe('UNPROVEN');
         expect(report.coverage.uncovered).toEqual([{ file: 'mod.py', line: 11 }]);
         expect(report.coverage.changedStatements).toEqual({ total: 2, covered: 1 });
+        expect(report.reason).toContain('1 of 2 changed statements were exercised');
         expect(report.reportVersion).toBe(1);
       },
       180_000,
