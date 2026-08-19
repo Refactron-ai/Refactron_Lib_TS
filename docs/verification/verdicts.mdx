@@ -68,9 +68,9 @@ there is nothing a test could have proven about it.
 </Note>
 
 `SAFE` also requires that the suite was not narrowed. If your `testCmd` names a
-subset of the suite, the verdict floors at `UNPROVEN` no matter how well the
-changed code is covered, because a green run of the tests you selected says
-nothing about the tests you did not. See [A narrowed test command cannot be
+subset of the suite, the verdict floors at `UNPROVEN` however well the changed
+code is covered, because a green run of the tests you selected says nothing
+about the tests you did not. See [A narrowed test command cannot be
 SAFE](#a-narrowed-test-command-cannot-be-safe) below.
 
 `SAFE` reports still list what they did not prove. `coverage.uncovered` is always populated, and `coverage.changedStatements` gives the ratio outright:
@@ -243,6 +243,16 @@ That verdict is correct about what it claims (the suite ran this line and stayed
 If you pass a `testCmd` that names a subset of the suite, the verdict floors at
 `UNPROVEN`. Coverage can report the changed code as fully exercised while the
 one test that would have caught the change was never selected.
+
+<Note>
+  **What this check can and cannot see.** Refactron reads the command string and
+  the environment. It recognises `pytest`, `unittest`, `vitest` and `jest` and
+  their common flags — but not every flag of every plugin. A command carrying an
+  option it does not recognise is reported `unknown` rather than `full`, and
+  `unknown` does not floor the verdict. Treat this as a strong check on the
+  shapes it knows, not a guarantee that no narrowing can ever reach `SAFE`. If
+  you need certainty, run the bare command.
+</Note>
 
 A worked example. One file, one change (`return x * 2` to `return x * 3`), and
 two tests: `test_scale` executes the changed line without pinning its value,
