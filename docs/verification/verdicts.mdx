@@ -266,13 +266,19 @@ Refactron classifies your command into three buckets, and reports the result on
 | ---------- | ----------------------------------------------------------- | ----------- |
 | `full`     | Parsed, and names no filter                                 | yes         |
 | `narrowed` | Names a path, node id, `-k`, `-m`, `-t`, `--onlyChanged`, … | no          |
-| `unknown`  | Not recognised (`make test`, `npm test`, a wrapper script)  | yes         |
+| `unknown`  | Not recognised (`make test`, `npm test`, a flag on a wrapper script) | yes         |
 
 **Naming a directory counts as narrowing**, including `pytest tests/`. Tests can
 live outside any single directory, so Refactron cannot treat that as the whole
 suite without risking a false `SAFE`. Run the bare command (`pytest -q`) to get a
 `SAFE`-eligible verdict. `pytest .` is fine: `.` collects from the root, so it is
 never narrower than the default.
+
+For `unittest` the canonical whole-suite form is different, and Refactron treats
+it accordingly: `python3 -m unittest discover -s tests` is `full`. Bare `discover`
+starts from the current directory, so pointing it at the test directory is how a
+complete unittest run is normally written, not a narrowing of one. Naming a
+module, class or method (`python3 -m unittest tests.test_scale`) is `narrowed`.
 
 **A run that executes no tests is narrowing too.** `--collect-only` and `--help`
 exit successfully while selecting zero tests, and they still import your test
@@ -290,11 +296,15 @@ closes. The CLI says so explicitly rather than staying quiet:
         the verdict assumes it does.
 ```
 
-This is a real gap, and two shapes fall into it: `python -m unittest tests.test_foo`
-and `python3 tests/runtests.py auth` both narrow and both classify `unknown`.
+Refactron recognises `pytest`, `unittest`, `vitest` and `jest` by name, so
+`python -m unittest tests.test_foo` and `python3 tests/runtests.py auth` are both
+`narrowed`. A **flag** on an unrecognised script stays `unknown` and is not
+floored: `python3 tests/runtests.py --parallel 4` could be a whole suite, and we
+do not know that flag well enough to guess.
+
 `full` also means "this command names no filters", not "this run was the whole
-suite" — narrowing configured in `pytest.ini` `addopts`, `PYTEST_ADDOPTS`, or a
-vitest `include` is invisible here.
+suite" — narrowing configured in `pytest.ini` `addopts`, an exported
+`PYTEST_ADDOPTS`, or a vitest `include` is invisible here.
 
 The `PYTHONPATH=` prefix recommended below is **not** narrowing.
 `PYTHONPATH=. python3 -m pytest -q` classifies as `full`.

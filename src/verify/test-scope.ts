@@ -161,6 +161,44 @@ const PYTEST: FlagTable = {
   subcommands: new Set(),
 };
 
+// Transcribed from `python3 -m unittest --help` on Python 3.13, not from memory.
+// The main form takes `[tests ...]` positionals documented as "a list of any
+// number of test modules, classes and test methods" - narrowing by definition.
+// The `discover` subform adds -s/-p/-t.
+const UNITTEST: FlagTable = {
+  narrowingLong: new Set([
+    // Exits without running anything, same rule as pytest's --collect-only.
+    '--help',
+  ]),
+  // -k is "Only run tests which match the given substring".
+  narrowingShort: new Set(['-k', '-h']),
+  valueLong: new Set(['--durations', '--start-directory', '--pattern', '--top-level-directory']),
+  boolLong: new Set(['--verbose', '--quiet', '--locals', '--failfast', '--catch', '--buffer']),
+  // -s is the CANONICAL whole-suite spelling for unittest, unlike `pytest
+  // tests/`: bare `discover` starts from `.`, so pointing it at the test
+  // directory is how a full unittest run is normally written. Flooring it would
+  // put SAFE out of reach for essentially every unittest project.
+  //
+  // KNOWN UNDER-FLOOR: -p/--pattern with a non-default value does narrow
+  // discovery, and we treat it as an ordinary value flag. Detecting "non-default"
+  // reliably is not worth a false `narrowed`; recorded in ADR-12.
+  valueShort: new Set(['-s', '-p', '-t']),
+  boolShort: new Set(['-v', '-q', '-f', '-c', '-b']),
+  subcommands: new Set(['discover']),
+};
+
+/** A runner we can locate but whose CLI we do not model: `python3 script.py`.
+ *  Empty tables on purpose - see the script-form branch in parseRunner. */
+const SCRIPT_FORM: FlagTable = {
+  narrowingLong: new Set(),
+  narrowingShort: new Set(),
+  valueLong: new Set(),
+  boolLong: new Set(),
+  valueShort: new Set(),
+  boolShort: new Set(),
+  subcommands: new Set(),
+};
+
 const VITEST: FlagTable = {
   narrowingLong: new Set([
     '--testNamePattern',
@@ -395,11 +433,25 @@ function parseRunner(tokens: string[]): ParsedRunner | null {
   // confused with it. Getting this wrong would classify `python3 -m pytest -q`,
   // the single most common Python test command, as narrowed.
   if (/^python[0-9.]*$/.test(head)) {
-    if (rest[1] !== '-m' || rest.length < 3) return null; // running a script: unknown
-    const moduleName = rest[2] as string;
-    const table = tableFor(moduleName);
-    if (!table) return null;
-    return { table, name: moduleName, args: rest.slice(3), optionEnvValues };
+    if (rest[1] === '-m' && rest.length >= 3) {
+      const moduleName = rest[2] as string;
+      const table = tableFor(moduleName);
+      if (!table) return null;
+      return { table, name: moduleName, args: rest.slice(3), optionEnvValues };
+    }
+    // Script form: `python3 tests/runtests.py [args]`. Django's canonical
+    // invocation, and a shape that reached SAFE while narrowed (issue #115).
+    //
+    // We know nothing about this script's flags, so we cannot know any flag's
+    // ARITY. SCRIPT_FORM therefore declares no flags at all: the scanner treats a
+    // bare word as a filter and anything starting with `-` as unrecognised, which
+    // yields `unknown`. That deliberately UNDER-floors `runtests.py --parallel 4`
+    // — the safe direction, since guessing an arity could read a flag's value as a
+    // path and steal a deserved SAFE. Recorded as a residual hole in ADR-12.
+    if (rest.length >= 2 && /\.py$/.test(rest[1] as string)) {
+      return { table: SCRIPT_FORM, name: rest[1] as string, args: rest.slice(2), optionEnvValues };
+    }
+    return null;
   }
 
   const table = tableFor(head);
@@ -435,6 +487,7 @@ function isNarrowingIniOverride(flag: string, value: string): boolean {
 
 function tableFor(name: string): FlagTable | null {
   if (name === 'pytest' || name === 'py.test') return PYTEST;
+  if (name === 'unittest') return UNITTEST;
   if (name === 'vitest') return VITEST;
   if (name === 'jest') return JEST;
   return null;

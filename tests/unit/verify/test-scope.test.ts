@@ -127,8 +127,16 @@ describe('classifyTestCommand', () => {
       expect(scopeOf('python -m pytest -m slow')).toBe('narrowed');
     });
 
-    it('running a script directly is unknown, not full', () => {
-      expect(scopeOf('python3 run_tests.py')).toBe('unknown');
+    it('running a script directly with no arguments is full (changed by #115)', () => {
+      // This asserted `unknown` before #115, when parseRunner rejected the script
+      // form outright. It is now recognised: a script invoked with no arguments
+      // NAMES no filter, and that is exactly what `full` means here — the docs say
+      // `full` is a claim about the command, not a promise the run was the whole
+      // suite. Arguments after the script are a filter (see the script-form
+      // table), and any flag stays `unknown` because we cannot know its arity.
+      expect(scopeOf('python3 run_tests.py')).toBe('full');
+      expect(scopeOf('python3 run_tests.py unit')).toBe('narrowed');
+      expect(scopeOf('python3 run_tests.py --only unit')).toBe('unknown');
     });
   });
 
@@ -392,6 +400,99 @@ describe('classifyTestCommand', () => {
     for (const cmd of ROWS) {
       it(`narrowed: ${cmd}`, () => {
         expect(scopeOf(cmd)).toBe('narrowed');
+      });
+    }
+  });
+
+  // Issue #115. An unrecognised runner carrying arguments narrows and still
+  // reached SAFE. Reproduced on main: `python3 -m unittest tests.test_scale`
+  // returned SAFE on a diff that `python3 -m unittest discover -s tests` called
+  // UNSAFE.
+  //
+  // Built as two RECOGNITIONS rather than one heuristic. "Floor any unrecognised
+  // runner with a positional argument" is undecidable: for an unrecognised runner
+  // you do not know any flag's arity, so you cannot tell a positional from a
+  // flag's value — and `unittest discover -s tests` proves it, where `discover`
+  // is a bare word and `tests` is -s's value. Reading that as a filter would
+  // floor a whole suite and steal a deserved SAFE.
+  //
+  // Table taken from `python3 -m unittest --help` on 3.13, not from memory.
+  describe('unittest is a recognised runner (#115)', () => {
+    const ROWS: Array<[string, string]> = [
+      // Positionals are test modules, classes or methods: narrowing.
+      ['python3 -m unittest tests.test_scale', 'narrowed'],
+      ['python3 -m unittest module.TestClass', 'narrowed'],
+      ['python3 -m unittest module.Class.test_method', 'narrowed'],
+      ['python -m unittest tests/test_file.py', 'narrowed'],
+      // -k is documented as "Only run tests which match the given substring".
+      ['python3 -m unittest -k parser', 'narrowed'],
+      ['python3 -m unittest discover -k parser', 'narrowed'],
+      // Zero-test runs, same rule as pytest's --collect-only.
+      ['python3 -m unittest -h', 'narrowed'],
+      ['python3 -m unittest --help', 'narrowed'],
+      // `discover` is a SUBCOMMAND, not a filter.
+      ['python3 -m unittest discover', 'full'],
+      // -s/-t/-p take values. `-s tests` is the CANONICAL whole-suite form for
+      // unittest, unlike `pytest tests/`: bare `discover` starts from `.`, so
+      // pointing it at the test directory is how a full unittest run is spelled.
+      ['python3 -m unittest discover -s tests', 'full'],
+      ['python3 -m unittest discover -s tests -t .', 'full'],
+      ['python3 -m unittest discover --start-directory tests', 'full'],
+      // Ordinary boolean flags.
+      ['python3 -m unittest discover -v', 'full'],
+      ['python3 -m unittest -q --locals', 'full'],
+      ['python3 -m unittest -f -c -b', 'full'],
+      ['python3 -m unittest --durations 5', 'full'],
+      // Arity proof: a value flag must not swallow a following positional.
+      ['python3 -m unittest discover -s tests tests.test_scale', 'narrowed'],
+      ['python3 -m unittest --durations 5 tests.test_scale', 'narrowed'],
+      // An unrecognised flag stays unknown, never a confident full.
+      ['python3 -m unittest --some-future-flag', 'unknown'],
+    ];
+    for (const [cmd, want] of ROWS) {
+      it(`${want}: ${cmd}`, () => {
+        expect(scopeOf(cmd)).toBe(want);
+      });
+    }
+  });
+
+  // The second recognition: `python3 path/to/script.py <args>`, which
+  // parseRunner rejected outright. Django's `runtests.py auth` is the shape that
+  // matters. Rule: no args -> full; a bare positional -> narrowed; ANY flag ->
+  // unknown, because we do not know that flag's arity and guessing could steal a
+  // SAFE. That last row deliberately UNDER-floors, which is the safe direction.
+  describe('script-form runners (#115)', () => {
+    const ROWS: Array<[string, string]> = [
+      ['python3 tests/runtests.py auth', 'narrowed'],
+      ['python3 tests/runtests.py auth sessions', 'narrowed'],
+      ['python3 runtests.py', 'full'],
+      ['python3 tests/runtests.py', 'full'],
+      ['python3 tests/runtests.py --parallel 4', 'unknown'],
+      ['python3 tests/runtests.py --verbosity=2', 'unknown'],
+      ['PYTHONPATH=. python3 tests/runtests.py auth', 'narrowed'],
+    ];
+    for (const [cmd, want] of ROWS) {
+      it(`${want}: ${cmd}`, () => {
+        expect(scopeOf(cmd)).toBe(want);
+      });
+    }
+  });
+
+  // The carve-out ADR-12 bought with the `unknown` policy must survive: a
+  // RECOGNISED runner carrying an unrecognised flag is a full suite in fact, and
+  // flooring it would turn every plugin flag in the wild into a SAFE-killer.
+  describe('#115 must not touch the ADR-12 unknown carve-out', () => {
+    const UNKNOWN_UNFLOORED = [
+      'pytest --doctest-modules',
+      'pytest -q --forked',
+      'make test',
+      'npm test',
+      'tox',
+      './run-tests.sh',
+    ];
+    for (const cmd of UNKNOWN_UNFLOORED) {
+      it(`still unknown: ${cmd}`, () => {
+        expect(scopeOf(cmd)).toBe('unknown');
       });
     }
   });

@@ -269,6 +269,84 @@ describe('SAFE requires every coverable changed statement (issue #109)', () => {
   );
 });
 
+// Issue #115. Same shape as #110 under a runner the classifier did not
+// recognise. Reproduced on main before the fix: `python3 -m unittest
+// tests.test_scale` returned SAFE with coverage 1/1 on a diff that
+// `python3 -m unittest discover -s tests` called UNSAFE.
+describe('an unparsed runner with arguments cannot earn SAFE (issue #115)', () => {
+  const roots: string[] = [];
+  afterEach(async () => {
+    for (const r of roots.splice(0)) await fs.rm(r, { recursive: true, force: true });
+  });
+
+  async function unittestFixture(): Promise<string> {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'vd-unittest-'));
+    roots.push(root);
+    await fs.mkdir(path.join(root, 'tests'), { recursive: true });
+    await fs.writeFile(path.join(root, 'pyproject.toml'), '[project]\nname = "ut"\n');
+    await fs.writeFile(path.join(root, 'conftest.py'), '');
+    await fs.writeFile(path.join(root, 'tests', '__init__.py'), '');
+    await fs.writeFile(
+      path.join(root, 'calc.py'),
+      'def scale(x):\n    return x * 2\n\n\ndef report(x):\n    return "value=" + str(scale(x))\n',
+    );
+    // Executes the changed line without pinning its value.
+    await fs.writeFile(
+      path.join(root, 'tests', 'test_scale.py'),
+      'import unittest\nfrom calc import scale\n\n\nclass T(unittest.TestCase):\n    def test_scale(self):\n        self.assertIsInstance(scale(2), int)\n',
+    );
+    // Pins it, so it catches the change.
+    await fs.writeFile(
+      path.join(root, 'tests', 'test_report.py'),
+      'import unittest\nfrom calc import report\n\n\nclass T(unittest.TestCase):\n    def test_report(self):\n        self.assertEqual(report(2), "value=4")\n',
+    );
+    return root;
+  }
+
+  const SCALED =
+    'def scale(x):\n    return x * 3\n\n\ndef report(x):\n    return "value=" + str(scale(x))\n';
+
+  async function run(testCmd: string) {
+    const root = await unittestFixture();
+    return verifyDiff({
+      repoRoot: root,
+      edits: [{ path: 'calc.py', newContent: SCALED }],
+      testCmd,
+    });
+  }
+
+  it.skipIf(NO_COVERAGE)(
+    'the whole unittest suite catches the change: UNSAFE',
+    async () => {
+      const report = await run('python3 -m unittest discover -s tests');
+      expect(report.verdict).toBe('UNSAFE');
+      expect(report.testScope?.scope).toBe('full');
+      // UNSAFE because the SUITE caught it, not because the command was rejected.
+      expect(report.gates.tests.passed).toBe(false);
+    },
+    120_000,
+  );
+
+  it.skipIf(NO_COVERAGE)(
+    'the same diff under a single unittest module is UNPROVEN, not SAFE',
+    async () => {
+      const report = await run('python3 -m unittest tests.test_scale');
+      expect(report.verdict).toBe('UNPROVEN');
+      expect(report.verdict).not.toBe('SAFE');
+      expect(report.testScope?.scope).toBe('narrowed');
+      expect(report.reason).toContain('narrowed the suite');
+      // Pin the MECHANISM, so this cannot later pass for the wrong reason. The
+      // tests gate PASSED and coverage measured every changed statement, so the
+      // scope floor is the only thing standing between this and SAFE - which is
+      // also why the ADR-11 statement rule does not cover this case.
+      expect(report.gates.tests.passed).toBe(true);
+      expect(report.coverage.tool).toBe('coverage.py');
+      expect(report.coverage.changedStatements).toEqual({ total: 1, covered: 1 });
+    },
+    120_000,
+  );
+});
+
 describe('a narrowed testCmd cannot earn SAFE (issue #110)', () => {
   const roots: string[] = [];
   afterEach(async () => {
