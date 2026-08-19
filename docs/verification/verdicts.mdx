@@ -302,9 +302,15 @@ Refactron recognises `pytest`, `unittest`, `vitest` and `jest` by name, so
 floored: `python3 tests/runtests.py --parallel 4` could be a whole suite, and we
 do not know that flag well enough to guess.
 
-`full` also means "this command names no filters", not "this run was the whole
-suite" — narrowing configured in `pytest.ini` `addopts`, an exported
-`PYTEST_ADDOPTS`, or a vitest `include` is invisible here.
+An exported `PYTEST_ADDOPTS` (or `VITEST_ADDOPTS` / `JEST_ADDOPTS`) **is** seen:
+its value is scanned with the same rules as the command line, and it is checked
+against the runner that variable actually feeds, so a `PYTEST_ADDOPTS` left in
+your shell will not floor a vitest project.
+
+`full` still means "this command names no filters", not "this run was the whole
+suite". Narrowing configured in `pytest.ini` `addopts` or `testpaths`, a vitest
+`include`, or a jest `testMatch` is **not** seen — Refactron reads the command
+and the environment, not your config files.
 
 The `PYTHONPATH=` prefix recommended below is **not** narrowing.
 `PYTHONPATH=. python3 -m pytest -q` classifies as `full`.
