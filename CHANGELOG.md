@@ -7,6 +7,79 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [0.4.2] — 2026-08-19
+
+### Security
+
+**Refactron could write to your working tree. Update immediately.**
+
+The shadow tree was populated with **hardlinks**, so every file your diff did not
+change shared an inode with your real file. The tests gate then runs the test
+suite *as the diff defines it* — and a diff may edit `conftest.py`, a fixture, or
+any test file. Any in-place write from that suite went straight through into your
+repository, and the verdict said `SAFE` while it happened.
+
+**This did not require an attacker.** Any suite with a snapshot updater, a golden-
+file regenerator, or a test that writes a fixture could silently modify the
+repository being verified.
+
+- **Affected:** every published version, `0.1.0-beta.2` through `0.4.1`, on npm
+  and PyPI.
+- **Reachable from:** the CLI, and the MCP `verify_change` tool, which applies no
+  authentication.
+- **Contradicts:** the guarantee stated in the README, the docs and
+  `SECURITY.md` — "your working tree is never touched" — which was false for the
+  entire life of the product.
+- **Fixed by:** copying instead of hardlinking. `COPYFILE_FICLONE` keeps the
+  speed on APFS, Btrfs and XFS; elsewhere it degrades to a normal copy. Measured
+  at 522–568ms on a 601-module repository, against a verification that already
+  costs three suite runs.
+
+Two related fixes in the same path:
+
+- **Shadow-tree containment could be escaped by a symlink.** The check was
+  lexical (`path.relative(...).startsWith('..')`), which correctly refuses `../`
+  and absolute paths but not a repository symlink pointing outside itself.
+  Containment is now resolved with `realpath`, and escaping symlinks are no
+  longer mirrored into the shadow tree.
+- **A rejected change leaked a full copy of your source.** The shadow tree is
+  populated before the containment check, and nothing cleaned it up on the throw
+  path, so a complete copy of the repository survived in the temp directory.
+
+Working-tree immunity and shadow-tree containment now have tests. They did not
+before, which is how this survived four minor releases.
+
+### Fixed — four more false `SAFE` verdicts in the 0.4.1 narrowing check
+
+Found by an adversarial review of the 0.4.1 release itself. All four are commands
+the classifier parsed and confidently mislabelled, so the documented hedge did not
+cover them. None is a regression — 0.4.0 also returns `SAFE` — but 0.4.1 wrote an
+affirmative `testScope` into the report while doing it.
+
+| Command | Was | Now |
+| --- | --- | --- |
+| `pytest -q --durations-min=0.5 tests/test_a.py` | `SAFE` | `UNPROVEN` |
+| `python3 -m unittest discover -s tests/unit` | `SAFE` | `UNPROVEN` |
+| `pytest --cov --collect-only` | `full` | `narrowed` |
+| `python3 runtests.py` | `full` | `unknown` |
+
+The first is the serious one: the scanner stopped at the first flag it did not
+recognise and discarded any filter after it, so a single stock pytest flag
+disabled the whole check.
+
+Also fixed: ambient `PYTEST_ADDOPTS` was scanned with the pytest flag table for
+every project, including vitest and jest ones, because the runner gate added in
+0.4.1 was never wired to the code path that uses it.
+
+### Changed
+
+The docs no longer state the narrowing check as an absolute. It is a strong check
+on the runners and flags Refactron knows; a command using an unrecognised plugin
+flag reports `unknown`, and `unknown` does not cap the verdict. Run the bare
+command if you need certainty.
+
+---
+
 ## [0.4.1] — 2026-08-19
 
 **Read this one.** Nothing about the report's shape changed, so a version number

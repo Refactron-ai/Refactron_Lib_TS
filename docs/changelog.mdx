@@ -7,6 +7,44 @@ description: Release history for Refactron, newest first.
 Refactron follows [Semantic Versioning](https://semver.org/). The full,
 unabridged log lives in [`CHANGELOG.md`](https://github.com/Refactron-ai/refactron/blob/main/CHANGELOG.md).
 
+<Update label="0.4.2" description="August 19, 2026">
+  **Security: Refactron could write to your working tree. Update immediately.**
+
+  The shadow tree was populated with **hardlinks**, so every file your diff did
+  not change shared an inode with your real file. The tests gate runs the suite
+  *as the diff defines it* — and a diff may edit `conftest.py`, a fixture, or any
+  test file — so any in-place write from that suite went straight into your
+  repository. The verdict said `SAFE` while it happened.
+
+  **No attacker required.** Any suite with a snapshot updater, a golden-file
+  regenerator, or a test that writes a fixture could silently modify the
+  repository being verified.
+
+  Affected: every published version, `0.1.0-beta.2` through `0.4.1`, on npm and
+  PyPI. Reachable from the CLI and from the MCP `verify_change` tool, which
+  applies no authentication. It contradicts the guarantee the README, the docs and
+  `SECURITY.md` all state — "your working tree is never touched" — which was false
+  for the entire life of the product.
+
+  Fixed by copying instead of hardlinking, with copy-on-write where the
+  filesystem supports it. Two related fixes ship with it: shadow-tree containment
+  could be escaped by a repository symlink pointing outside itself, and a rejected
+  change left a full copy of your source in the temp directory. Both now have
+  tests; neither did before, which is how this survived four minor releases.
+
+  **Also fixed: four more false `SAFE` verdicts** in the 0.4.1 narrowing check,
+  found by an adversarial review of that release. The serious one is that the
+  command scanner stopped at the first flag it did not recognise and discarded
+  any filter after it — so `pytest -q --durations-min=0.5 tests/test_a.py`, using
+  a stock pytest flag, returned `SAFE`. Also `unittest discover -s tests/unit`,
+  `pytest --cov --collect-only`, and a bare `runtests.py` being granted the
+  classifier's strongest claim about a file it never opened.
+
+  The docs no longer state the narrowing check as an absolute: it is a strong
+  check on the runners and flags Refactron knows, not a guarantee. Run the bare
+  command if you need certainty.
+</Update>
+
 <Update label="0.4.1" description="August 19, 2026">
   **Five false `SAFE` verdicts fixed, and `SAFE` now means something narrower.**
   The report's shape did not change, so the version number alone will not tell

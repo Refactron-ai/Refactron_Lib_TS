@@ -345,6 +345,9 @@ interface ParsedRunner {
   table: FlagTable;
   name: string;
   args: string[];
+  /** Set when the runner was located but its CLI is unmodelled: a clean scan
+   *  yields `unknown`, never `full`. */
+  neverFull?: boolean;
   /** Values of leading NAME=VALUE assignments whose variable feeds ARGUMENTS to
    *  the runner. Stripping these unexamined produced a false SAFE:
    *  `PYTEST_ADDOPTS="-k test_scale" python3 -m pytest -q` ran only the matching
@@ -460,7 +463,17 @@ function parseRunner(tokens: string[]): ParsedRunner | null {
     // — the safe direction, since guessing an arity could read a flag's value as a
     // path and steal a deserved SAFE. Recorded as a residual hole in ADR-12.
     if (rest.length >= 2 && /\.py$/.test(rest[1] as string)) {
-      return { table: SCRIPT_FORM, name: rest[1] as string, args: rest.slice(2), optionEnvValues };
+      return {
+        table: SCRIPT_FORM,
+        name: rest[1] as string,
+        args: rest.slice(2),
+        optionEnvValues,
+        // We never opened this file, so `full` - the strongest claim the
+        // classifier makes - is not ours to give. With no arguments the run is
+        // `unknown`, which does not floor the verdict, so nothing changes except
+        // that the report stops asserting something it cannot know.
+        neverFull: true,
+      };
     }
     return null;
   }
@@ -485,6 +498,37 @@ function unknownRunnerSignal(tokens: string[]): string {
  *  repo can hold tests outside it, and calling that `full` would be a false
  *  SAFE, the unforgivable direction. */
 const WHOLE_TREE_POSITIONALS = new Set(['.', './']);
+
+/** unittest's discovery options. `-s <the test root>` is the canonical
+ *  whole-suite spelling and must stay `full` - flooring it would put SAFE out
+ *  of reach for essentially every unittest project. But that argument only
+ *  holds for the ROOT: `-s tests/unit` selects a subdirectory and is a
+ *  narrowing, exactly as `pytest tests/` is. An explicit `-p`/`--pattern`
+ *  restricts which files discovery even looks at, so it narrows too; it was
+ *  previously recorded as a "known under-floor", which understated it - it was
+ *  a live false SAFE.
+ *
+ *  Only `.` and `./` are whole-tree, matching WHOLE_TREE_POSITIONALS. */
+function isNarrowingDiscoveryOption(table: FlagTable, flag: string, value: string): boolean {
+  if (table !== UNITTEST) return false;
+  if (flag === '-p' || flag === '--pattern') return value.trim() !== '';
+  if (flag === '-s' || flag === '--start-directory') {
+    const v = value.trim().replace(/\/+$/, '');
+    if (v === '' || WHOLE_TREE_POSITIONALS.has(value.trim())) return false;
+    // A NESTED path selects a subdirectory of the test tree: `-s tests/unit`
+    // ran one half of a suite and reported `full`, which was a live false SAFE.
+    // A single segment (`-s tests`) is the ordinary way to name the test root
+    // and stays `full`; flooring it would put SAFE out of reach for essentially
+    // every unittest project, which is the cost ADR-12 twice refused to pay.
+    //
+    // DOCUMENTED LIMIT: this is lexical. `-s unit`, where `unit` is a nested
+    // directory reached from a different cwd, reads as a root and is missed.
+    // Closing that needs a filesystem check against the shadow tree - the same
+    // technique #118 needs for `testpaths` - and belongs with that work.
+    return v.includes('/') || v.includes('\\');
+  }
+  return false;
+}
 
 /** pytest's `-o` / `--override-ini` sets an ini key inline, and two of those
  *  keys select tests: `testpaths` restricts collection, `addopts` injects
@@ -530,7 +574,7 @@ export function classifyTestCommand(command: string): { scope: TestScope; signal
     return { scope: 'unknown', signals: [unknownRunnerSignal(tokens)] };
   }
 
-  const { table, args, optionEnvValues } = parsed;
+  const { table, args, optionEnvValues, neverFull } = parsed;
 
   // Scan the values of PYTEST_ADDOPTS and friends with the SAME scanner. pytest
   // appends that string to its own argv, so `PYTEST_ADDOPTS="-k test_scale"` is
@@ -546,7 +590,14 @@ export function classifyTestCommand(command: string): { scope: TestScope; signal
     }
   }
 
-  return scanArgs(table, args);
+  const scanned = scanArgs(table, args);
+  if (neverFull === true && scanned.scope === 'full') {
+    return {
+      scope: 'unknown',
+      signals: ['the test command runs a script whose options are not modelled'],
+    };
+  }
+  return scanned;
 }
 
 /** Scan a runner's argv for filters. Shared by the command line and by the
@@ -554,6 +605,9 @@ export function classifyTestCommand(command: string): { scope: TestScope; signal
 function scanArgs(table: FlagTable, args: string[]): { scope: TestScope; signals: string[] } {
   const signals: string[] = [];
   let seenSubcommand = false;
+  // Set by the first unrecognised token. Only decides the answer if the scan
+  // finishes without positively identifying a filter.
+  let unknownReason: string | undefined;
 
   for (let i = 0; i < args.length; i++) {
     const tok = args[i] as string;
@@ -576,20 +630,34 @@ function scanArgs(table: FlagTable, args: string[]): { scope: TestScope; signals
         return { scope: 'narrowed', signals };
       }
       if (table.valueLong.has(name)) {
-        const value = eq === -1 ? (args[i + 1] ?? '') : tok.slice(eq + 1);
+        const next = args[i + 1];
+        const value = eq === -1 ? (next ?? '') : tok.slice(eq + 1);
         if (isNarrowingIniOverride(name, value)) {
           signals.push(`${name} ${value} selects a subset of the suite`);
           return { scope: 'narrowed', signals };
         }
-        if (eq === -1) i++; // consume the separate value
+        if (isNarrowingDiscoveryOption(table, name, value)) {
+          signals.push(`${name} ${value} selects a subset of the suite`);
+          return { scope: 'narrowed', signals };
+        }
+        // Never consume a token that is itself a flag: argparse would not, and
+        // swallowing it hid real narrowing (`pytest --cov --collect-only`).
+        if (eq === -1 && next !== undefined && !next.startsWith('-')) i++;
         continue;
       }
       if (table.boolLong.has(name)) continue;
-      // Unrecognised flag on a RECOGNISED runner. Almost always a plugin flag
-      // on a full suite (`pytest --doctest-modules`), which is why `unknown`
-      // does not floor: flooring it would turn every plugin flag in the wild
-      // into a SAFE-killer fixable only by a PR to us.
-      return { scope: 'unknown', signals: [`${name} is not recognised, so the scope is unknown`] };
+      // Unrecognised flag on a RECOGNISED runner. Usually a plugin flag on a
+      // full suite (`pytest --doctest-modules`), which is why `unknown` does not
+      // floor. But do NOT return here: returning discarded filters further along
+      // the command, so one stock flag such as `--durations-min` erased an
+      // already-identified narrowing and defeated the whole gate. Record it and
+      // keep scanning; `unknown` is only the answer if nothing narrowing turns up.
+      unknownReason ??= `${name} is not recognised, so the scope is unknown`;
+      if (eq === -1) {
+        const next = args[i + 1];
+        if (next !== undefined && !next.startsWith('-')) i++;
+      }
+      continue;
     }
 
     if (tok.startsWith('-') && tok.length > 1) {
@@ -599,18 +667,24 @@ function scanArgs(table: FlagTable, args: string[]): { scope: TestScope; signals
         return { scope: 'narrowed', signals };
       }
       if (table.valueShort.has(short)) {
-        const value = tok.length === 2 ? (args[i + 1] ?? '') : tok.slice(2);
+        const next = args[i + 1];
+        const value = tok.length === 2 ? (next ?? '') : tok.slice(2);
         if (isNarrowingIniOverride(short, value)) {
           signals.push(`${short} ${value} selects a subset of the suite`);
           return { scope: 'narrowed', signals };
         }
-        if (tok.length === 2) i++; // `-n 4`; `-n4` carries its own value
+        if (isNarrowingDiscoveryOption(table, short, value)) {
+          signals.push(`${short} ${value} selects a subset of the suite`);
+          return { scope: 'narrowed', signals };
+        }
+        if (tok.length === 2 && next !== undefined && !next.startsWith('-')) i++;
         continue;
       }
       // Bundled booleans such as `-qx`.
       const chars = tok.slice(1).split('');
       if (chars.every((c) => table.boolShort.has(`-${c}`))) continue;
-      return { scope: 'unknown', signals: [`${short} is not recognised, so the scope is unknown`] };
+      unknownReason ??= `${short} is not recognised, so the scope is unknown`;
+      continue;
     }
 
     // A `#` opens a shell comment, so neither it nor anything after it reaches
@@ -632,6 +706,7 @@ function scanArgs(table: FlagTable, args: string[]): { scope: TestScope; signals
     return { scope: 'narrowed', signals };
   }
 
+  if (unknownReason !== undefined) return { scope: 'unknown', signals: [unknownReason] };
   return { scope: 'full', signals: [] };
 }
 
