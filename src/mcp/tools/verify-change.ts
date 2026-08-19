@@ -12,7 +12,16 @@ export const verifyChangeInputSchema = {
     .optional()
     .describe('Proposed full-file contents (one of edits/unifiedDiff required)'),
   unifiedDiff: z.string().optional().describe('A unified/git diff to verify'),
-  testCmd: z.string().optional().describe('Override the test command'),
+  // This string is what an AI agent reads before choosing a command, and an
+  // agent choosing its own command IS the threat model ADR-12 exists for. Kept
+  // to two sentences: it is spent from every agent's context on every tool
+  // listing, so it competes with the tool description itself.
+  testCmd: z
+    .string()
+    .optional()
+    .describe(
+      'Override the test command. Must run the WHOLE suite: naming test paths or using -k/-m/-t/--onlyChanged/--collect-only caps the verdict at UNPROVEN. A PYTHONPATH= prefix is fine.',
+    ),
 };
 
 export interface VerifyChangeArgs {
