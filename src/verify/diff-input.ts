@@ -44,6 +44,27 @@ function stripPrefix(p: string): string {
   return p.replace(/^[ab]\//, '');
 }
 
+/** True when a diff-supplied path stays inside the repository.
+ *
+ *  The path here comes from the diff's own `---`/`+++` headers, which are
+ *  attacker-controlled in every deployment this tool is built for: a contributor's
+ *  pull request, an agent's proposed change. Without this check
+ *  `readUtf8Base` opened whatever the header named, so a diff could read
+ *  `../../.ssh/id_rsa`.
+ *
+ *  The shadow tree blocks the resulting WRITE, but by then the read has already
+ *  happened - and whether the patch applies is an oracle, since context lines
+ *  only match when the attacker already guessed the contents. Containment has to
+ *  be enforced at intake, not only at the write. */
+function isInsideRepo(rel: string): boolean {
+  if (rel === '') return false;
+  if (path.isAbsolute(rel)) return false;
+  const normalized = path.normalize(rel);
+  if (normalized === '..' || normalized.startsWith(`..${path.sep}`)) return false;
+  // Windows-style separators survive normalize() on POSIX, so check both forms.
+  return !normalized.startsWith('../');
+}
+
 // v1 verify models CONTENT edits only. Deletions, renames, and binary changes
 // are not verifiable through the shadow-tree + coverage pipeline, so they must
 // be REJECTED loudly rather than silently dropped: a diff that deletes a module
@@ -202,6 +223,11 @@ function isAnchorlessHunk(hunk: Hunk): boolean {
  *  applyPatch cannot match its hunks. `ignoreBOM` keeps a leading BOM in the
  *  string so the returned base still round-trips byte-for-byte. */
 async function readUtf8Base(repoRoot: string, rel: string): Promise<string | null> {
+  // Refuse before touching the filesystem. Returning null here makes the diff
+  // look like it targets a file that does not exist, which the caller already
+  // handles, so an escaping path is rejected on the same well-trodden path as a
+  // stale one rather than through a new error branch.
+  if (!isInsideRepo(rel)) return null;
   let buf: Buffer;
   try {
     buf = await fs.readFile(path.join(repoRoot, rel));
