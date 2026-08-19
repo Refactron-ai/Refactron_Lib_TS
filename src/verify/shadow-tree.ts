@@ -31,18 +31,27 @@ export async function createShadowTree(
   changes: FileChange[],
 ): Promise<ShadowTreeHandle> {
   const dest = await fs.mkdtemp(path.join(os.tmpdir(), 'refactron-shadow-'));
-  const changedPaths = new Set(changes.map((c) => path.resolve(c.path)));
+  // Everything after mkdtemp must clean up on the way out. The copy below runs
+  // BEFORE the containment check, so a rejected change used to leave a full
+  // copy of the caller's source in the temp dir forever: no handle is returned
+  // on the throw path, so no caller has anything to clean.
+  try {
+    const changedPaths = new Set(changes.map((c) => path.resolve(c.path)));
 
-  await copyTree(sourceRoot, dest, changedPaths);
+    await copyTree(sourceRoot, dest, changedPaths);
 
-  for (const change of changes) {
-    const rel = path.relative(sourceRoot, change.path);
-    if (rel.startsWith('..')) {
-      throw new Error(`FileChange path escapes source root: ${change.path}`);
+    for (const change of changes) {
+      const rel = path.relative(sourceRoot, change.path);
+      if (rel.startsWith('..')) {
+        throw new Error(`FileChange path escapes source root: ${change.path}`);
+      }
+      const target = path.join(dest, rel);
+      await fs.mkdir(path.dirname(target), { recursive: true });
+      await fs.writeFile(target, change.newContent, 'utf8');
     }
-    const target = path.join(dest, rel);
-    await fs.mkdir(path.dirname(target), { recursive: true });
-    await fs.writeFile(target, change.newContent, 'utf8');
+  } catch (err) {
+    await fs.rm(dest, { recursive: true, force: true });
+    throw err;
   }
 
   return {
