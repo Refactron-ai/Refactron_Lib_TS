@@ -40,13 +40,24 @@ export async function createShadowTree(
 
     await copyTree(sourceRoot, dest, changedPaths);
 
+    // Containment is RESOLVED, not spelled. `path.relative(...).startsWith('..')`
+    // catches `../` and absolute paths - both still refused, both still tested -
+    // but not a symlink: copyTree mirrors repo symlinks into the shadow tree,
+    // including ones pointing outside the repo, so a write under a mirrored
+    // escaping link passed the string test and followed the link out of the
+    // tree. Resolving the parent with realpath is the only check that holds.
+    const destReal = await fs.realpath(dest);
     for (const change of changes) {
       const rel = path.relative(sourceRoot, change.path);
-      if (rel.startsWith('..')) {
+      if (rel.startsWith('..') || path.isAbsolute(rel)) {
         throw new Error(`FileChange path escapes source root: ${change.path}`);
       }
       const target = path.join(dest, rel);
       await fs.mkdir(path.dirname(target), { recursive: true });
+      const parentReal = await fs.realpath(path.dirname(target));
+      if (parentReal !== destReal && !parentReal.startsWith(destReal + path.sep)) {
+        throw new Error(`FileChange path escapes the shadow tree: ${change.path}`);
+      }
       await fs.writeFile(target, change.newContent, 'utf8');
     }
   } catch (err) {
@@ -60,8 +71,16 @@ export async function createShadowTree(
   };
 }
 
-async function copyTree(src: string, dest: string, skipChanged: Set<string>): Promise<void> {
+async function copyTree(
+  src: string,
+  dest: string,
+  skipChanged: Set<string>,
+  rootReal?: string,
+): Promise<void> {
   await fs.mkdir(dest, { recursive: true });
+  // Resolved once at the top level and threaded down, so a nested directory
+  // compares against the REPO root rather than against itself.
+  const root = rootReal ?? (await fs.realpath(src));
   const entries = await fs.readdir(src, { withFileTypes: true });
   for (const entry of entries) {
     if (SKIP_DIRS.has(entry.name)) continue;
@@ -81,11 +100,11 @@ async function copyTree(src: string, dest: string, skipChanged: Set<string>): Pr
         } catch {
           // Fall back to recursive copy if the platform/FS rejects symlinks
           // (e.g. Windows without developer mode). Rare; degrades gracefully.
-          await copyTree(s, d, skipChanged);
+          await copyTree(s, d, skipChanged, root);
         }
         continue;
       }
-      await copyTree(s, d, skipChanged);
+      await copyTree(s, d, skipChanged, root);
     } else if (entry.isFile()) {
       if (skipChanged.has(path.resolve(s))) continue;
       // COPY, never hardlink. A hardlink shares the inode with the caller's real
@@ -102,9 +121,15 @@ async function copyTree(src: string, dest: string, skipChanged: Set<string>): Pr
       // support the flag is ignored and this degrades to a normal copy.
       await fs.copyFile(s, d, fsConstants.COPYFILE_FICLONE);
     } else if (entry.isSymbolicLink()) {
-      // Mirror the symlink (target may be absolute or relative; either works).
+      // Mirror the symlink, but NEVER one that resolves outside the source root.
+      // Such a link is a hole straight out of the shadow tree: any write beneath
+      // it lands in the real filesystem. A dangling or repo-internal link is
+      // fine and is still mirrored.
       try {
         const linkTarget = await fs.readlink(s);
+        const resolved = path.resolve(path.dirname(s), linkTarget);
+        const rel = path.relative(root, resolved);
+        if (rel.startsWith('..') || path.isAbsolute(rel)) continue;
         await fs.symlink(linkTarget, d);
       } catch {
         // Ignore — symlinks that can't be replicated aren't worth blocking on.
