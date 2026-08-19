@@ -64,7 +64,7 @@ Yes. The test gate runs in the package being changed; it detects the local runne
 
 ## Why no Rust / Go / Ruby support?
 
-Each language is a full adapter: parser, gate paths, and (for coverage) a coverage tool. Python and TypeScript came first: TypeScript reaches the JavaScript world, Python covers the data / scripting / ML surface, and Python's `coverage.py` is what powers the `SAFE` verdict today. If you'd use Refactron in a Go monorepo, [open an issue](https://github.com/Refactron-ai/Refactron_Lib_TS/issues); concrete demand moves it up the list.
+Each language needs its own syntax and imports checks, and — to reach `SAFE` rather than `UNPROVEN` — a coverage tool we can run exactly as your test command runs it. Python and TypeScript came first: TypeScript reaches the JavaScript world, Python covers the data / scripting / ML surface, and Python's `coverage.py` is what powers the `SAFE` verdict today. If you'd use Refactron in a Go monorepo, [open an issue](https://github.com/Refactron-ai/refactron/issues); concrete demand moves it up the list.
 
 ---
 

@@ -120,18 +120,18 @@
     "links": [
       {
         "label": "Issues",
-        "href": "https://github.com/Refactron-ai/Refactron_Lib_TS/issues"
+        "href": "https://github.com/Refactron-ai/refactron/issues"
       }
     ],
     "primary": {
       "type": "button",
       "label": "GitHub",
-      "href": "https://github.com/Refactron-ai/Refactron_Lib_TS"
+      "href": "https://github.com/Refactron-ai/refactron"
     }
   },
   "footer": {
     "socials": {
-      "github": "https://github.com/Refactron-ai/Refactron_Lib_TS",
+      "github": "https://github.com/Refactron-ai/refactron",
       "x": "https://x.com/refactron",
       "linkedin": "https://www.linkedin.com/company/refactron",
       "discord": "https://discord.gg/HY8WawSH"

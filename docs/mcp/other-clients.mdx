@@ -259,8 +259,8 @@ Cline manages servers from its own panel inside VS Code, backed by `cline_mcp_se
 Contributors running an unpublished build point the client at the compiled server with an absolute path:
 
 ```bash
-git clone https://github.com/Refactron-ai/Refactron_Lib_TS
-cd Refactron_Lib_TS
+git clone https://github.com/Refactron-ai/refactron
+cd refactron
 npm install
 npm run build
 ```
@@ -270,7 +270,7 @@ npm run build
   "mcpServers": {
     "refactron": {
       "command": "node",
-      "args": ["/absolute/path/to/Refactron_Lib_TS/dist/mcp/server.js"]
+      "args": ["/absolute/path/to/refactron/dist/mcp/server.js"]
     }
   }
 }

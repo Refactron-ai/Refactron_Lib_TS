@@ -156,7 +156,7 @@ Instead:
    npm publish
    ```
 2. **`npm dist-tag` shenanigans** are tempting but break consumers who pinned to `latest`. Don't.
-3. **Issue a security advisory** via `gh api repos/Refactron-ai/Refactron_Lib_TS/security-advisories` if the bad publish has a security impact.
+3. **Issue a security advisory** via `gh api repos/Refactron-ai/refactron/security-advisories` if the bad publish has a security impact.
 4. **Communicate.** Pin a notice in the GitHub Discussions; mention in the next CHANGELOG entry under `Security` or `Fixed`.
 
 **PyPI differs from npm here.** You cannot re-upload a filename, ever, so the fix is always a new version, never a replacement. `twine` has no unpublish. You can **yank** a release from the PyPI web UI (Manage, then the release, then Options, then Yank), which hides it from new resolutions while leaving it installable for anyone who pinned it exactly. Yank a broken wrapper as soon as the replacement is up; a yanked release still satisfies `refactron==X.Y.Z`, which is what keeps existing lockfiles working.
@@ -194,8 +194,8 @@ Mac / Linux:
 
 ```bash
 brew install node python3        # or your distro's package manager
-git clone https://github.com/Refactron-ai/Refactron_Lib_TS.git
-cd Refactron_Lib_TS
+git clone https://github.com/Refactron-ai/refactron.git
+cd refactron
 git config core.hooksPath .githooks    # enable commit-msg + pre-commit hooks
 npm install
 npm run build

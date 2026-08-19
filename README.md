@@ -1,10 +1,10 @@
 <p align="center">
-  <img src="https://raw.githubusercontent.com/Refactron-ai/Refactron_Lib_TS/main/docs/assets/og-image.png" alt="Refactron, the verification layer for AI code change: a diff from an agent, a codemod, or a human runs through the syntax, imports, and test gates in an isolated shadow tree and comes out SAFE, UNSAFE, or UNPROVEN" width="100%">
+  <img src="https://raw.githubusercontent.com/Refactron-ai/refactron/main/docs/assets/og-image.png" alt="Refactron, the verification layer for AI code change: a diff from an agent, a codemod, or a human runs through the syntax, imports, and test gates in an isolated shadow tree and comes out SAFE, UNSAFE, or UNPROVEN" width="100%">
 </p>
 
 # Refactron
 
-[![CI](https://github.com/Refactron-ai/Refactron_Lib_TS/actions/workflows/ci.yml/badge.svg)](https://github.com/Refactron-ai/Refactron_Lib_TS/actions/workflows/ci.yml)
+[![CI](https://github.com/Refactron-ai/refactron/actions/workflows/ci.yml/badge.svg)](https://github.com/Refactron-ai/refactron/actions/workflows/ci.yml)
 
 **The verification layer for AI code change.** Prove that any change, your AI agent's, a codemod's, or your own, preserved behavior. Refactron applies the change in an isolated shadow tree, runs your real test suite, and returns a three-way verdict: `SAFE`, `UNSAFE`, or `UNPROVEN`. Your working tree is never touched.
 
@@ -45,8 +45,8 @@ Refactron copies the repo into an isolated shadow tree, applies the diff there, 
 ### Build from source (contributors)
 
 ```bash
-git clone https://github.com/Refactron-ai/Refactron_Lib_TS
-cd Refactron_Lib_TS
+git clone https://github.com/Refactron-ai/refactron
+cd refactron
 npm install
 npm run build
 ```
@@ -77,7 +77,7 @@ Refactron ships a stdio [MCP](https://modelcontextprotocol.io) server exposing o
 claude mcp add refactron -- refactron-mcp
 ```
 
-`refactron-mcp` is installed by `npm install -g refactron`. Working from a source checkout instead? Point the client at `node /absolute/path/to/Refactron_Lib_TS/dist/mcp/server.js`.
+`refactron-mcp` is installed by `npm install -g refactron`. Working from a source checkout instead? Point the client at `node /absolute/path/to/refactron/dist/mcp/server.js`.
 
 The agent proposes an edit (full-file `edits` or a `unifiedDiff`), calls `verify_change`, and gets back the same `SAFE` / `UNSAFE` / `UNPROVEN` JSON report, then decides whether to land it. The tool runs entirely local and never mutates your repo.
 
