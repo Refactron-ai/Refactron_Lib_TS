@@ -7,6 +7,44 @@ description: Release history for Refactron, newest first.
 Refactron follows [Semantic Versioning](https://semver.org/). The full,
 unabridged log lives in [`CHANGELOG.md`](https://github.com/Refactron-ai/Refactron_Lib_TS/blob/main/CHANGELOG.md).
 
+<Update label="0.4.1" description="August 19, 2026">
+  **Five false `SAFE` verdicts fixed, and `SAFE` now means something narrower.**
+  The report's shape did not change, so the version number alone will not tell
+  you that — read this entry.
+
+  Each of these was reproduced before being fixed. In every case the suite
+  **passed** and coverage **was measured**, and the verdict was still wrong:
+
+  | Command | Was | Now |
+  | --- | --- | --- |
+  | `pytest -q tests/test_scale.py` | `SAFE` on a change that breaks a test | `UNPROVEN` |
+  | `pytest -q --collect-only` | `SAFE` while running **zero** tests | `UNPROVEN` |
+  | `PYTEST_ADDOPTS="-k x" pytest -q` | `SAFE` while running one test | `UNPROVEN` |
+  | `python3 -m unittest tests.test_scale` | `SAFE` on a change the suite catches | `UNPROVEN` |
+  | 40 statements changed, 1 executed | `SAFE`, "the changed code is covered" | `UNPROVEN` |
+
+  Two rules changed to close them. A test command that names a **subset** of
+  your suite now caps the verdict at `UNPROVEN`, and `SAFE` requires **every
+  changed statement a test could reach** to have run, rather than one per file.
+  Statements coverage.py excludes (`# pragma: no cover`, `if TYPE_CHECKING:`)
+  are subtracted rather than held against you.
+
+  Every verdict that moves, moves from `SAFE` toward `UNPROVEN`. Nothing that was
+  `UNSAFE` or `UNPROVEN` can become `SAFE`. Exit codes are unchanged, so no CI
+  pipeline breaks — pipelines that read the verdict string will see more
+  `UNPROVEN`.
+
+  **If you acted on a `SAFE` from 0.4.0 or earlier** for a change verified with a
+  narrowed test command, or one whose `coverage.changedStatements` showed
+  `covered < total`, that verdict claimed more than it proved. Re-verify.
+
+  Two new report fields: `testScope` (was the command `full`, `narrowed` or
+  `unknown`) and `engineVersion` (which rules produced this verdict — 
+  `reportVersion` only tells you which shape you hold). `unittest` joins
+  `pytest`, `vitest` and `jest` as a recognised runner. Also clears two high
+  security advisories, lockfile-only.
+</Update>
+
 <Update label="0.4.0" description="August 6, 2026">
   **Breaking.** Refactron is now only a verification layer. `analyze`, `run`,
   `document`, `rollback`, `preflight`, `init`, the interactive TUI and the 20 AST

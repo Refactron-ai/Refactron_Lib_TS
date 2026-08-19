@@ -7,7 +7,33 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
-## [Unreleased]
+## [0.4.1] — 2026-08-19
+
+**Read this one.** Nothing about the report's shape changed, so a version number
+alone will not tell you what did: **five false `SAFE` verdicts are fixed, and
+what earns a `SAFE` is now narrower.** Every verdict that moves, moves from
+`SAFE` toward `UNPROVEN`. Nothing that was `UNSAFE` or `UNPROVEN` can become
+`SAFE`, and exit codes are unchanged (`SAFE` and `UNPROVEN` both exit `0`).
+
+Because this is a patch, `^0.4.0` picks it up automatically. That is deliberate:
+these are correctness fixes and they should reach you without a manual bump.
+
+### Fixed — five ways a change could earn a `SAFE` it had not earned
+
+Each was reproduced before being fixed. In every case a **passing** suite and
+**measured** coverage still produced a `SAFE` that the full suite contradicts.
+
+| The command | Was | Now |
+| --- | --- | --- |
+| `pytest -q tests/test_scale.py` | `SAFE` on a change that breaks a test | `UNPROVEN` |
+| `pytest -q --collect-only` | `SAFE` while running **zero** tests | `UNPROVEN` |
+| `PYTEST_ADDOPTS="-k x" pytest -q` | `SAFE` while running one test | `UNPROVEN` |
+| `python3 -m unittest tests.test_scale` | `SAFE` on a change the suite catches | `UNPROVEN` |
+| 40 statements changed, 1 executed | `SAFE`, "the changed code is covered" | `UNPROVEN` |
+
+If you acted on a `SAFE` from 0.4.0 or earlier for a change verified with a
+narrowed test command, or one where `coverage.changedStatements` showed
+`covered < total`, that verdict claimed more than it had proven. Re-verify.
 
 ### Changed
 
@@ -62,8 +88,43 @@ parse the verdict string will see more `UNPROVEN`.
 ### Added
 
 - `testScope` on `VerdictReport`, carried by `verify-diff --json` and the MCP
-  `verify_change` tool. Additive; `reportVersion` stays `1`.
-- A CLI note naming the filter that cost a run its `SAFE`.
+  `verify_change` tool. Says whether the command was `full`, `narrowed` or
+  `unknown`, so a stored verdict can be audited for scoping after the fact.
+  Additive; `reportVersion` stays `1`.
+- `engineVersion` on `VerdictReport`: the version that produced the report.
+  `reportVersion` tells you which **shape** you hold; `engineVersion` tells you
+  which **rules** produced the verdict. You want both if you keep reports as
+  history, because this release changed the rules without changing the shape.
+- `unittest` is now a recognised runner, alongside `pytest`, `vitest` and `jest`.
+- A CLI note naming the filter that cost a run its `SAFE`, and a different note
+  when the command could not be parsed at all — silence there would let a `SAFE`
+  resting on an unreadable command look clean.
+- The MCP `testCmd` schema now states the narrowing rule, so an agent learns it
+  before spending a verification run rather than after.
+
+
+### Security
+
+- Cleared two high and one moderate advisory (`nanoid`, `ip-address`, `hono`),
+  lockfile-only. No declared dependency range widened. `npm audit` is a release
+  gate and was failing before this.
+
+### Known limitations, stated rather than implied
+
+- **Coverage is Python-only.** A TypeScript or mixed diff still returns
+  `UNPROVEN`; it cannot reach `SAFE`, which is the fail-safe direction.
+- **`SAFE` means executed, not asserted.** Coverage proves a changed statement
+  ran, not that any test would fail if its behaviour changed. Tracked in #116.
+- **A command we cannot parse is not floored.** `make test`, a wrapper script,
+  or an unrecognised plugin flag classifies `unknown` and can still reach `SAFE`.
+  Flooring it would make `SAFE` unreachable for most projects; the CLI says so
+  out loud instead.
+- **Config-file narrowing is not seen.** `pytest.ini` `addopts`/`testpaths`, a
+  vitest `include`, a jest `testMatch`. The command and the environment are read;
+  your config files are not. Tracked in #118.
+- **Statement-level, not branch-level.** A changed `if` whose true branch never
+  ran still counts as covered. Tracked in #117.
+
 
 ---
 
