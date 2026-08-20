@@ -7,6 +7,51 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [0.4.3] — 2026-08-20
+
+### Security
+
+Two fixes to what the verified test suite can reach. Neither is exploitable
+without already being able to supply a diff or a test command to Refactron,
+which is the normal mode of use, so both are worth taking.
+
+- **The verified suite no longer inherits your credentials.** Refactron runs the
+  repository's own test suite, and that suite is defined by the diff under
+  verification. It was handed the full parent environment. Reproduced: a test in
+  the verified suite read `REFACTRON_TOKEN`, `GITHUB_TOKEN`, `NPM_TOKEN` and
+  `AWS_SECRET_ACCESS_KEY` in plaintext. This matters most in the deployment
+  Refactron is built for, a CI gate verifying an untrusted pull request, where
+  the environment holds the credentials of the repository being protected.
+
+  Credentials are now removed from the environment of every spawn that executes
+  your suite. This is a denylist, covering the common names plus anything ending
+  in `_TOKEN`, `_SECRET`, `_API_KEY`, `_PASSWORD` or `_CREDENTIALS`. `PATH`,
+  `HOME`, `VIRTUAL_ENV` and the rest of your toolchain are untouched.
+
+  This is redaction, not a sandbox. Running `verify-diff` still runs your tests,
+  exactly as running them yourself does. `SECURITY.md` now says so plainly.
+
+- **A diff can no longer name a file outside the repository.** The path came from
+  the diff's own `+++` header and was read with no containment check, so a diff
+  naming `../../../.ssh/id_rsa` caused Refactron to open it. The shadow tree
+  blocked the resulting write, but the read had already happened, and whether the
+  patch applied was an oracle for the file's contents. Containment now runs at
+  intake, before the first read.
+
+### Changed
+
+- `SECURITY.md` rewritten. The previous version described the refactoring product
+  removed in 0.4.0 and stopped its supported-versions table at `0.2.x`. It now
+  documents the shipped product, records
+  [GHSA-q3vj-5qq5-m84g](https://github.com/Refactron-ai/refactron/security/advisories/GHSA-q3vj-5qq5-m84g),
+  and adds a section the old policy lacked: what Refactron explicitly does **not**
+  defend. We do not sandbox your test suite, the MCP server has no authentication
+  because a stdio transport's trust boundary is the process spawn, `SAFE` is not a
+  proof of correctness, and narrowing detection is a strong check rather than a
+  guarantee.
+
+---
+
 ## [0.4.2] — 2026-08-19
 
 ### Security
