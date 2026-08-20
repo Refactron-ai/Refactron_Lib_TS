@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Route through these resources instead of redoing the work each session.
 
-**Subagents (`.claude/agents/`)**: 11 senior personas (10+ yrs framing) for delegation. Each declares its peers under "Hand-offs."
+**Subagents (`.claude/agents/`)**: 12 senior personas (10+ yrs framing) for delegation. Each declares its peers under "Hand-offs."
 
 | Agent                       | Use for                                                 |
 | --------------------------- | ------------------------------------------------------- |
