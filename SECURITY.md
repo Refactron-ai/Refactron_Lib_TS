@@ -4,45 +4,120 @@
 
 **Do not open a public GitHub issue for security vulnerabilities.**
 
-Please report privately via either:
+Report privately via either:
 
+- **GitHub Security Advisory** (preferred): https://github.com/Refactron-ai/refactron/security/advisories/new
 - Email: `omsherikar0229@gmail.com`
-- GitHub Security Advisory: https://github.com/Refactron-ai/refactron/security/advisories/new
 
-You will receive an acknowledgement within **72 hours**. For high or critical issues we will coordinate disclosure with you and aim to ship a patched release before any public details are published. Please give us a reasonable embargo window before disclosing publicly.
+You will receive an acknowledgement within **72 hours**. For high or critical
+issues we coordinate disclosure with you and aim to ship a patched release before
+any public details are published. Please allow a reasonable embargo window.
 
-When reporting, include: a description, reproduction steps, the affected version, and the potential impact.
+When reporting, include a description, reproduction steps, the affected version,
+and the impact you believe it has. A reproduction we can run is worth more than a
+careful description of one.
 
 ## Supported versions
 
-| Version      | Status                                         |
-| ------------ | ---------------------------------------------- |
-| `0.2.x`      | Supported — security fixes will be backported. |
-| `0.1.x-beta` | **Not supported.** Please upgrade to `0.2.x`.  |
+| Version   | Status                                                              |
+| --------- | ------------------------------------------------------------------- |
+| `0.4.x`   | **Supported.** Security fixes ship here.                            |
+| `0.3.x`   | End of life. Contains known false-`SAFE` defects fixed in `0.4.x`.  |
+| `≤ 0.2.x` | End of life. Contains [GHSA-q3vj-5qq5-m84g](https://github.com/Refactron-ai/refactron/security/advisories/GHSA-q3vj-5qq5-m84g). |
+
+Refactron is pre-1.0 and ships behaviour changes in patch releases. Security
+fixes are not backported below the current minor; upgrade instead.
+
+## What Refactron is
+
+A verification layer. A diff goes in; `SAFE`, `UNSAFE` or `UNPROVEN` comes out,
+backed by the repository's own test suite run in an isolated shadow tree with
+changed-statement coverage fused in.
+
+It ships two binaries from one npm package: `refactron` (CLI) and `refactron-mcp`
+(a stdio MCP server). The PyPI distribution is a shim that locates and executes
+the npm binary; it contains no engine code of its own.
+
+The refactoring product — `analyze`, `run`, `document`, `rollback`, `preflight`,
+`init`, the AST transforms and the atomic batch writer — was removed in `0.4.0`.
+Refactron no longer writes code. Anything below describing a write path to your
+files describes something that does not exist.
 
 ## Threat model
 
-Refactron is a deterministic verification layer. The core pipeline (shadow tree → syntax → imports → tests → coverage) contains **no LLM in the critical path**. Every change committed to disk originates from a registered transform with documented preconditions and is gated by three deterministic verifiers (syntax, imports, tests). The published surface cannot generate code that wasn't produced by a reviewed transform — there is no path by which a hallucinated or hostile model response can rewrite a user file.
+Refactron's inputs are **hostile by design**. The diff under verification is
+authored by an AI agent, a contributor, or a codemod, and the test suite it runs
+belongs to the repository being verified. Both are treated as untrusted.
 
-The `document` step (Step 4 of the pipeline, in `src/document/`) is the only LLM-touching component. It runs **only on already-verified diffs** and produces docstrings, commit messages, and CHANGELOG entries — never executable code that participates in verification. The worst-case outcome of a malicious or hallucinated LLM response is an incorrect docstring or a misleading changelog line; the underlying refactor remains correct because it was verified before the LLM was ever consulted.
+### What we defend
 
-Document-side mitigations:
+- **Your working tree.** Refactron never writes to it. Changes are applied to a
+  copy under the system temp directory, the gates run there, and the copy is
+  removed. There is no code path from a verdict to your files.
+- **Shadow-tree containment.** A change whose path resolves outside the shadow
+  tree is refused. Containment is resolved with `realpath`, not string
+  comparison, and repository symlinks whose target escapes the repository are not
+  mirrored into the tree.
+- **Diff intake.** A path taken from a diff's `---`/`+++` headers is refused
+  before it is read if it resolves outside the repository.
+- **Your credentials.** The test suite Refactron runs does not inherit them.
+  `REFACTRON_TOKEN`, CI tokens, cloud keys, and any variable whose name ends in
+  `_TOKEN`, `_SECRET`, `_API_KEY`, `_PASSWORD` or `_CREDENTIALS` are removed from
+  the environment handed to every spawn that executes the suite.
+- **Verdict integrity.** A false `SAFE` is the only unforgivable defect in this
+  product. Every degradation path — a missing sidecar, an unmeasurable coverage
+  run, a test command we cannot parse, a flaky heal — resolves to `UNPROVEN`,
+  never to `SAFE`.
 
-- **Secret redaction** — `src/document/redact.ts` strips API keys, bearer tokens, and `.env`-style assignments from prompts before they leave the process.
-- **Provider-error fallback** — if the LLM call fails or returns garbage, the refactor stays applied; only the documentation step is skipped or marked degraded.
+### What we explicitly do not defend
 
-Atomic write guarantees: Refactron never writes to your working tree; verification runs entirely against an isolated shadow copy. On any rename failure, the remaining temps are unlinked. There is no partial-write state — a refactor plan either commits in full or leaves the working tree untouched.
+Stated plainly, because a guarantee with an unstated hole is worse than no
+guarantee.
 
-## Subprocess safety
+- **We do not sandbox your test suite.** Running `refactron verify-diff` runs the
+  repository's tests. That is no more and no less safe than running `npm test` or
+  `pytest` on the same repository yourself. A test that writes to an absolute
+  path, opens a socket, or spawns a process will do so. Isolation means the
+  shadow tree is a genuine copy, not that the suite is confined to it.
+- **We do not sandbox the Python sidecars.** They parse source with the standard
+  library and LibCST; they do not execute it.
+- **The MCP server applies no authentication.** For a stdio transport the trust
+  boundary is the process spawn: whoever starts the server can already run
+  arbitrary commands as you. It makes no network calls and reaches no remote
+  service. Do not expose it over a network transport without adding
+  authentication first.
+- **A `SAFE` verdict is not a proof of correctness.** It means your suite ran the
+  changed code and stayed green. It inherits exactly what your tests check.
+- **Narrowing detection is a strong check, not a guarantee.** Refactron reads the
+  test command and the environment and knows the common flags of `pytest`,
+  `unittest`, `vitest` and `jest`. A command using a flag it does not recognise
+  reports `unknown`, which does not cap the verdict. Narrowing configured in
+  `pytest.ini`, a vitest `include`, or a jest `testMatch` is not seen.
 
-All subprocess invocations use `execa(cmd, [args], opts)` array-form. There is no `child_process.exec` and no string interpolation into command strings; `shell: true` is **not** used for any tool-invoked command. The `execa` call sites in `src/` (the Python sidecars, the test runner, and the Python interpreter probes) all pass arguments as arrays.
+## Supply chain
 
-**One intentional exception**: when the user supplies a `testCmd` in `.refactronrc.json` (or via `--test-cmd`), Refactron runs it through `sh -c` (`src/verify/runners/detect.ts:27`). This is the entire purpose of the field — users need to express things like `vitest run --testNamePattern foo` or chained pipelines. The trust boundary is the `.refactronrc.json` file: **a hostile `.refactronrc.json` in a repository can run arbitrary shell commands inside the verifier's shadow tree**, equivalent to running that repository's own test suite. Refactron is therefore no more or less safe than running `npm test` (or `pytest`) on an untrusted repository. Treat unfamiliar `.refactronrc.json` files with the same caution you would treat unfamiliar `package.json` `scripts` blocks.
+- npm releases are published from GitHub Actions with an OIDC trusted publisher
+  and `--provenance`. Verify with `npm audit signatures`.
+- PyPI releases use a trusted publisher. That attestation covers the **shim**,
+  not the engine: the shim executes whichever `refactron` binary is first on your
+  `PATH`. If you pin the PyPI package, pin the npm package to the same version.
+- Releases are gated on `npm audit --audit-level=high`.
+- Remediation is lockfile-only where possible; a declared range is not widened to
+  clear an advisory.
 
-## Atomic-write guarantees
+## Runtimes
 
-Refactron never writes to your working tree. Verification applies the diff to an isolated shadow copy under the system temp directory, runs the gates there, and removes it. There is no write path to your files in any command, for any verdict. The atomic batch writer that used to land migration-mode changes was removed in 0.4.0 along with the transforms.
+Node.js **18+** is required. Python **3.8+** is required for coverage-backed
+verdicts and for the syntax, imports and statement-mapping sidecars. Without
+Python, verdicts degrade to `UNPROVEN` rather than failing open.
+
+## Past advisories
+
+| Advisory | Affected | Fixed | Summary |
+| --- | --- | --- | --- |
+| [GHSA-q3vj-5qq5-m84g](https://github.com/Refactron-ai/refactron/security/advisories/GHSA-q3vj-5qq5-m84g) | `>= 0.2.0, < 0.4.2` | `0.4.2` | The shadow tree hardlinked unchanged files, so a verified test suite could write through into the caller's repository while the verdict reported `SAFE`. |
 
 ## Known dependency advisories
 
-As of the `0.2.x` release, `npm audit` reports **0 vulnerabilities** of any severity in the production or development dependency graph.
+None outstanding. `npm audit --audit-level=high` reports zero vulnerabilities as
+of `0.4.2`.
