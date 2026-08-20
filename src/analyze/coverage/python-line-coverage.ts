@@ -1,4 +1,5 @@
 import { spawn } from 'node:child_process';
+import { redactEnvForRunner } from '../../verify/runners/run.js';
 import * as fs from 'node:fs/promises';
 import * as fsSync from 'node:fs';
 import * as os from 'node:os';
@@ -409,12 +410,21 @@ export function resolveConsoleScript(
  *  the cwd is the common case) imports fine as a namespace package with
  *  `__file__ = None`, but cannot be executed as a module. Probing execution
  *  in `cwd` keeps the probe honest in the same context as the real run. */
-function probeCoverage(pythonBin: string, cwd: string, env?: NodeJS.ProcessEnv): Promise<boolean> {
+//
+//  `env` is REQUIRED, and deliberately not optional. This probe runs `-m` with
+//  the project root as cwd, so a `coverage.py` at the repository root shadows
+//  the real module and the DIFF UNDER VERIFICATION executes as us. An omitted
+//  argument would silently inherit our credentials into attacker-controlled
+//  code; a required parameter makes that a compile error instead. Reproduced
+//  before it was required: the `--version` probe handed a repo-local
+//  `coverage.py` REFACTRON_TOKEN, GITHUB_TOKEN and AWS_SECRET_ACCESS_KEY in
+//  plaintext while the two later spawns were correctly redacted.
+function probeCoverage(pythonBin: string, cwd: string, env: NodeJS.ProcessEnv): Promise<boolean> {
   return new Promise((resolve) => {
     const p = spawn(pythonBin, ['-m', 'coverage', '--version'], {
       stdio: 'ignore',
       cwd,
-      ...(env ? { env } : {}),
+      env,
     });
     p.on('exit', (code) => resolve(code === 0));
     p.on('error', () => resolve(false));
@@ -452,7 +462,9 @@ export async function reportCoverage(input: CoverageReportInput): Promise<Covera
   // to default to can only be made equivalent where it resolves.
   const testCmd = input.testCmd ?? 'python3 -m pytest -q';
 
-  const found = input._probeOverride ?? (await probeCoverage(pythonBin, input.projectRoot));
+  const found =
+    input._probeOverride ??
+    (await probeCoverage(pythonBin, input.projectRoot, redactEnvForRunner(process.env)));
   if (!found) {
     return {
       coverageToolFound: false,
@@ -513,7 +525,7 @@ export async function reportCoverage(input: CoverageReportInput): Promise<Covera
     // interpreter, and probing without it declines a measurable command
     // while telling the user to install something they already have.
     const usable = await probeCoverage(plan.interpreter, input.projectRoot, {
-      ...process.env,
+      ...redactEnvForRunner(process.env),
       ...plan.env,
     });
     if (!usable) {
@@ -546,7 +558,11 @@ export async function reportCoverage(input: CoverageReportInput): Promise<Covera
   // `--data-file` is passed on argv to both `coverage run` and `coverage json`
   // below and argv beats the environment. Both are kept: the ordering states
   // the intent, `--data-file` enforces it.
-  const env = { ...process.env, ...plan.env, COVERAGE_FILE: dataFile };
+  // Redacted for the same reason as the tests gate (SEC-3): this spawn executes
+  // the repository's own test suite, which the diff under verification defines.
+  // Fixing only the gate left the leak wide open here - the end-to-end probe
+  // still read every credential - because coverage runs the suite a second time.
+  const env = { ...redactEnvForRunner(process.env), ...plan.env, COVERAGE_FILE: dataFile };
 
   const covered = new Set<string>();
   const measured = new Set<string>();

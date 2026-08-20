@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Route through these resources instead of redoing the work each session.
 
-**Subagents (`.claude/agents/`)**: 11 senior personas (10+ yrs framing) for delegation. Each declares its peers under "Hand-offs."
+**Subagents (`.claude/agents/`)**: 12 senior personas (10+ yrs framing) for delegation. Each declares its peers under "Hand-offs."
 
 | Agent                       | Use for                                                 |
 | --------------------------- | ------------------------------------------------------- |
@@ -14,6 +14,7 @@ Route through these resources instead of redoing the work each session.
 | `principal-engineer`        | Architecture / locked-contract calls / breaking changes |
 | `staff-code-reviewer`       | Adversarial pre-merge review                            |
 | `security-engineer`         | Threat modeling, sidecar safety, supply chain           |
+| `offensive-security-engineer` | Red-team: build working exploits against the engine    |
 | `python-sidecar-specialist` | Verify-check sidecars, stdin/stdout protocol, refusals  |
 | `typescript-architect`      | Verify engine, ts-morph, ESM, type-level safety         |
 | `release-manager`           | Semver, changelog, npm + PyPI publish                   |
@@ -22,7 +23,7 @@ Route through these resources instead of redoing the work each session.
 | `documentation-engineer`    | README, mdx, changelog tone, migrations                 |
 | `performance-engineer`      | Throughput, sidecar latency, profiling                  |
 
-Review and analysis roles (`staff-code-reviewer`, `principal-engineer`, `security-engineer`, `performance-engineer`) hold read-only tool grants: a reviewer that can edit stops arguing with itself and starts fixing, which is how review findings get quietly absorbed instead of reported.
+Review and analysis roles (`staff-code-reviewer`, `principal-engineer`, `security-engineer`, `offensive-security-engineer`, `performance-engineer`) hold read-only tool grants: a reviewer that can edit stops arguing with itself and starts fixing, which is how review findings get quietly absorbed instead of reported.
 
 **Issue-first workflow**
 

@@ -44,6 +44,63 @@ function stripPrefix(p: string): string {
   return p.replace(/^[ab]\//, '');
 }
 
+/** True when a diff-supplied path stays inside the repository.
+ *
+ *  The path here comes from the diff's own `---`/`+++` headers, which are
+ *  attacker-controlled in every deployment this tool is built for: a contributor's
+ *  pull request, an agent's proposed change. Without this check
+ *  `readUtf8Base` opened whatever the header named, so a diff could read
+ *  `../../.ssh/id_rsa`.
+ *
+ *  The shadow tree blocks the resulting WRITE, but by then the read has already
+ *  happened - and whether the patch applies is an oracle, since context lines
+ *  only match when the attacker already guessed the contents. Containment has to
+ *  be enforced at intake, not only at the write. */
+function isInsideRepo(rel: string): boolean {
+  if (rel === '') return false;
+  if (path.isAbsolute(rel)) return false;
+  const normalized = path.normalize(rel);
+  if (normalized === '..' || normalized.startsWith(`..${path.sep}`)) return false;
+  // Windows-style separators survive normalize() on POSIX, so check both forms.
+  return !normalized.startsWith('../');
+}
+
+/** Lexical containment is necessary but NOT sufficient: `fs.readFile` follows
+ *  symlinks, so a link planted in the repository (`repo/link -> /etc`) makes
+ *  `link/passwd` pass `isInsideRepo` and still read outside. In the deployment
+ *  this product is sold for - a CI gate checking out an untrusted pull request
+ *  - the attacker controls the tree, so planting that link is part of the diff
+ *  they are asking us to verify.
+ *
+ *  Reproduced before this existed, as a content-disclosure ORACLE rather than a
+ *  theoretical read: with `repo/link` pointing at a secrets directory, a diff
+ *  whose removal line GUESSED the file's contents was accepted, while a wrong
+ *  guess reported "diff did not apply". The difference between those two
+ *  messages leaks the file one guess at a time.
+ *
+ *  Resolves the deepest ancestor that actually exists, because a file the diff
+ *  CREATES has no realpath of its own while every directory it would be created
+ *  through does - and an escaping directory is the whole attack. */
+async function resolvesInsideRepo(repoRoot: string, rel: string): Promise<boolean> {
+  let root: string;
+  try {
+    root = await fs.realpath(repoRoot);
+  } catch {
+    return false; // boundary cannot be established -> refuse rather than guess
+  }
+  let candidate = path.resolve(root, rel);
+  for (;;) {
+    try {
+      const real = await fs.realpath(candidate);
+      return real === root || real.startsWith(root + path.sep);
+    } catch {
+      const parent = path.dirname(candidate);
+      if (parent === candidate) return false; // walked past the filesystem root
+      candidate = parent;
+    }
+  }
+}
+
 // v1 verify models CONTENT edits only. Deletions, renames, and binary changes
 // are not verifiable through the shadow-tree + coverage pipeline, so they must
 // be REJECTED loudly rather than silently dropped: a diff that deletes a module
@@ -202,6 +259,15 @@ function isAnchorlessHunk(hunk: Hunk): boolean {
  *  applyPatch cannot match its hunks. `ignoreBOM` keeps a leading BOM in the
  *  string so the returned base still round-trips byte-for-byte. */
 async function readUtf8Base(repoRoot: string, rel: string): Promise<string | null> {
+  // Refuse before touching the filesystem. Returning null here makes the diff
+  // look like it targets a file that does not exist, which the caller already
+  // handles, so an escaping path is rejected on the same well-trodden path as a
+  // stale one rather than through a new error branch.
+  if (!isInsideRepo(rel)) return null;
+  // Second gate, and the one that survives a symlink. Same `null` return as
+  // above, so an escaping path is refused on the well-trodden "absent base"
+  // branch rather than through a new error path.
+  if (!(await resolvesInsideRepo(repoRoot, rel))) return null;
   let buf: Buffer;
   try {
     buf = await fs.readFile(path.join(repoRoot, rel));
