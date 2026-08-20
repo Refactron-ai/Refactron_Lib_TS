@@ -14,6 +14,17 @@
 // closes the credentials a verification run has no business forwarding.
 import { describe, it, expect } from 'vitest';
 import { redactEnvForRunner } from '../../../src/verify/runners/run.js';
+import { execSync } from 'node:child_process';
+
+/** The planted-module probe below is meaningless without a real interpreter. */
+function hasPython3(): boolean {
+  try {
+    execSync('python3 -c ""', { stdio: 'ignore' });
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 describe('the verified suite does not inherit our credentials', () => {
   it('strips the token Refactron itself authenticates with', () => {
@@ -121,54 +132,68 @@ describe('the redaction survives the spawn, not just the function', () => {
 // overwrote its own output file and the later redacted spawns hid the leak
 // behind them. Appending rather than truncating is what made it visible, and
 // is why this test records every invocation instead of the last one.
+//
+// Guarded with `it.skipIf`, and it asserts the probe RAN. Without both, this
+// test passes on any machine without python3: `spawn` emits `error`,
+// `probeCoverage` resolves false, the sink file is never written, and
+// `expect('').not.toContain(...)` is a tautology. That is the exact shape
+// CLAUDE.md bans - a test that reports PASSED while proving nothing.
 describe('the coverage probe does not leak credentials to repo-controlled code', () => {
-  it('a coverage.py planted at the repo root sees no credentials', async () => {
-    const fs = await import('node:fs/promises');
-    const os = await import('node:os');
-    const path = await import('node:path');
-    const { reportCoverage } =
-      await import('../../../src/analyze/coverage/python-line-coverage.js');
+  it.skipIf(!hasPython3())(
+    'a coverage.py planted at the repo root sees no credentials',
+    async () => {
+      const fs = await import('node:fs/promises');
+      const os = await import('node:os');
+      const path = await import('node:path');
+      const { reportCoverage } =
+        await import('../../../src/analyze/coverage/python-line-coverage.js');
 
-    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'cov-probe-env-'));
-    const sink = path.join(root, 'seen-env.txt');
-    // Shadows the real coverage module for `python -m coverage`. Appends, so
-    // EVERY spawn is recorded rather than only the last one.
-    await fs.writeFile(
-      path.join(root, 'coverage.py'),
-      [
-        'import os',
-        `with open(${JSON.stringify(sink)}, "a") as f:`,
-        '    for k in ("REFACTRON_TOKEN", "GITHUB_TOKEN", "AWS_SECRET_ACCESS_KEY"):',
-        '        f.write(k + "=" + repr(os.environ.get(k)) + "\\n")',
-        '',
-      ].join('\n'),
-    );
+      const root = await fs.mkdtemp(path.join(os.tmpdir(), 'cov-probe-env-'));
+      const sink = path.join(root, 'seen-env.txt');
+      // Shadows the real coverage module for `python -m coverage`. Appends, so
+      // EVERY spawn is recorded rather than only the last one.
+      await fs.writeFile(
+        path.join(root, 'coverage.py'),
+        [
+          'import os',
+          `with open(${JSON.stringify(sink)}, "a") as f:`,
+          '    for k in ("REFACTRON_TOKEN", "GITHUB_TOKEN", "AWS_SECRET_ACCESS_KEY"):',
+          '        f.write(k + "=" + repr(os.environ.get(k)) + "\\n")',
+          '',
+        ].join('\n'),
+      );
 
-    const saved = { ...process.env };
-    process.env.REFACTRON_TOKEN = 'sk_live_canary_probe';
-    process.env.GITHUB_TOKEN = 'ghp_canary_probe';
-    process.env.AWS_SECRET_ACCESS_KEY = 'canary_probe_aws';
-    try {
-      await reportCoverage({ projectRoot: root, changedFiles: [] } as never);
-    } catch {
-      // The probe is what is under test. Whether the run that follows it can
-      // produce a report is irrelevant here and depends on the environment.
-    } finally {
-      process.env = { ...saved };
-    }
+      const saved = { ...process.env };
+      process.env.REFACTRON_TOKEN = 'sk_live_canary_probe';
+      process.env.GITHUB_TOKEN = 'ghp_canary_probe';
+      process.env.AWS_SECRET_ACCESS_KEY = 'canary_probe_aws';
+      try {
+        await reportCoverage({ projectRoot: root, changedFiles: [] } as never);
+      } catch {
+        // The probe is what is under test. Whether the run that follows it can
+        // produce a report is irrelevant here and depends on the environment.
+      } finally {
+        process.env = { ...saved };
+      }
 
-    let seen = '';
-    try {
-      seen = await fs.readFile(sink, 'utf8');
-    } catch {
-      // Never spawned (no python3 on this machine): nothing could have leaked.
-    }
-    await fs.rm(root, { recursive: true, force: true });
+      let seen = '';
+      try {
+        seen = await fs.readFile(sink, 'utf8');
+      } catch {
+        // Left empty on purpose, and asserted against below rather than excused.
+      }
+      await fs.rm(root, { recursive: true, force: true });
 
-    // Assert on the VALUES. Asserting on the names would match the `k + "="`
-    // label the probe writes for a redacted variable and pass either way.
-    expect(seen).not.toContain('sk_live_canary_probe');
-    expect(seen).not.toContain('ghp_canary_probe');
-    expect(seen).not.toContain('canary_probe_aws');
-  }, 120_000);
+      // The probe must actually have executed our planted module. Asserting this
+      // FIRST is what stops the three assertions below from passing vacuously.
+      expect(seen).toContain('REFACTRON_TOKEN=');
+
+      // Assert on the VALUES. Asserting on the names would match the `k + "="`
+      // label the probe writes for a redacted variable and pass either way.
+      expect(seen).not.toContain('sk_live_canary_probe');
+      expect(seen).not.toContain('ghp_canary_probe');
+      expect(seen).not.toContain('canary_probe_aws');
+    },
+    120_000,
+  );
 });
