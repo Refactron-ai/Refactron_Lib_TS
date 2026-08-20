@@ -38,6 +38,27 @@ which is the normal mode of use, so both are worth taking.
   patch applied was an oracle for the file's contents. Containment now runs at
   intake, before the first read.
 
+Both fixes above shipped with a bypass of themselves, found in review of this
+release and fixed here. Recording that plainly, because the pattern is the
+lesson: a redaction that covers two of three spawns is not a redaction, and a
+containment check that is lexical while the read follows symlinks is not
+containment.
+
+- **The coverage probe was redacted too.** `-m coverage --version` runs with the
+  project root as cwd, and `-m` puts cwd on `sys.path`, so a `coverage.py` at
+  the repository root shadows the real module and the diff under verification
+  executes as us. That probe passed no environment at all and inherited
+  everything, while the two coverage spawns after it were correctly redacted.
+  The env parameter is now required rather than optional, so a call site that
+  omits it fails to compile.
+
+- **Diff paths now resolve symlinks before they are trusted.** The containment
+  check was lexical, but `readFile` follows links, so `repo/link -> /secrets`
+  let `link/creds.txt` pass and read outside anyway. Reproduced as an oracle:
+  a diff whose removal line guessed the target's contents was accepted, while a
+  wrong guess reported "diff did not apply", which discloses the file one guess
+  at a time. Both cases now return the same message.
+
 ### Changed
 
 - `SECURITY.md` rewritten. The previous version described the refactoring product
