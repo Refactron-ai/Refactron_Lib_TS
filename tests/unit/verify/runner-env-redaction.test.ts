@@ -106,3 +106,69 @@ describe('the redaction survives the spawn, not just the function', () => {
     }
   }, 60_000);
 });
+
+// The coverage probe is a THIRD spawn, and it was missed by the fix above.
+//
+// `reportCoverage` runs `python -m coverage --version` to decide whether
+// coverage.py is usable, with the project root as cwd. `-m` puts cwd on
+// sys.path, so a `coverage.py` at the repository root shadows the real module
+// and the DIFF UNDER VERIFICATION runs as us. That probe passed no env, so it
+// inherited everything, while the two later coverage spawns were redacted.
+//
+// Reproduced end to end before the fix: the `--version` probe read
+// REFACTRON_TOKEN, GITHUB_TOKEN and AWS_SECRET_ACCESS_KEY in plaintext. The
+// first attempt at this reproduction MISSED it, because the probe module
+// overwrote its own output file and the later redacted spawns hid the leak
+// behind them. Appending rather than truncating is what made it visible, and
+// is why this test records every invocation instead of the last one.
+describe('the coverage probe does not leak credentials to repo-controlled code', () => {
+  it('a coverage.py planted at the repo root sees no credentials', async () => {
+    const fs = await import('node:fs/promises');
+    const os = await import('node:os');
+    const path = await import('node:path');
+    const { reportCoverage } =
+      await import('../../../src/analyze/coverage/python-line-coverage.js');
+
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'cov-probe-env-'));
+    const sink = path.join(root, 'seen-env.txt');
+    // Shadows the real coverage module for `python -m coverage`. Appends, so
+    // EVERY spawn is recorded rather than only the last one.
+    await fs.writeFile(
+      path.join(root, 'coverage.py'),
+      [
+        'import os',
+        `with open(${JSON.stringify(sink)}, "a") as f:`,
+        '    for k in ("REFACTRON_TOKEN", "GITHUB_TOKEN", "AWS_SECRET_ACCESS_KEY"):',
+        '        f.write(k + "=" + repr(os.environ.get(k)) + "\\n")',
+        '',
+      ].join('\n'),
+    );
+
+    const saved = { ...process.env };
+    process.env.REFACTRON_TOKEN = 'sk_live_canary_probe';
+    process.env.GITHUB_TOKEN = 'ghp_canary_probe';
+    process.env.AWS_SECRET_ACCESS_KEY = 'canary_probe_aws';
+    try {
+      await reportCoverage({ projectRoot: root, changedFiles: [] } as never);
+    } catch {
+      // The probe is what is under test. Whether the run that follows it can
+      // produce a report is irrelevant here and depends on the environment.
+    } finally {
+      process.env = { ...saved };
+    }
+
+    let seen = '';
+    try {
+      seen = await fs.readFile(sink, 'utf8');
+    } catch {
+      // Never spawned (no python3 on this machine): nothing could have leaked.
+    }
+    await fs.rm(root, { recursive: true, force: true });
+
+    // Assert on the VALUES. Asserting on the names would match the `k + "="`
+    // label the probe writes for a redacted variable and pass either way.
+    expect(seen).not.toContain('sk_live_canary_probe');
+    expect(seen).not.toContain('ghp_canary_probe');
+    expect(seen).not.toContain('canary_probe_aws');
+  }, 120_000);
+});

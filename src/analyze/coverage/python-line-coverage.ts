@@ -410,12 +410,21 @@ export function resolveConsoleScript(
  *  the cwd is the common case) imports fine as a namespace package with
  *  `__file__ = None`, but cannot be executed as a module. Probing execution
  *  in `cwd` keeps the probe honest in the same context as the real run. */
-function probeCoverage(pythonBin: string, cwd: string, env?: NodeJS.ProcessEnv): Promise<boolean> {
+//
+//  `env` is REQUIRED, and deliberately not optional. This probe runs `-m` with
+//  the project root as cwd, so a `coverage.py` at the repository root shadows
+//  the real module and the DIFF UNDER VERIFICATION executes as us. An omitted
+//  argument would silently inherit our credentials into attacker-controlled
+//  code; a required parameter makes that a compile error instead. Reproduced
+//  before it was required: the `--version` probe handed a repo-local
+//  `coverage.py` REFACTRON_TOKEN, GITHUB_TOKEN and AWS_SECRET_ACCESS_KEY in
+//  plaintext while the two later spawns were correctly redacted.
+function probeCoverage(pythonBin: string, cwd: string, env: NodeJS.ProcessEnv): Promise<boolean> {
   return new Promise((resolve) => {
     const p = spawn(pythonBin, ['-m', 'coverage', '--version'], {
       stdio: 'ignore',
       cwd,
-      ...(env ? { env } : {}),
+      env,
     });
     p.on('exit', (code) => resolve(code === 0));
     p.on('error', () => resolve(false));
@@ -453,7 +462,9 @@ export async function reportCoverage(input: CoverageReportInput): Promise<Covera
   // to default to can only be made equivalent where it resolves.
   const testCmd = input.testCmd ?? 'python3 -m pytest -q';
 
-  const found = input._probeOverride ?? (await probeCoverage(pythonBin, input.projectRoot));
+  const found =
+    input._probeOverride ??
+    (await probeCoverage(pythonBin, input.projectRoot, redactEnvForRunner(process.env)));
   if (!found) {
     return {
       coverageToolFound: false,
