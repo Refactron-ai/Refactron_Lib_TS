@@ -92,8 +92,11 @@ wrapper stripping, quoting, subcommands, and the runners' real `--help` output.
 
 **The coverage rule** (`src/verify/coverage-attribution.ts`). Find a change where
 coverage reports every changed statement executed and the full suite still fails.
-Differential-fuzz it against the previous release: any transition toward `SAFE` is
-a bug, not a data point.
+Differential-fuzz it against the previous release. A transition toward `SAFE` is a
+**candidate**, not a finding: a real fix moves verdicts that way too, and this
+release did exactly that twice. Promote one only when you can show the suite
+failing on the same change, which is your standing rule and outranks the
+heuristic that pointed you at it.
 
 **The shadow tree** (`src/verify/shadow-tree.ts`). Escape it. Symlinks, nested
 symlinks, hardlinks, case-insensitive filesystems, unicode normalisation, long
