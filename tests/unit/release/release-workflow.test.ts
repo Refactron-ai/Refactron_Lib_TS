@@ -125,8 +125,25 @@ describe('the release workflow does not run dependency scripts where it can publ
  *  it was written against proves nothing about its own correctness. */
 function permissionsAt(lines: string[], indent: number): Record<string, string> | null {
   const pad = ' '.repeat(indent);
-  const start = lines.findIndex((l) => l === `${pad}permissions:`);
+  const start = lines.findIndex((l) => new RegExp(`^${pad}permissions:(\\s|$)`).test(l));
   if (start === -1) return null;
+
+  // YAML also allows the SCALAR form - `permissions: write-all`, `read-all`, or
+  // `{}` - which this parser does not model. Throwing is not pedantry: the
+  // earlier version matched the mapping header exactly, so a scalar returned an
+  // empty mapping and `perms['id-token']` read `undefined`. Verified before this
+  // guard existed: giving `test-before-release` a literal `permissions:
+  // write-all` left all eight tests GREEN while that job held the exact
+  // capability this file exists to deny it. An unmodelled shape must fail loudly,
+  // never report "no permissions found".
+  const inline = lines[start]!.slice(`${pad}permissions:`.length).trim();
+  if (inline !== '') {
+    throw new Error(
+      `unmodelled permissions shape at indent ${indent}: "permissions: ${inline}". ` +
+        'This parser models the mapping form only; extend it rather than deleting this check.',
+    );
+  }
+
   const out: Record<string, string> = {};
   for (const line of lines.slice(start + 1)) {
     if (line.trim() === '' || line.trimStart().startsWith('#')) continue;
@@ -192,6 +209,27 @@ describe('release.yml grants the publishing capability to publish jobs only', ()
       const write = effectivePermissions(source, job)['contents'] === 'write';
       expect(write, `job ${job}`).toBe(job === 'github-release');
     }
+  });
+
+  it('refuses the scalar permissions form instead of reporting none', () => {
+    // Both levels, because the hole existed at both and only the workflow-level
+    // one happened to be caught by an unrelated assertion.
+    const jobScalar = ['jobs:', '  loose:', '    permissions: write-all', '    steps:', ''].join(
+      '\n',
+    );
+    expect(() => effectivePermissions(jobScalar, 'loose')).toThrow(/unmodelled permissions shape/);
+
+    const workflowScalar = [
+      'permissions: write-all',
+      '',
+      'jobs:',
+      '  plain:',
+      '    steps:',
+      '',
+    ].join('\n');
+    expect(() => effectivePermissions(workflowScalar, 'plain')).toThrow(
+      /unmodelled permissions shape/,
+    );
   });
 
   it('parses a synthetic workflow it does not control', () => {
