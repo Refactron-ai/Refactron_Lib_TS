@@ -5,9 +5,17 @@ on:
     tags:
       - 'v*.*.*'
 
+# Least privilege at the top, escalation only where it is needed. A job-level
+# block REPLACES this set rather than adding to it, so any job needing more
+# states everything it needs.
+#
+# `id-token: write` is deliberately NOT here. It mints an OIDC token, and our npm
+# trusted publisher accepts one to publish `refactron`. Granting it workflow-wide
+# handed that capability to `test-before-release`, which installs the dependency
+# tree with lifecycle scripts enabled on purpose (see #133). Only the two publish
+# jobs get it now, via their own blocks.
 permissions:
-  contents: write
-  id-token: write
+  contents: read
 
 jobs:
   validate-tag:
@@ -137,6 +145,11 @@ jobs:
     name: Create GitHub Release
     needs: [publish-npm, publish-pypi]
     runs-on: ubuntu-latest
+    # The one job that writes to the repository: action-gh-release creates the
+    # release. `write` implies read, so actions/checkout still works with only
+    # this line. No id-token: this job publishes nothing to a registry.
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
         with:
