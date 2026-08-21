@@ -26,6 +26,27 @@ const WORKFLOW = path.join(REPO, '.github/workflows/release.yml');
  *  indent. Returning the block rather than the whole file is what keeps this
  *  test about the PUBLISH job: `test-before-release` deliberately keeps its
  *  lifecycle scripts, so a file-wide assertion would be wrong, not just loose. */
+/** The executable dependency-install steps in a job.
+ *
+ *  Anchored on `- run:` rather than matching bare text, because a COMMENT
+ *  mentioning `npm ci` would otherwise satisfy these assertions after the real
+ *  command was removed. That is not hypothetical here: the comment at the call
+ *  site is specifically about the `--ignore-scripts` flag, so the hole would be
+ *  one well-meaning edit away.
+ *
+ *  `-g` is excluded, and finding out why is what this comment is for. The
+ *  publish job must run `npm install -g npm@^11.5.1`, because npm OIDC
+ *  trusted-publisher auth needs npm >= 11.5.1 and Node 20 ships an older
+ *  bundled npm. That is a global tool install, not this project's dependency
+ *  tree, and demanding `--ignore-scripts` on it would be wrong. `install`
+ *  without `-g` IS covered, so swapping `npm ci` for `npm install` cannot
+ *  quietly slip past the guard. */
+function npmInstallSteps(source: string, job: string): string[] {
+  return jobBlock(source, job).filter(
+    (l) => /^\s*-\s+run:\s+npm\s+(ci|install)\b/.test(l) && !/\s(-g|--global)\b/.test(l),
+  );
+}
+
 function jobBlock(source: string, job: string): string[] {
   // `\r?\n`, not `\n`. A Windows checkout with autocrlf gives every line a
   // trailing \r, so `l === '  publish-npm:'` never matched and this threw
@@ -43,7 +64,7 @@ describe('the release workflow does not run dependency scripts where it can publ
   const source = fs.readFileSync(WORKFLOW, 'utf8');
 
   it('installs with --ignore-scripts in the publish job', () => {
-    const installs = jobBlock(source, 'publish-npm').filter((l) => /\bnpm ci\b/.test(l));
+    const installs = npmInstallSteps(source, 'publish-npm');
     // Guards the guard: if the step is renamed or dropped, an empty list would
     // make `every()` vacuously true and this test would pass on a job that no
     // longer installs anything the way we think it does.
@@ -61,7 +82,7 @@ describe('the release workflow does not run dependency scripts where it can publ
     // first run - the CRLF regression test having its own CRLF bug. Going
     // through LF makes the fixture identical on every platform.
     const crlf = source.replace(/\r?\n/g, '\r\n');
-    const installs = jobBlock(crlf, 'publish-npm').filter((l) => /\bnpm ci\b/.test(l));
+    const installs = npmInstallSteps(crlf, 'publish-npm');
     expect(installs.length).toBeGreaterThan(0);
     for (const line of installs) expect(line).toContain('--ignore-scripts');
   });
@@ -71,7 +92,7 @@ describe('the release workflow does not run dependency scripts where it can publ
     // and that job executes repository code by design anyway. Pinned so that
     // "harden the other one too" is a conversation rather than a silent change
     // that breaks the release at the worst possible moment.
-    const installs = jobBlock(source, 'test-before-release').filter((l) => /\bnpm ci\b/.test(l));
+    const installs = npmInstallSteps(source, 'test-before-release');
     expect(installs.length).toBeGreaterThan(0);
     for (const line of installs) expect(line).not.toContain('--ignore-scripts');
   });
