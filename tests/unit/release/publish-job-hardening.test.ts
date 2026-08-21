@@ -56,7 +56,11 @@ describe('the release workflow does not run dependency scripts where it can publ
     // "job not found" on all three Windows runners, because autocrlf leaves a
     // trailing \r on every line. Pinned against a synthetic CRLF source so the
     // fix cannot regress on the two thirds of CI that run on Linux and macOS.
-    const crlf = source.replace(/\n/g, '\r\n');
+    // Normalize to LF FIRST. On a Windows runner `source` is ALREADY CRLF, so
+    // replacing bare \n produced \r\r\n and this test failed there on its
+    // first run - the CRLF regression test having its own CRLF bug. Going
+    // through LF makes the fixture identical on every platform.
+    const crlf = source.replace(/\r?\n/g, '\r\n');
     const installs = jobBlock(crlf, 'publish-npm').filter((l) => /\bnpm ci\b/.test(l));
     expect(installs.length).toBeGreaterThan(0);
     for (const line of installs) expect(line).toContain('--ignore-scripts');
