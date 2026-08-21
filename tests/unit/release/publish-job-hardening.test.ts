@@ -27,7 +27,11 @@ const WORKFLOW = path.join(REPO, '.github/workflows/release.yml');
  *  test about the PUBLISH job: `test-before-release` deliberately keeps its
  *  lifecycle scripts, so a file-wide assertion would be wrong, not just loose. */
 function jobBlock(source: string, job: string): string[] {
-  const lines = source.split('\n');
+  // `\r?\n`, not `\n`. A Windows checkout with autocrlf gives every line a
+  // trailing \r, so `l === '  publish-npm:'` never matched and this threw
+  // "job not found" on all three Windows runners. Caught in CI on the very PR
+  // that added the test, which this repository has seen before.
+  const lines = source.split(/\r?\n/);
   const start = lines.findIndex((l) => l === `  ${job}:`);
   if (start === -1) throw new Error(`job "${job}" not found in release.yml`);
   const rest = lines.slice(start + 1);
@@ -43,6 +47,17 @@ describe('the release workflow does not run dependency scripts where it can publ
     // Guards the guard: if the step is renamed or dropped, an empty list would
     // make `every()` vacuously true and this test would pass on a job that no
     // longer installs anything the way we think it does.
+    expect(installs.length).toBeGreaterThan(0);
+    for (const line of installs) expect(line).toContain('--ignore-scripts');
+  });
+
+  it('reads a CRLF checkout, which is how this test first failed', () => {
+    // Not a hypothetical. The first version split on '\n' and threw
+    // "job not found" on all three Windows runners, because autocrlf leaves a
+    // trailing \r on every line. Pinned against a synthetic CRLF source so the
+    // fix cannot regress on the two thirds of CI that run on Linux and macOS.
+    const crlf = source.replace(/\n/g, '\r\n');
+    const installs = jobBlock(crlf, 'publish-npm').filter((l) => /\bnpm ci\b/.test(l));
     expect(installs.length).toBeGreaterThan(0);
     for (const line of installs) expect(line).toContain('--ignore-scripts');
   });
