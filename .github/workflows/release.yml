@@ -75,7 +75,23 @@ jobs:
           node-version: '20'
           cache: 'npm'
           registry-url: 'https://registry.npmjs.org'
-      - run: npm ci
+      # --ignore-scripts, and NOT for tidiness. This job holds id-token:write for
+      # the npm trusted publisher, so it can mint a token that publishes
+      # `refactron`. A lifecycle script from any dependency at any depth would
+      # run right here, with that capability. The install is the window; the
+      # publish step below was already closed.
+      #
+      # Safe because `npm run build` is tsc plus a plain-node postbuild script,
+      # neither of which needs a dependency install hook, and this repo's own
+      # `prepare` only activates local githooks that a runner never uses.
+      # Verified rather than assumed: two clean clones, one installed each way,
+      # produced an IDENTICAL published tarball (149 files, same sizes, via
+      # `npm pack --dry-run --json`).
+      #
+      # test-before-release deliberately keeps its scripts: it runs the real
+      # suite, vitest reaches esbuild's postinstall-provided platform binary,
+      # and that job executes repository code by design anyway.
+      - run: npm ci --ignore-scripts
       # npm OIDC trusted-publisher auth requires npm >= 11.5.1 and Node 20
       # ships an older bundled npm, so this upgrade is mandatory. Pin the MAJOR
       # rather than tracking `latest`: npm 12 dropped Node 20 (it requires
