@@ -3,6 +3,7 @@
 // RefactronVerifier (pass/fail gates) with reportCoverage (changed-line
 // coverage, Python only) into a SAFE/UNSAFE/UNPROVEN verdict. Read-only:
 // never mutates the caller's repo.
+import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 import { RefactronVerifier } from './engine.js';
 import { createShadowTree } from './shadow-tree.js';
@@ -10,7 +11,14 @@ import { reportCoverage, normalizePath } from '../analyze/coverage/index.js';
 import { attributeChangedLines } from './coverage-attribution.js';
 import { buildStatementMap } from './statement-map.js';
 import { fuseVerdict, type CoverageAssessment, type VerdictReport } from './verdict-fuse.js';
-import { assessTestScope, type TestScopeAssessment } from './test-scope.js';
+import {
+  assessTestScope,
+  configsDeclareTestpaths,
+  PYTEST_CONFIG_FILES,
+  type PytestConfigContext,
+  type PytestConfigSource,
+  type TestScopeAssessment,
+} from './test-scope.js';
 import { detectRunner } from './runners/detect.js';
 import { ENGINE_VERSION } from '../engine-version.js';
 import { changedLinesForEdits, editsFromUnifiedDiff, type FileEdit } from './diff-input.js';
@@ -93,12 +101,103 @@ export async function verifyDiff(input: VerifyDiffInput): Promise<VerdictReport>
  *  will not do. `detectRunner` is a few fs.access calls; the tests gate calls it
  *  again with the same inputs and gets the same answer. */
 async function resolveTestScope(input: VerifyDiffInput): Promise<TestScopeAssessment> {
+  const pytestConfig = await readPytestContext(input.repoRoot);
   if (input.testCmd !== undefined && input.testCmd.trim() !== '') {
-    return assessTestScope(input.testCmd, process.env);
+    return assessTestScope(input.testCmd, process.env, undefined, pytestConfig);
   }
   const spec = await detectRunner(input.repoRoot);
   const detected = spec ? [spec.cmd, ...spec.args].join(' ') : undefined;
-  return assessTestScope(undefined, process.env, detected);
+  return assessTestScope(undefined, process.env, detected, pytestConfig);
+}
+
+/** pytest configuration living at the repository root (#137).
+ *
+ *  Root only, deliberately. pytest walks UP to find its rootdir, but the suite
+ *  runs inside the shadow tree, whose parent is a temp directory: a config above
+ *  the repository is not copied and therefore does not apply to the run we are
+ *  judging. Reading it would report narrowing that never happened.
+ *
+ *  A missing file is the overwhelming case and is simply skipped. */
+async function readPytestContext(repoRoot: string): Promise<PytestConfigContext> {
+  const configs: PytestConfigSource[] = [];
+  for (const name of PYTEST_CONFIG_FILES) {
+    try {
+      configs.push({ name, content: await fs.readFile(path.join(repoRoot, name), 'utf8') });
+    } catch {
+      // Absent, unreadable, or not UTF-8. pytest could not read it either.
+    }
+  }
+  // Walked ONLY when a config actually declares `testpaths`, which is the only
+  // question the list answers. The walk costs about a second on a large
+  // checkout, and most projects never set the key, so this keeps the common
+  // path free.
+  const testFiles = configsDeclareTestpaths(configs) ? await findTestFiles(repoRoot) : null;
+  return { configs, testFiles };
+}
+
+/** Directories pytest would not collect from, or that would make the walk
+ *  unbounded on a real checkout. */
+const UNWALKED = new Set([
+  'node_modules',
+  '.git',
+  '.venv',
+  'venv',
+  '.tox',
+  '.nox',
+  '__pycache__',
+  '.mypy_cache',
+  '.pytest_cache',
+  '.ruff_cache',
+  'dist',
+  'build',
+  '.eggs',
+]);
+
+/** pytest's DEFAULT discovery patterns. A project that overrides `python_files`
+ *  is detected by the caller of this list and treated conservatively, because
+ *  this list would then have been built with the wrong pattern. */
+function looksLikeTest(name: string): boolean {
+  return /^test_.*\.py$/.test(name) || /_test\.py$/.test(name);
+}
+
+/** Repo-relative POSIX paths of the files pytest would discover as tests.
+ *
+ *  Used only to answer whether a `testpaths` entry excludes anything.
+ *
+ *  Returns `null` when the answer would be a guess. Truncation is the case that
+ *  matters: a capped walk returns a non-empty but INCOMPLETE list, and the file
+ *  that `testpaths` excludes could be exactly the one past the cap. Reporting
+ *  that as "nothing outside testpaths" would clear a verdict on an answer we do
+ *  not have, so it floors instead. */
+async function findTestFiles(root: string): Promise<string[] | null> {
+  const out: string[] = [];
+  const CAP = 5000;
+  let truncated = false;
+  async function walk(dir: string, rel: string): Promise<void> {
+    if (out.length >= CAP) {
+      truncated = true;
+      return;
+    }
+    let entries;
+    try {
+      entries = await fs.readdir(dir, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const e of entries) {
+      if (out.length >= CAP) {
+        truncated = true;
+        return;
+      }
+      if (e.name.startsWith('.') && e.isDirectory()) continue;
+      if (UNWALKED.has(e.name)) continue;
+      const childRel = rel === '' ? e.name : `${rel}/${e.name}`;
+      if (e.isDirectory()) await walk(path.join(dir, e.name), childRel);
+      else if (e.isFile() && looksLikeTest(e.name)) out.push(childRel);
+    }
+  }
+  await walk(root, '');
+  return truncated ? null : out;
 }
 
 /** Coverage we could not establish. A fresh object each time: callers own it.

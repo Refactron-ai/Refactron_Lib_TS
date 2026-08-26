@@ -721,6 +721,7 @@ export function assessTestScope(
   override?: string,
   env: Readonly<Record<string, string | undefined>> = {},
   detectedCommand?: string,
+  pytestConfig: PytestConfigContext = { configs: [], testFiles: null },
 ): TestScopeAssessment {
   // `detectRunner` guards with `if (opts.override)`, so an empty or
   // whitespace-only string is falsy there and the engine runs its OWN detected,
@@ -745,8 +746,15 @@ export function assessTestScope(
   // consulted when the runner is known: `unknown` already declines to claim
   // anything, and adding an ambient signal to it would not change the verdict.
   if (scope === 'full') {
-    const ambient = ambientSignals(env, runnerNameOf(command));
+    const runner = runnerNameOf(command);
+    const ambient = ambientSignals(env, runner);
     if (ambient.length > 0) return { scope: 'narrowed', source, signals: ambient };
+    // Gated on the runner exactly as the ambient variables are, so a stray
+    // pytest.ini in a JS project does not floor its verdict (#137).
+    if (runner === 'pytest') {
+      const fromConfig = pytestConfigSignals(pytestConfig);
+      if (fromConfig.length > 0) return { scope: 'narrowed', source, signals: fromConfig };
+    }
   }
   return { scope, source, signals };
 }
@@ -768,6 +776,184 @@ function ambientSignals(
     const inner = scanArgs(table, tokenize(value));
     if (inner.scope === 'narrowed') {
       out.push(`${inner.signals[0] ?? 'a filter'} (from ${name} in the environment)`);
+    }
+  }
+  return out;
+}
+
+/** One pytest configuration file, read by the caller. Passed in rather than read
+ *  here so `assessTestScope` stays pure and unit-testable without a filesystem. */
+export interface PytestConfigSource {
+  /** Filename as the user would recognise it. It goes into the signal. */
+  name: string;
+  content: string;
+}
+
+/** What the caller read from disk so this module can stay pure.
+ *
+ *  `testFiles` is what makes `testpaths` answerable rather than merely
+ *  suspicious. `testpaths = ["tests"]` in a project whose tests all live in
+ *  `tests/` excludes nothing, and it is close to the most common line in any
+ *  pytest config: flooring it would make this fix worse than the defect it
+ *  closes for a large share of real projects. */
+export interface PytestConfigContext {
+  configs: readonly PytestConfigSource[];
+  /** Repo-relative POSIX paths of the files pytest would discover as tests, or
+   *  `null` when that could not be established - the scan was truncated, or it
+   *  was never run because no config declares `testpaths`.
+   *
+   *  `null` FLOORS the verdict. A truncated scan returns a non-empty but
+   *  incomplete list, and treating that as "nothing lies outside testpaths"
+   *  would clear a verdict on an answer we do not have. */
+  testFiles: readonly string[] | null;
+}
+
+/** Does any config declare `testpaths`? The caller uses this to decide whether
+ *  the tree needs walking at all: the walk costs about a second on a large
+ *  checkout, and most projects never set the key. */
+export function configsDeclareTestpaths(configs: readonly PytestConfigSource[]): boolean {
+  return configs.some(({ name, content }) => {
+    const section = PYTEST_CONFIG_SECTIONS[name];
+    if (section === undefined) return false;
+    const body = sectionBody(content, section);
+    return body !== null && rawValue(body, 'testpaths') !== null;
+  });
+}
+
+/** Where each file keeps its pytest settings. pytest itself accepts all four. */
+const PYTEST_CONFIG_SECTIONS: Readonly<Record<string, string>> = {
+  'pytest.ini': 'pytest',
+  'tox.ini': 'pytest',
+  'setup.cfg': 'tool:pytest',
+  'pyproject.toml': 'tool.pytest.ini_options',
+};
+
+/** The filenames a caller should read and hand to `assessTestScope`. */
+export const PYTEST_CONFIG_FILES: readonly string[] = Object.keys(PYTEST_CONFIG_SECTIONS);
+
+/** The lines of one section, stopping at the next header.
+ *
+ *  Stopping matters: `addopts` under `[tool.coverage.run]` is not pytest
+ *  configuration, and reading to end-of-file would adopt a neighbour's key. */
+function sectionBody(content: string, section: string): string[] | null {
+  const lines = content.split(/\r?\n/);
+  const start = lines.findIndex((l) => l.trim() === `[${section}]`);
+  if (start === -1) return null;
+  const rest = lines.slice(start + 1);
+  const end = rest.findIndex((l) => /^\s*\[/.test(l));
+  return end === -1 ? rest : rest.slice(0, end);
+}
+
+/** A key's raw value, including ini continuation lines and multi-line TOML
+ *  arrays. The narrowing flag is often on a continuation line, so reading only
+ *  the first line of the value is how this defect hides. */
+function rawValue(body: string[], key: string): string | null {
+  const head = new RegExp(`^\\s*${key}\\s*=`);
+  const idx = body.findIndex((l) => head.test(l));
+  if (idx === -1) return null;
+  let value = body[idx]!.replace(head, '');
+  for (const line of body.slice(idx + 1)) {
+    if (line.trim() === '') break;
+    if (!/^\s/.test(line)) break; // dedented: a new key in ini form
+    if (/^\s*[\w.-]+\s*=/.test(line)) break; // an indented NEXT key
+    value += ` ${line.trim()}`;
+  }
+  return value.trim();
+}
+
+/** Option tokens from a raw config value.
+ *
+ *  `confident` false means the value was present but could not be read - an
+ *  unterminated array or quote. The caller must treat that as narrowing.
+ *  Reporting "no narrowing found" for something unreadable is the same defect as
+ *  a test that passes when its prerequisite is missing. */
+function valueTokens(raw: string): { tokens: string[]; confident: boolean } {
+  if (raw === '') return { tokens: [], confident: true };
+  if (raw.startsWith('[')) {
+    // TOML array form: addopts = ["-k", "test_a"]
+    if (!raw.includes(']')) return { tokens: [], confident: false };
+    const inner = raw.slice(1, raw.lastIndexOf(']'));
+    const tokens = [...inner.matchAll(/"([^"]*)"|'([^']*)'/g)].map((m) => m[1] ?? m[2] ?? '');
+    if (tokens.length === 0 && inner.trim() !== '') return { tokens: [], confident: false };
+    return { tokens, confident: true };
+  }
+  const quote = raw[0];
+  if (quote === '"' || quote === "'") {
+    if (raw.length < 2 || !raw.endsWith(quote)) return { tokens: [], confident: false };
+    return { tokens: tokenize(raw.slice(1, -1)), confident: true };
+  }
+  return { tokens: tokenize(raw), confident: true };
+}
+
+/** Is a repo-relative test file inside a `testpaths` entry? Prefix matching on
+ *  path SEGMENTS, so `tests` does not swallow `tests_extra/`. */
+function isUnder(file: string, dir: string): boolean {
+  const d = dir.replace(/^\.\//, '').replace(/\/+$/, '');
+  if (d === '' || d === '.') return true;
+  return file === d || file.startsWith(`${d}/`);
+}
+
+/** Narrowing declared in pytest configuration rather than on the command line.
+ *
+ *  Issue #137. `addopts` goes through the SAME `scanArgs` the command line uses,
+ *  so this reads configuration rather than reinterpreting it, and a tidy
+ *  `addopts = -q --strict-markers` stays `full`. A fix that floored every
+ *  configured project would be worse than the defect it closes. */
+function pytestConfigSignals(ctx: PytestConfigContext): string[] {
+  const { configs, testFiles } = ctx;
+  const out: string[] = [];
+  for (const { name, content } of configs) {
+    const section = PYTEST_CONFIG_SECTIONS[name];
+    if (section === undefined) continue;
+    const body = sectionBody(content, section);
+    if (body === null) continue;
+
+    const addopts = rawValue(body, 'addopts');
+    if (addopts !== null && addopts !== '') {
+      const { tokens, confident } = valueTokens(addopts);
+      if (!confident) {
+        out.push(`addopts in ${name} could not be read, so the suite may be narrowed`);
+      } else {
+        const inner = scanArgs(PYTEST, tokens);
+        if (inner.scope !== 'full') {
+          out.push(`${inner.signals[0] ?? 'a filter'} (from addopts in ${name})`);
+        }
+      }
+    }
+
+    // `testpaths` restricts collection to the paths it names. Whether that
+    // EXCLUDES anything is answerable: compare it against the test files the
+    // repository actually has.
+    const testpaths = rawValue(body, 'testpaths');
+    if (testpaths !== null && testpaths !== '') {
+      const { tokens, confident } = valueTokens(testpaths);
+      if (!confident || tokens.length === 0) {
+        out.push(`testpaths in ${name} could not be read, so the suite may be narrowed`);
+      } else if (!tokens.some((t) => WHOLE_TREE_POSITIONALS.has(t))) {
+        // A custom `python_files` changes what counts as a test, so the file
+        // list was built with the wrong pattern and cannot answer the question.
+        if (rawValue(body, 'python_files') !== null) {
+          out.push(
+            `testpaths in ${name} restricts collection to ${testpaths}, and python_files ` +
+              'is customised, so which files that leaves out could not be determined',
+          );
+        } else if (testFiles === null || testFiles.length === 0) {
+          // Unknown or empty. Neither may read as "nothing lies outside
+          // testpaths": one is an answer we do not have, the other is a repo we
+          // could not find tests in.
+          out.push(
+            `testpaths in ${name} restricts collection to ${testpaths}, ` +
+              'and the tests it leaves out could not be determined',
+          );
+        } else {
+          const outside = testFiles.filter((f) => !tokens.some((t) => isUnder(f, t)));
+          if (outside.length > 0) {
+            const shown = outside.slice(0, 3).join(', ');
+            const more = outside.length > 3 ? ` and ${outside.length - 3} more` : '';
+            out.push(`testpaths in ${name} leaves out ${shown}${more}`);
+          }
+        }
+      }
     }
   }
   return out;
