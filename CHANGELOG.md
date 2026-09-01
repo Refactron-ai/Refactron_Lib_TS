@@ -7,6 +7,40 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [0.4.5] — 2026-09-01
+
+### Fixed — a changed conditional with an untested branch could earn `SAFE`
+
+The coverage rule was statement-level: a changed `if`/`elif` counted as covered
+the moment its header executed. So a change to a conditional whose one branch no
+test entered earned `SAFE` with the changed behaviour untested. A changed
+conditional is one of the most common regression shapes, and it is exactly where
+statement coverage is weakest.
+
+`SAFE` now also requires that changed conditionals were fully branched. With
+`coverage.py --branch`, a changed line reported as a partially-taken branch
+floors the verdict at `UNPROVEN`, and the reason names it:
+
+```
+[UNPROVEN] Tests pass, but a changed conditional has a branch no test took
+(calc.py:3). Add a test that enters the other branch.
+```
+
+The decision was made on measurement, not assertion (ADR-14). `--branch` added
+no runtime cost on a real 600-test suite. The flip is surgical: it bites only a
+changed conditional with an untaken arc, never straight-line code (0% affected)
+or a fully-exercised conditional, so it cannot make `SAFE` unreachable for
+ordinary changes.
+
+Fail-safe throughout: without `--branch` data the check falls back to the
+statement rule, and absent data never grants `SAFE`. The rule can only move
+`SAFE` to `UNPROVEN`, never the other way.
+
+Branch coverage is Python-only, like the rest of the coverage check. A
+TypeScript or mixed diff still caps at `UNPROVEN`.
+
+---
+
 ## [0.4.4] — 2026-08-21
 
 ### Fixed — a pytest config file could turn `UNSAFE` into `SAFE`

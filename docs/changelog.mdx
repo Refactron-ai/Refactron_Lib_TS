@@ -7,6 +7,30 @@ description: Release history for Refactron, newest first.
 Refactron follows [Semantic Versioning](https://semver.org/). The full,
 unabridged log lives in [`CHANGELOG.md`](https://github.com/Refactron-ai/refactron/blob/main/CHANGELOG.md).
 
+<Update label="0.4.5" description="September 1, 2026">
+  **A changed conditional with an untested branch could earn `SAFE`.**
+
+  Coverage was statement-level: a changed `if`/`elif` counted as covered once its
+  header executed, so a change to a conditional whose one branch no test entered
+  earned `SAFE` with the changed behaviour untested.
+
+  `SAFE` now also requires changed conditionals to be fully branched. A changed
+  line coverage.py reports as a partially-taken branch floors at `UNPROVEN`, and
+  the reason names it:
+
+  ```
+  [UNPROVEN] Tests pass, but a changed conditional has a branch no test took
+  (calc.py:3). Add a test that enters the other branch.
+  ```
+
+  Decided on measurement (ADR-14): `--branch` added no runtime cost on a real
+  600-test suite, and the flip is surgical — it bites only a changed conditional
+  with an untaken arc, never straight-line code or a fully-tested conditional, so
+  it cannot make `SAFE` unreachable for ordinary changes. Fail-safe throughout:
+  the rule only moves `SAFE` to `UNPROVEN`, and absent branch data falls back to
+  the statement rule. Python-only, like the rest of coverage.
+</Update>
+
 <Update label="0.4.4" description="August 21, 2026">
   **A pytest config file could turn `UNSAFE` into `SAFE`.** If your project sets
   `addopts` or `testpaths`, read this.
