@@ -526,6 +526,57 @@ describe('fuseVerdict test scope', () => {
       expect(fuse(result(true), ['calc.py'], inconsistent).verdict).not.toBe('SAFE');
     });
   });
+
+  // ADR-15 / #116. A surviving mutant means coverage was complete (mutation runs
+  // only then), so the verdict floors to UNPROVEN with a mutation reason.
+  describe('mutation (ADR-15)', () => {
+    const survived: CoverageAssessment = {
+      tool: 'coverage.py',
+      changedLinesCovered: true,
+      uncovered: [],
+      changedStatements: { total: 1, covered: 1 },
+      survivingMutants: [{ file: 'calc.py', line: 2, mutation: '+->-' }],
+    };
+
+    it('floors to UNPROVEN and names the surviving mutant', () => {
+      const r = fuse(result(true), ['calc.py'], survived);
+      expect(r.verdict).toBe('UNPROVEN');
+      expect(r.reason.toLowerCase()).toContain('mutant');
+      expect(r.reason).toContain('calc.py:2');
+      expect(r.reason).not.toMatch(/1 of 1/);
+    });
+
+    it('the SAFE gate blocks on a survivor even with coverage complete', () => {
+      // Defense in depth, matching the branch guard: survivingMutants is asserted
+      // at the gate, not only trusted to have floored changedLinesCovered.
+      expect(fuse(result(true), ['calc.py'], survived).verdict).not.toBe('SAFE');
+    });
+
+    it('names the plural form for multiple survivors', () => {
+      const many: CoverageAssessment = {
+        ...survived,
+        survivingMutants: [
+          { file: 'a.py', line: 2, mutation: '+->-' },
+          { file: 'b.py', line: 9, mutation: '<=-><' },
+        ],
+      };
+      const r = fuse(result(true), ['a.py', 'b.py'], many);
+      expect(r.reason).toContain('2 mutants');
+    });
+
+    it('does not mention a mutant when none survived', () => {
+      expect(fuse(result(true), ['a.py'], covered).reason.toLowerCase()).not.toContain('mutant');
+    });
+
+    it('a clean mutation run never strengthens an otherwise-UNPROVEN verdict', () => {
+      // The invariant the issue made mandatory: mutation may only downgrade. A
+      // change floored by thin coverage stays UNPROVEN whether or not mutation
+      // ran cleanly — an empty survivors list adds no SAFE-ward signal.
+      const thinCoverageCleanMutation: CoverageAssessment = { ...uncovered, survivingMutants: [] };
+      const r = fuse(result(true), ['a.py'], thinCoverageCleanMutation);
+      expect(r.verdict).toBe('UNPROVEN');
+    });
+  });
 });
 
 // Issue #110 / ADR-12. A caller-supplied `testCmd` that names a subset of the

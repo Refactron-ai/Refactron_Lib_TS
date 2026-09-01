@@ -22,6 +22,7 @@ import {
 import { detectRunner } from './runners/detect.js';
 import { ENGINE_VERSION } from '../engine-version.js';
 import { changedLinesForEdits, editsFromUnifiedDiff, type FileEdit } from './diff-input.js';
+import { runMutation, type SurvivingMutant } from './mutation.js';
 import type { FileChange, RefactorPlan, TransformId } from '../contracts.js';
 
 export interface VerifyDiffInput {
@@ -30,6 +31,9 @@ export interface VerifyDiffInput {
   unifiedDiff?: string;
   testCmd?: string;
   timeoutMs?: number;
+  // Opt-in mutation testing (ADR-15). Off by default; when set, a surviving
+  // mutant of a changed statement downgrades SAFE to UNPROVEN. Never strengthens.
+  mutate?: boolean;
 }
 
 // Inert at verify time (keystone spike: transformId/oldHash are never read).
@@ -334,6 +338,19 @@ async function assessCoverage(
     // "nothing to attest" instead of implying a coverage miss. (Its inert-only
     // sibling gets the same treatment and rides along on `attributed`.)
     const removalOnlyFiles = ranges.filter((r) => r.lines.length === 0).map((r) => r.path);
+    // Mutation runs only when the change would otherwise be SAFE: it can only
+    // downgrade, so a change already floored by coverage needs no mutants, and
+    // skipping saves its minutes-scale cost (ADR-15).
+    let survivingMutants: SurvivingMutant[] | undefined;
+    if (input.mutate === true && attributed.changedLinesCovered === true) {
+      const mut = await runMutation({
+        shadowRoot: shadow.path,
+        ranges,
+        ...(input.testCmd ? { testCmd: input.testCmd } : {}),
+        ...(input.timeoutMs ? { timeoutMs: input.timeoutMs } : {}),
+      });
+      if (mut.survivors.length > 0) survivingMutants = mut.survivors;
+    }
     // Spread, never rebuild field by field: an allow-list silently drops any
     // field a future CoverageAttribution adds, and the last allow-list here also
     // DELETED `uncovered` whenever the verdict was SAFE, which is precisely how
@@ -343,6 +360,7 @@ async function assessCoverage(
       tool: 'coverage.py',
       ...attributed,
       ...(removalOnlyFiles.length > 0 ? { removalOnlyFiles } : {}),
+      ...(survivingMutants ? { survivingMutants } : {}),
     };
   } finally {
     await shadow.cleanup();

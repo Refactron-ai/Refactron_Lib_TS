@@ -43,6 +43,9 @@ export interface CoverageAssessment {
   inertOnlyFiles?: string[];
   // Changed conditionals with an untaken branch (ADR-14); block SAFE.
   partialBranches?: Array<{ file: string; line: number }>;
+  // Mutants of changed statements the suite still passed (ADR-15); block SAFE.
+  // Only ever present under opt-in --mutate, and only downgrades.
+  survivingMutants?: Array<{ file: string; line: number; mutation: string }>;
 }
 
 export interface VerdictReport {
@@ -200,6 +203,7 @@ export function fuseVerdict(
   if (
     cov.changedLinesCovered === true &&
     (cov.partialBranches?.length ?? 0) === 0 &&
+    (cov.survivingMutants?.length ?? 0) === 0 &&
     !flakyReason &&
     !narrowedReason
   ) {
@@ -254,13 +258,23 @@ export function fuseVerdict(
     branchGaps.length === 1
       ? `Tests pass, but a changed conditional has a branch no test took (${branchGaps[0]!.file}:${branchGaps[0]!.line}). Add a test that enters the other branch.`
       : `Tests pass, but ${branchGaps.length} changed conditionals have a branch no test took. Add tests that enter the untaken branches.`;
-  const coverageReason = nothingToAttest
-    ? nothingToAttestReason
-    : cov.changedLinesCovered === 'unknown'
-      ? 'Tests pass, but coverage of the changed code could not be determined.'
-      : branchGaps.length > 0
-        ? branchReason
-        : partialReason;
+  // Top precedence: a survivor means coverage was COMPLETE (mutation runs only
+  // then), so every coverage-shaped reason below would mislead (ADR-15).
+  const survivors = cov.survivingMutants ?? [];
+  const mutationReason =
+    survivors.length === 1
+      ? `Tests pass, but a mutant of a changed statement survived (${survivors[0]!.file}:${survivors[0]!.line}, ${survivors[0]!.mutation}): no test failed when its behaviour changed. Add a test that asserts on it.`
+      : `Tests pass, but ${survivors.length} mutants of changed statements survived: no test failed when their behaviour changed. Add assertions that would catch them.`;
+  const coverageReason =
+    survivors.length > 0
+      ? mutationReason
+      : nothingToAttest
+        ? nothingToAttestReason
+        : cov.changedLinesCovered === 'unknown'
+          ? 'Tests pass, but coverage of the changed code could not be determined.'
+          : branchGaps.length > 0
+            ? branchReason
+            : partialReason;
   // Tie-break when more than one thing could explain the UNPROVEN. A scope or
   // flaky reason wins ONLY when coverage would otherwise have said SAFE; when
   // coverage already forces UNPROVEN ('unknown' or false) the coverage reason
