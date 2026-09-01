@@ -71,6 +71,9 @@ export interface CoverageAttributionInput {
   ranges: ChangedRange[];
   /** `${normalizedRelPath}:${line}` for every line coverage.py saw execute. */
   coveredLines: Set<string>;
+  /** `${relPath}:${line}` for each partially-taken branch (ADR-14). Absent means
+   *  no `--branch` data; attribution then rests on the statement rule alone. */
+  partialBranchLines?: Set<string>;
   /** Line-to-enclosing-statement runs per normalized relative path, from the AST
    *  sidecar. A file missing here is treated as fully unattributable (never
    *  exercised); verify-diff bails the whole assessment to UNKNOWN first. */
@@ -112,6 +115,8 @@ export interface CoverageAttribution {
    *  diff exposes, so a DELETED statement beside a moved blank line is invisible
    *  here, exactly as for a removal-only file. */
   inertOnlyFiles: string[];
+  /** Changed conditionals with an untaken branch (ADR-14); each disqualifies SAFE. */
+  partialBranches?: Array<{ file: string; line: number }>;
 }
 
 /** The run containing `line`, or null when the line is inert. Binary search, not
@@ -148,6 +153,8 @@ interface FileAccumulator {
    *  counting them would make SAFE unreachable for any diff adding a
    *  typing-only import block. */
   excluded: number;
+  /** Changed lines that are partially-taken branches (ADR-14); disqualify SAFE. */
+  branchGaps: number[];
 }
 
 export function attributeChangedLines(input: CoverageAttributionInput): CoverageAttribution {
@@ -173,6 +180,7 @@ export function attributeChangedLines(input: CoverageAttributionInput): Coverage
         statements: 0,
         covered: 0,
         excluded: 0,
+        branchGaps: [],
       };
       files.set(rel, acc);
     }
@@ -200,6 +208,16 @@ export function attributeChangedLines(input: CoverageAttributionInput): Coverage
       changedStatements.total += 1;
       acc.statements += 1;
 
+      // Before the covered-line short-circuit below: a partial branch DID
+      // execute, so it would otherwise count as covered and reach SAFE (ADR-14).
+      if (
+        input.partialBranchLines !== undefined &&
+        (input.partialBranchLines.has(`${rel}:${key}`) ||
+          input.partialBranchLines.has(`${rel}:${line}`))
+      ) {
+        acc.branchGaps.push(key);
+      }
+
       if (run.owner !== UNATTRIBUTABLE_OWNER && input.coveredLines.has(`${rel}:${run.owner}`)) {
         changedStatements.covered += 1;
         acc.covered += 1;
@@ -216,6 +234,7 @@ export function attributeChangedLines(input: CoverageAttributionInput): Coverage
   }
 
   const inertOnlyFiles: string[] = [];
+  const partialBranches: Array<{ file: string; line: number }> = [];
   let allFilesProven = true;
   for (const acc of files.values()) {
     // A file with changed lines but nothing attributable among them has nothing
@@ -237,6 +256,12 @@ export function attributeChangedLines(input: CoverageAttributionInput): Coverage
     // read as proof.
     const coverable = acc.statements - acc.excluded;
     if (coverable === 0 || acc.covered < coverable) allFilesProven = false;
+
+    // ADR-14: an untaken arc disqualifies the file even when its statements ran.
+    if (acc.branchGaps.length > 0) {
+      allFilesProven = false;
+      for (const line of acc.branchGaps) partialBranches.push({ file: acc.displayPath, line });
+    }
   }
 
   return {
@@ -245,10 +270,12 @@ export function attributeChangedLines(input: CoverageAttributionInput): Coverage
     // The v1 rule cleared a whole file on ONE exercised statement, so a diff
     // changing 40 statements with 1 executed read SAFE while the reason string
     // claimed "the changed code is covered".
+    // ADR-14 adds a second conjunct: no changed line may be a partial branch.
     changedLinesCovered: allFilesProven,
     ...selectUncovered([...files.values()], cap, perFileCap),
     changedStatements,
     inertOnlyFiles,
+    ...(partialBranches.length > 0 ? { partialBranches } : {}),
   };
 }
 

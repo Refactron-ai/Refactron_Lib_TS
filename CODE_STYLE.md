@@ -23,9 +23,14 @@ Concrete coding rules for this repository. These extend `CLAUDE.md` (project ins
   ```ts
   function f(x: 'a' | 'b'): number {
     switch (x) {
-      case 'a': return 1;
-      case 'b': return 2;
-      default: { const _: never = x; throw new Error(`unreachable: ${x as string}`); }
+      case 'a':
+        return 1;
+      case 'b':
+        return 2;
+      default: {
+        const _: never = x;
+        throw new Error(`unreachable: ${x as string}`);
+      }
     }
   }
   ```
@@ -44,10 +49,23 @@ Concrete coding rules for this repository. These extend `CLAUDE.md` (project ins
 
 ### Comments
 
-- Default to **no comments**. Names should explain *what*.
-- A comment is appropriate when it explains *why* the code is non-obvious: a workaround for a specific bug, a hidden invariant, a subtle compatibility constraint.
-- Never explain *what* the code does. The code does that.
-- Never reference issue numbers, PRs, or "added by X for Y" in comments — that's PR description territory and rots.
+- Default to **no comments**. Names should explain _what_.
+- A comment is appropriate when it explains _why_ the code is non-obvious: a workaround for a specific bug, a hidden invariant, a subtle compatibility constraint. In this repo, a genuine false-`SAFE` trap is the archetype worth a comment.
+- Never explain _what_ the code does. The code does that.
+- **The test: if deleting the comment loses no information a competent reader couldn't recover from the code in ten seconds, delete it.** Restating a spread, a field init, a type guard, or an obvious control-flow choice is slop, not documentation.
+- **One comment per non-obvious decision, not one per hunk.** A change does not need a running narration. Most edits need zero comments. Reach for a comment when you catch yourself about to be surprised re-reading this in six months — not by default.
+- **Prefer one line.** A multi-line comment is earned only when the rationale genuinely needs it (a subtle invariant, a reproduced bug). If the reason fits in a clause, use a clause.
+- An ADR reference is fine (`ADR-14`) when the full reasoning lives there — it is an anchor, not a narration. Do not also paste the ADR's argument inline.
+
+```ts
+// slop — restates the code:
+// Conditional spread so an absent field stays absent under exactOptionalPropertyTypes.
+...(x ? { x } : {})
+
+// earned — names a trap the code cannot show:
+// Checked BEFORE the covered-line short-circuit: a partial branch DID execute,
+// so it would otherwise count as covered and return a false SAFE.
+```
 
 ### File organization
 

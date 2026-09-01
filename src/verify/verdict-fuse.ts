@@ -41,6 +41,8 @@ export interface CoverageAssessment {
   // invisible in the added lines, so "provably inert edits" is not "provably
   // unchanged file".
   inertOnlyFiles?: string[];
+  // Changed conditionals with an untaken branch (ADR-14); block SAFE.
+  partialBranches?: Array<{ file: string; line: number }>;
 }
 
 export interface VerdictReport {
@@ -193,7 +195,14 @@ export function fuseVerdict(
       ? `Tests pass, but the test command narrowed the suite (${testScope.signals.join('; ')}), so the tests that ran are a subset the caller chose.`
       : null;
 
-  if (cov.changedLinesCovered === true && !flakyReason && !narrowedReason) {
+  // partialBranches is asserted here, not only via changedLinesCovered, so a
+  // future producer that carries a branch gap without flooring cannot leak SAFE.
+  if (
+    cov.changedLinesCovered === true &&
+    (cov.partialBranches?.length ?? 0) === 0 &&
+    !flakyReason &&
+    !narrowedReason
+  ) {
     return {
       verdict: 'SAFE',
       ...base,
@@ -238,11 +247,20 @@ export function fuseVerdict(
     stats && stats.total > 0 && stats.covered > 0
       ? `Tests pass, but only ${stats.covered} of ${stats.total} changed statements were exercised.`
       : 'Tests pass, but the changed code is not exercised by any test.';
+  // Named before partialReason: statement coverage can be complete here, so
+  // "N of N exercised" would mislead (ADR-14).
+  const branchGaps = cov.partialBranches ?? [];
+  const branchReason =
+    branchGaps.length === 1
+      ? `Tests pass, but a changed conditional has a branch no test took (${branchGaps[0]!.file}:${branchGaps[0]!.line}). Add a test that enters the other branch.`
+      : `Tests pass, but ${branchGaps.length} changed conditionals have a branch no test took. Add tests that enter the untaken branches.`;
   const coverageReason = nothingToAttest
     ? nothingToAttestReason
     : cov.changedLinesCovered === 'unknown'
       ? 'Tests pass, but coverage of the changed code could not be determined.'
-      : partialReason;
+      : branchGaps.length > 0
+        ? branchReason
+        : partialReason;
   // Tie-break when more than one thing could explain the UNPROVEN. A scope or
   // flaky reason wins ONLY when coverage would otherwise have said SAFE; when
   // coverage already forces UNPROVEN ('unknown' or false) the coverage reason
