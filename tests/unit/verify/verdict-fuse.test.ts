@@ -468,6 +468,35 @@ describe('fuseVerdict test scope', () => {
     expect(r.verdict).toBe('UNPROVEN');
     expect(r.testScope?.scope).toBe('unknown');
   });
+
+  // ADR-14 / #117. A changed conditional with an untaken branch floors the
+  // verdict, and the reason must name the branch rather than read as a generic
+  // coverage miss — statement coverage WAS complete, so "N of N exercised" would
+  // mislead.
+  describe('branch coverage (ADR-14)', () => {
+    const branchGap: CoverageAssessment = {
+      tool: 'coverage.py',
+      changedLinesCovered: false,
+      uncovered: [],
+      changedStatements: { total: 1, covered: 1 }, // statement coverage complete
+      partialBranches: [{ file: 'calc.py', line: 3 }],
+    };
+
+    it('floors to UNPROVEN and names the branch, not a statement ratio', () => {
+      const r = fuse(result(true), ['calc.py'], branchGap);
+      expect(r.verdict).toBe('UNPROVEN');
+      expect(r.reason.toLowerCase()).toContain('branch');
+      expect(r.reason).toContain('calc.py:3');
+      // Must NOT fall through to the misleading "1 of 1 changed statements" line.
+      expect(r.reason).not.toMatch(/1 of 1/);
+    });
+
+    it('does not fabricate a branch reason when there are no partial branches', () => {
+      const r = fuse(result(true), ['a.py'], uncovered);
+      expect(r.verdict).toBe('UNPROVEN');
+      expect(r.reason.toLowerCase()).not.toContain('branch');
+    });
+  });
 });
 
 // Issue #110 / ADR-12. A caller-supplied `testCmd` that names a subset of the

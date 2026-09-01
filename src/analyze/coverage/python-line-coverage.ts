@@ -45,6 +45,10 @@ export interface CoverageReport {
   // not a set of statement starts: measured on coverage 7.11, a pragma'd `def`
   // whose body spans 6..11 reports excluded_lines [5,6,7,8,9,10,11].
   excludedLines: Map<string, Set<number>>;
+  // Conditional lines with an untaken arc, `${relPath}:${line}` (ADR-14).
+  // Undefined means no `--branch` data, not "none": attribution then falls back
+  // to the statement rule, which never grants SAFE on absent measurement.
+  partialBranchLines?: Set<string>;
   runDurationMs: number;
   // True when coverage.py exists but the measurement could not be performed
   // (unwrappable command, failed run, no data emitted). Callers MUST treat this
@@ -568,13 +572,16 @@ export async function reportCoverage(input: CoverageReportInput): Promise<Covera
   const measured = new Set<string>();
   const executable = new Map<string, Set<number>>();
   const excludedByFile = new Map<string, Set<number>>();
+  const partial = new Set<string>();
   let failureReason: string | undefined;
   try {
     // 1) Run tests under coverage. A nonzero exit here is NOT itself a failure
     // (a red suite still produces valid coverage data); what matters is whether
     // a data file was written at all. A command coverage could not launch
     // leaves nothing behind, and that must read as unknown, not zero.
-    const runArgs = ['-m', 'coverage', 'run', '--data-file', dataFile, ...plan.args];
+    // `--branch` also measures arcs, catching an untaken branch on a conditional
+    // whose header executed (ADR-14). No measured runtime cost.
+    const runArgs = ['-m', 'coverage', 'run', '--branch', '--data-file', dataFile, ...plan.args];
     const run = await runCmd(runner, runArgs, input.projectRoot, env);
     const wroteData = await fs
       .access(dataFile)
@@ -618,7 +625,12 @@ export async function reportCoverage(input: CoverageReportInput): Promise<Covera
       const parsed = JSON.parse(raw) as {
         files?: Record<
           string,
-          { executed_lines?: number[]; missing_lines?: number[]; excluded_lines?: number[] }
+          {
+            executed_lines?: number[];
+            missing_lines?: number[];
+            excluded_lines?: number[];
+            missing_branches?: [number, number][]; // untaken arcs [source, dest]
+          }
         >;
       };
       for (const [relPath, fileData] of Object.entries(parsed.files ?? {})) {
@@ -652,6 +664,11 @@ export async function reportCoverage(input: CoverageReportInput): Promise<Covera
           stmts.add(line);
           skipped.add(line);
         }
+        // The arc SOURCE is the conditional whose branch went untested. The dest
+        // is an unexecuted line (statement rule handles it) or a join point.
+        for (const [srcLine] of fileData.missing_branches ?? []) {
+          partial.add(`${normalized}:${srcLine}`);
+        }
         executable.set(normalized, stmts);
         excludedByFile.set(normalized, skipped);
       }
@@ -672,6 +689,7 @@ export async function reportCoverage(input: CoverageReportInput): Promise<Covera
     measuredFiles: measured,
     executableLines: executable,
     excludedLines: excludedByFile,
+    partialBranchLines: partial,
     runDurationMs: performance.now() - t0,
     measurementFailed: failureReason !== undefined,
     ...(failureReason !== undefined ? { measurementFailureReason: failureReason } : {}),

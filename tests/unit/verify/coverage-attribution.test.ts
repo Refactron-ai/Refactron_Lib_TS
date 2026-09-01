@@ -644,4 +644,62 @@ describe('attributeChangedLines (AST statement containment)', () => {
       expect(out.uncoveredTruncated).toEqual({ shown: UNCOVERED_CAP, total: 300 });
     });
   });
+
+  // ADR-14 / #117. A changed conditional whose header executed but one of whose
+  // arcs was never taken must NOT read as covered, even though its statement ran.
+  describe('branch coverage (ADR-14)', () => {
+    it('a changed line reported as a partial branch is NOT proven, though its statement ran', () => {
+      const out = attributeChangedLines({
+        // Line 3 is the `if`; its statement executed (it is in coveredLines) but
+        // coverage.py reports it as a partial branch (one arc untaken).
+        ranges: ranges({ path: 'mod.py', lines: [3] }),
+        coveredLines: cov('mod.py:3'),
+        statementRuns: stmts({ 'mod.py': [[3, 3, 3]] }),
+        partialBranchLines: new Set(['mod.py:3']),
+      });
+      expect(out.changedLinesCovered).toBe(false);
+      expect(out.partialBranches).toEqual([{ file: 'mod.py', line: 3 }]);
+    });
+
+    it('does NOT flip a changed conditional whose branches were all taken', () => {
+      // Same input, but no partial branch: the file stays proven. This is what
+      // keeps the rule from over-blocking fully-tested conditionals.
+      const out = attributeChangedLines({
+        ranges: ranges({ path: 'mod.py', lines: [3] }),
+        coveredLines: cov('mod.py:3'),
+        statementRuns: stmts({ 'mod.py': [[3, 3, 3]] }),
+        partialBranchLines: new Set(), // measured, none partial
+      });
+      expect(out.changedLinesCovered).toBe(true);
+      expect(out.partialBranches).toBeUndefined();
+    });
+
+    it('falls back to the statement rule when no branch data is supplied', () => {
+      // The fail-safe boundary: omitting partialBranchLines (older coverage.py,
+      // a run without --branch) must behave exactly as before ADR-14 — the
+      // statement rule alone decides, and nothing crashes. Absent data does not
+      // grant SAFE, and is not read as "no partial branches".
+      const out = attributeChangedLines({
+        ranges: ranges({ path: 'mod.py', lines: [3] }),
+        coveredLines: cov('mod.py:3'),
+        statementRuns: stmts({ 'mod.py': [[3, 3, 3]] }),
+      });
+      expect(out.changedLinesCovered).toBe(true);
+      expect(out.partialBranches).toBeUndefined();
+    });
+
+    it('a partial branch on a covered line in an OTHERWISE-proven multi-file diff floors the whole change', () => {
+      // Cross-file: one file fully proven, one with a branch gap. The change is
+      // not covered — the branch gap disqualifies it, matching ADR-11's all-files
+      // conjunction.
+      const out = attributeChangedLines({
+        ranges: ranges({ path: 'a.py', lines: [1] }, { path: 'b.py', lines: [5] }),
+        coveredLines: cov('a.py:1', 'b.py:5'),
+        statementRuns: stmts({ 'a.py': [[1, 1, 1]], 'b.py': [[5, 5, 5]] }),
+        partialBranchLines: new Set(['b.py:5']),
+      });
+      expect(out.changedLinesCovered).toBe(false);
+      expect(out.partialBranches).toEqual([{ file: 'b.py', line: 5 }]);
+    });
+  });
 });

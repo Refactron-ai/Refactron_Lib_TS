@@ -327,6 +327,7 @@ async function assessCoverage(
       coveredLines: report.coveredLines,
       statementRuns: statements.runs,
       excludedLines: report.excludedLines,
+      ...(report.partialBranchLines ? { partialBranchLines: report.partialBranchLines } : {}),
     });
     // A removal-only file has no added lines, so it can never satisfy the
     // per-file heuristic; report it distinctly so the verdict reason can say
