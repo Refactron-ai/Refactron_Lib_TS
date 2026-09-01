@@ -59,6 +59,21 @@ by hand instead of asking for an impossible test.
 A change consisting _entirely_ of excluded statements does not reach `SAFE`:
 there is nothing a test could have proven about it.
 
+`SAFE` also requires that changed **conditionals** were fully branched. A changed
+`if`/`elif` whose header ran but one of whose branches no test entered floors at
+`UNPROVEN`, even when statement coverage is complete: the behaviour that changed
+sits in a branch nobody tested. The reason names the line so you know which test
+to add:
+
+```
+[UNPROVEN] Tests pass, but a changed conditional has a branch no test took
+(calc.py:3). Add a test that enters the other branch.
+```
+
+A conditional whose branches are all exercised still reaches `SAFE`, so this
+never blocks a fully-tested change. Branch coverage is Python-only, like the rest
+of the coverage check.
+
 <Note>
   This is stricter than it was in 0.4.0. The old rule cleared a whole file as
   soon as **one** changed statement in it ran, so a diff changing 40 statements
@@ -245,14 +260,12 @@ If you pass a `testCmd` that names a subset of the suite, the verdict floors at
 one test that would have caught the change was never selected.
 
 <Note>
-  **What this check can and cannot see.** Refactron reads the command string,
-  the environment, and your pytest configuration. It recognises `pytest`,
-  `unittest`, `vitest` and `jest` and
-  their common flags — but not every flag of every plugin. A command carrying an
-  option it does not recognise is reported `unknown` rather than `full`, and
-  `unknown` does not floor the verdict. Treat this as a strong check on the
-  shapes it knows, not a guarantee that no narrowing can ever reach `SAFE`. If
-  you need certainty, run the bare command.
+  **What this check can and cannot see.** Refactron reads the command string, the environment, and
+  your pytest configuration. It recognises `pytest`, `unittest`, `vitest` and `jest` and their
+  common flags — but not every flag of every plugin. A command carrying an option it does not
+  recognise is reported `unknown` rather than `full`, and `unknown` does not floor the verdict.
+  Treat this as a strong check on the shapes it knows, not a guarantee that no narrowing can ever
+  reach `SAFE`. If you need certainty, run the bare command.
 </Note>
 
 A worked example. One file, one change (`return x * 2` to `return x * 3`), and
@@ -273,10 +286,10 @@ tell the two apart. The scope of the run is what distinguishes them.
 Refactron classifies your command into three buckets, and reports the result on
 `testScope`:
 
-| Scope      | Meaning                                                     | Can be SAFE |
-| ---------- | ----------------------------------------------------------- | ----------- |
-| `full`     | Parsed, and names no filter                                 | yes         |
-| `narrowed` | Names a path, node id, `-k`, `-m`, `-t`, `--onlyChanged`, … | no          |
+| Scope      | Meaning                                                              | Can be SAFE |
+| ---------- | -------------------------------------------------------------------- | ----------- |
+| `full`     | Parsed, and names no filter                                          | yes         |
+| `narrowed` | Names a path, node id, `-k`, `-m`, `-t`, `--onlyChanged`, …          | no          |
 | `unknown`  | Not recognised (`make test`, `npm test`, a flag on a wrapper script) | yes         |
 
 **Naming a directory counts as narrowing**, including `pytest tests/`. Tests can
