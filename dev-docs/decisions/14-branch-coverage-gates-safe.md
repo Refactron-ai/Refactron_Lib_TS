@@ -89,9 +89,12 @@ Two boundaries keep the direction fail-safe:
    to the ADR-11 statement rule — it never uses absent branch data as evidence of
    a covered branch. Missing information floors, it does not clear.
 2. **The rule only tightens.** It can move `SAFE` → `UNPROVEN` and nothing else.
-   No path it introduces can move `UNSAFE` or `UNPROVEN` → `SAFE`, because it adds
-   a conjunct to the `SAFE` condition and never touches the gate results feeding
-   `UNSAFE`.
+   No path it introduces can move `UNSAFE` or `UNPROVEN` → `SAFE`. The branch gap
+   is enforced in two places: `attributeChangedLines` folds it into
+   `changedLinesCovered` (the ADR-11 conjunct), and `fuseVerdict`'s `SAFE` gate
+   independently asserts `partialBranches` is empty. The second is defence in
+   depth: it makes a future producer of `partialBranches` fail safe by
+   construction rather than by remembering to floor `changedLinesCovered`.
 
 `reportVersion` stays `1`: `missing_branches` is additive to the coverage sub-
 object, no field is renamed, removed or retyped. The **semantics** of `verdict`
