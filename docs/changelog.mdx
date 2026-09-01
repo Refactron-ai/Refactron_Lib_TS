@@ -7,6 +7,43 @@ description: Release history for Refactron, newest first.
 Refactron follows [Semantic Versioning](https://semver.org/). The full,
 unabridged log lives in [`CHANGELOG.md`](https://github.com/Refactron-ai/refactron/blob/main/CHANGELOG.md).
 
+<Update label="0.4.4" description="August 21, 2026">
+  **A pytest config file could turn `UNSAFE` into `SAFE`.** If your project sets
+  `addopts` or `testpaths`, read this.
+
+  Refactron classified the scope of a run from the **command string**. Narrowing
+  declared in a config file was invisible, so the report said `scope: "full"` —
+  the classifier's strongest claim — for a run that was narrowed.
+
+  With `addopts = -k test_a` in `pytest.ini`, a change that the full suite
+  **fails** on returned `SAFE`. Every gate was satisfied honestly: the tests
+  passed because the failing one never ran, coverage was complete because a
+  weaker test executed the changed statement, and the command carried no filter.
+  Remove the config file and the same change correctly returned `UNSAFE`, so it
+  was the config that flipped the verdict. This is an inverted verdict rather
+  than a missed abstention, and it was reachable in 0.4.1 through 0.4.3.
+
+  `addopts` and `testpaths` are now read from `pytest.ini`, `tox.ini`,
+  `setup.cfg` and `pyproject.toml`, and the verdict floors at `UNPROVEN` when
+  either narrows the run. The reason names the file, so it no longer points at a
+  command line that contains no filter.
+
+  **This does not floor every configured project.** `addopts` goes through the
+  same scanner the command line uses, so `addopts = -q --strict-markers` still
+  classifies as `full`. `testpaths` is compared against the test files your
+  repository actually has: `testpaths = ["tests"]` with every test already under
+  `tests/` excludes nothing and stays `full`, while the same line in a project
+  with a test outside that directory floors and names what it leaves out.
+
+  Not covered: a vitest `include` or a jest `testMatch`. Those are JavaScript and
+  would have to be executed rather than parsed. They cannot currently produce a
+  false `SAFE`, because coverage is Python-only and a JavaScript or TypeScript
+  change already caps at `UNPROVEN`.
+
+  `full` now means "no filter in the command, the environment, or your pytest
+  config". It is still not a proof that the whole suite ran: a plugin or a
+  `conftest.py` can deselect tests in ways nothing here inspects.</Update>
+
 <Update label="0.4.3" description="August 20, 2026">
   **Two fixes to what the verified test suite can reach.**
 

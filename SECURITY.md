@@ -89,10 +89,11 @@ guarantee.
 - **A `SAFE` verdict is not a proof of correctness.** It means your suite ran the
   changed code and stayed green. It inherits exactly what your tests check.
 - **Narrowing detection is a strong check, not a guarantee.** Refactron reads the
-  test command and the environment and knows the common flags of `pytest`,
-  `unittest`, `vitest` and `jest`. A command using a flag it does not recognise
-  reports `unknown`, which does not cap the verdict. Narrowing configured in
-  `pytest.ini`, a vitest `include`, or a jest `testMatch` is not seen.
+  test command, the environment and your pytest configuration, and knows the
+  common flags of `pytest`, `unittest`, `vitest` and `jest`. A command using a
+  flag it does not recognise reports `unknown`, which does not cap the verdict.
+  A vitest `include` or a jest `testMatch` is not seen; those are JavaScript and
+  would have to be executed rather than parsed.
 
 ## Supply chain
 

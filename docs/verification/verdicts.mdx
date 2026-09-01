@@ -245,8 +245,9 @@ If you pass a `testCmd` that names a subset of the suite, the verdict floors at
 one test that would have caught the change was never selected.
 
 <Note>
-  **What this check can and cannot see.** Refactron reads the command string and
-  the environment. It recognises `pytest`, `unittest`, `vitest` and `jest` and
+  **What this check can and cannot see.** Refactron reads the command string,
+  the environment, and your pytest configuration. It recognises `pytest`,
+  `unittest`, `vitest` and `jest` and
   their common flags — but not every flag of every plugin. A command carrying an
   option it does not recognise is reported `unknown` rather than `full`, and
   `unknown` does not floor the verdict. Treat this as a strong check on the
@@ -317,10 +318,25 @@ its value is scanned with the same rules as the command line, and it is checked
 against the runner that variable actually feeds, so a `PYTEST_ADDOPTS` left in
 your shell will not floor a vitest project.
 
-`full` still means "this command names no filters", not "this run was the whole
-suite". Narrowing configured in `pytest.ini` `addopts` or `testpaths`, a vitest
-`include`, or a jest `testMatch` is **not** seen — Refactron reads the command
-and the environment, not your config files.
+Narrowing configured in your **pytest** configuration is also seen. `addopts`
+and `testpaths` are read from `pytest.ini`, `tox.ini`, `setup.cfg` and
+`pyproject.toml`, and `addopts` is scanned with the same rules as the command
+line — so `addopts = -q --strict-markers` stays `full`, while `addopts = -k foo`
+does not. `testpaths` always counts as narrowing: it restricts collection, and
+whether the restriction excludes anything cannot be known without collecting.
+
+Only the repository root is read. pytest walks up to find its rootdir, but your
+suite runs inside an isolated copy whose parent is a temporary directory, so a
+config file above your repository does not reach the run being judged.
+
+A vitest `include` or a jest `testMatch` is still **not** seen. Those are
+JavaScript and would have to be executed rather than parsed. In practice they
+cannot reach a false `SAFE` today, because coverage is Python-only and a
+JavaScript or TypeScript change already caps at `UNPROVEN`.
+
+`full` therefore means "no filter was found in the command, the environment, or
+your pytest config". It is still not a proof that the whole suite ran: a runner
+plugin or a `conftest.py` can deselect tests in ways nothing here inspects.
 
 The `PYTHONPATH=` prefix recommended below is **not** narrowing.
 `PYTHONPATH=. python3 -m pytest -q` classifies as `full`.

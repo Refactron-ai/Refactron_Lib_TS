@@ -7,6 +7,100 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [0.4.4] — 2026-08-21
+
+### Fixed — a pytest config file could turn `UNSAFE` into `SAFE`
+
+This is an inverted verdict, not a missed abstention, and it was reachable in
+every release from 0.4.1 to 0.4.3. If your project configures pytest with
+`addopts` or `testpaths`, read this.
+
+Refactron classified the scope of a run from the **command string**. A config
+file narrowing the suite was invisible, so the report said `scope: "full"`, the
+classifier's strongest claim, for a run that was narrowed.
+
+Reproduced, with a control:
+
+```
+calc.py            def add(a, b): return a + b   ->   return a - b
+tests/test_a.py    asserts isinstance(add(1,2), int)   # executes the line
+tests/test_b.py    asserts add(1,2) == 3               # catches the break
+pytest.ini         [pytest]  addopts = -k test_a       # excludes test_b
+
+full suite:   FAILED tests/test_b.py::test_b - assert -1 == 3
+refactron:    SAFE  "Tests pass and the changed code is covered."
+```
+
+Every gate was satisfied honestly. Tests passed because the failing one never
+ran. Coverage was complete because the weak test executed the changed statement.
+The command carried no filter. With no config file present the same change
+correctly returned `UNSAFE`, so it was the config that flipped the verdict.
+
+`addopts` and `testpaths` are now read from `pytest.ini`, `tox.ini`, `setup.cfg`
+and `pyproject.toml`, and the verdict floors at `UNPROVEN` when either narrows
+the run. The signal names the file, so the reason no longer points at a command
+line that contains no filter:
+
+```
+-k selects a subset of the suite (from addopts in pytest.ini)
+```
+
+**This does not floor every configured project.** `addopts` goes through the same
+scanner the command line uses, so `addopts = -q --strict-markers --tb=short`
+still classifies as `full`. A fix that made `SAFE` unreachable for any project
+with a tidy `pytest.ini` would have been worse than the defect it closed.
+
+`testpaths` is answered rather than assumed. `testpaths = ["tests"]` in a project
+whose tests all live under `tests/` excludes nothing and stays `full`; the same
+line in a project with a test file outside that directory floors the verdict and
+names the file:
+
+```
+testpaths in pytest.ini leaves out extra/test_c.py
+```
+
+The first draft of this fix treated any `testpaths` as narrowing. That is the
+safe direction, but `testpaths = tests` is close to the most common line in any
+pytest config, and flooring it would have made this fix worse than the defect for
+a large share of projects. Refactron now compares the setting against the test
+files your repository actually has. Where it cannot answer — the discovery
+pattern is customised through `python_files`, or the scan came back empty — it
+floors and says which of those it was.
+
+Only the repository root is read. pytest walks up to find its rootdir, but your
+suite runs inside an isolated copy whose parent is a temporary directory, so a
+config above your repository never reaches the run being judged.
+
+### Changed
+
+- **`full` now means more than it did.** It was "no filter in the command"; it is
+  now "no filter in the command, the environment, or your pytest config". It is
+  still not a proof that the whole suite ran: a plugin or a `conftest.py` can
+  deselect tests in ways nothing here inspects, and `docs/verification/verdicts.mdx`
+  says so.
+- Docs corrected in four places that stated config narrowing was not seen:
+  `docs/verification/verdicts.mdx`, `docs/mcp/tool-reference.mdx`, `SECURITY.md`,
+  and ADR-12. ADR-12 also carried a stale claim that an ambient `PYTEST_ADDOPTS`
+  was undetectable; it has been detected since 0.4.1, and the amendment records
+  both corrections.
+
+### Known limitations, unchanged
+
+- A vitest `include` or a jest `testMatch` is still not read. Those are
+  JavaScript and would have to be executed rather than parsed. They cannot
+  currently produce a false `SAFE`, because coverage is Python-only and a
+  JavaScript or TypeScript change already caps at `UNPROVEN`.
+- The `testpaths` comparison uses the test files already in your repository. A
+  test file **added by the diff itself**, in a directory `testpaths` excludes,
+  is not counted, so a change that ships a new test which never gets collected
+  can still read `full`. The CLI's existing "this diff modifies test files" note
+  is the only signal there today. Narrower than the defect fixed above, and
+  tracked separately.
+- `full` is still not a proof that the whole suite ran. A plugin or a
+  `conftest.py` can deselect tests in ways nothing here inspects.
+
+---
+
 ## [0.4.3] — 2026-08-20
 
 ### Security
