@@ -117,7 +117,7 @@ behaviour was altered — naming the survivor:
 
 ```
 [UNPROVEN] Tests pass, but a mutant of a changed statement survived
-(calc.py:2, +->-): no test failed when its behaviour changed.
+(calc.py:2, + to -): no test failed when its behaviour changed.
 ```
 
 Off by default and slower (it reruns the suite once per mutant), so it is a deep
