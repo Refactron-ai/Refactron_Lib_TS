@@ -701,5 +701,35 @@ describe('attributeChangedLines (AST statement containment)', () => {
       expect(out.changedLinesCovered).toBe(false);
       expect(out.partialBranches).toEqual([{ file: 'b.py', line: 5 }]);
     });
+
+    it('catches a partial branch when only the continuation line of the conditional changed', () => {
+      // coverage.py reports the arc at the statement START (owner), not the
+      // continuation line the diff touched. Verified on coverage 7.11:
+      //   if (a and     # line 3  <- arc source / owner
+      //           b):   # line 4  <- the only changed line
+      // Only the `${rel}:${owner}` lookup matches, so deleting that clause
+      // re-opens a false SAFE for this shape.
+      const out = attributeChangedLines({
+        ranges: ranges({ path: 'mod.py', lines: [4] }),
+        coveredLines: cov('mod.py:3'),
+        statementRuns: stmts({ 'mod.py': [[3, 4, 3]] }),
+        partialBranchLines: new Set(['mod.py:3']),
+      });
+      expect(out.changedLinesCovered).toBe(false);
+      expect(out.partialBranches).toEqual([{ file: 'mod.py', line: 3 }]);
+    });
+
+    it('ignores a negative arc destination and attributes to the positive source', () => {
+      // A function-exit false branch emits a negative DEST arc, e.g. [7, -6].
+      // Only the source (7) is keyed, so the negative number never forms a key.
+      const out = attributeChangedLines({
+        ranges: ranges({ path: 'mod.py', lines: [7] }),
+        coveredLines: cov('mod.py:7'),
+        statementRuns: stmts({ 'mod.py': [[7, 7, 7]] }),
+        partialBranchLines: new Set(['mod.py:7']),
+      });
+      expect(out.changedLinesCovered).toBe(false);
+      expect(out.partialBranches).toEqual([{ file: 'mod.py', line: 7 }]);
+    });
   });
 });
