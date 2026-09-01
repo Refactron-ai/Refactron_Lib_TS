@@ -85,7 +85,7 @@ export async function runRunner(spec: RunnerSpec, opts: RunOptions = {}): Promis
         // merge off actually removes them. The redacted copy already carries
         // PATH, HOME and the rest, so the child loses nothing it needs.
         extendEnv: false,
-        env: { ...redactEnvForRunner(process.env), CI: '1', ...opts.envAdd },
+        env: { ...redactEnvForRunner(process.env), ...opts.envAdd, CI: '1' },
       });
       const elapsedMs = Date.now() - t0;
       // execa's r.timedOut field is unreliable across Node versions when
