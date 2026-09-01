@@ -14,6 +14,7 @@ interface VerifyDiffFlags {
   diffPath: string | null;
   json: boolean;
   testCmd: string | null;
+  mutate: boolean;
 }
 
 export function parseVerifyDiffFlags(argv: string[]): VerifyDiffFlags {
@@ -21,10 +22,15 @@ export function parseVerifyDiffFlags(argv: string[]): VerifyDiffFlags {
   let diffPath: string | null = null;
   let json = false;
   let testCmd: string | null = null;
+  let mutate = false;
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i]!;
     if (a === '--json') {
       json = true;
+      continue;
+    }
+    if (a === '--mutate') {
+      mutate = true;
       continue;
     }
     if (a === '--diff') {
@@ -51,7 +57,7 @@ export function parseVerifyDiffFlags(argv: string[]): VerifyDiffFlags {
     if (repoRoot !== null) throw new VerifyDiffFlagError(`unexpected extra argument: ${a}`);
     repoRoot = a;
   }
-  return { repoRoot: repoRoot ?? '.', diffPath, json, testCmd };
+  return { repoRoot: repoRoot ?? '.', diffPath, json, testCmd, mutate };
 }
 
 const VERDICT_COLOR: Record<string, string> = {
@@ -151,6 +157,29 @@ export function formatFlakyNote(flakyTests: string[]): string | null {
   return `note: ${flakyTests.length} test(s) flipped on retry and were treated as flaky: ${preview}${suffix}`;
 }
 
+// Disclose when --mutate did not fully conclude, so a SAFE beside it is not read
+// as a clean mutation sweep. Survivors are already in the verdict reason; this
+// covers the "skipped", "capped", and "all inconclusive" states. Null when
+// mutation was not requested or ran to a complete conclusion.
+export function formatMutationNote(mutation: VerdictReport['mutation']): string | null {
+  if (!mutation) return null;
+  if (!mutation.ran) {
+    return `note: --mutate did not run (${mutation.skippedReason ?? 'no conclusion'}); this verdict is not mutation-checked`;
+  }
+  if (mutation.tested === 0) {
+    return `note: --mutate found no mutable operators in the changed statements; nothing to check`;
+  }
+  const parts: string[] = [];
+  if (mutation.truncated) {
+    parts.push(
+      `only ${mutation.truncated.tested} of ${mutation.truncated.total} mutants were run (budget)`,
+    );
+  }
+  if (mutation.inconclusive > 0) parts.push(`${mutation.inconclusive} inconclusive (skipped)`);
+  if (parts.length === 0) return null;
+  return `note: --mutate was incomplete — ${parts.join('; ')}; a surviving mutant could have been missed`;
+}
+
 export async function runVerifyDiffCommand(argv: string[]): Promise<number> {
   const authResult = await requireAuth('verify-diff');
   if (authResult !== true) return authResult;
@@ -177,6 +206,7 @@ export async function runVerifyDiffCommand(argv: string[]): Promise<number> {
       repoRoot: flags.repoRoot,
       unifiedDiff,
       ...(flags.testCmd ? { testCmd: flags.testCmd } : {}),
+      ...(flags.mutate ? { mutate: true } : {}),
     });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
@@ -206,6 +236,8 @@ export async function runVerifyDiffCommand(argv: string[]): Promise<number> {
     if (note) process.stdout.write(note + '\n');
     const flakyNote = formatFlakyNote(report.flakyTests ?? []);
     if (flakyNote) process.stdout.write(flakyNote + '\n');
+    const mutationNote = formatMutationNote(report.mutation);
+    if (mutationNote) process.stdout.write(mutationNote + '\n');
   }
   return report.verdict === 'UNSAFE' ? 1 : 0;
 }

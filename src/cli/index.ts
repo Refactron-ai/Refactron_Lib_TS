@@ -29,6 +29,8 @@ const STATIC_HELP = `
   verify-diff flags:
     --diff=<file>           Unified/git diff to verify (required)
     --test-cmd=<cmd>        Override the detected test command
+    --mutate                Deep check: mutate changed statements; a surviving
+                            mutant caps the verdict at UNPROVEN (Python, slower)
     --json                  Machine-readable verdict report
 
   Exit codes:

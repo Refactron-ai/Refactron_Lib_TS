@@ -6,6 +6,7 @@ import {
 } from '../../../src/verify/verdict-fuse.js';
 import type { VerificationResult } from '../../../src/contracts.js';
 import type { TestScopeAssessment } from '../../../src/verify/test-scope.js';
+import type { MutationResult } from '../../../src/verify/mutation.js';
 
 const ok = { passed: true, durationMs: 1 };
 function result(passed: boolean, testsReason?: string): VerificationResult {
@@ -43,8 +44,9 @@ function fuse(
   changedFiles: string[],
   cov: CoverageAssessment,
   scope: TestScopeAssessment = FULL_SCOPE,
+  mutation?: MutationResult,
 ) {
-  return fuseVerdict(result, changedFiles, cov, scope);
+  return fuseVerdict(result, changedFiles, cov, scope, mutation);
 }
 
 describe('fuseVerdict', () => {
@@ -524,6 +526,91 @@ describe('fuseVerdict test scope', () => {
         partialBranches: [{ file: 'calc.py', line: 3 }],
       };
       expect(fuse(result(true), ['calc.py'], inconsistent).verdict).not.toBe('SAFE');
+    });
+  });
+
+  // ADR-15 / #116. A surviving mutant means coverage was complete (mutation runs
+  // only then), so the verdict floors to UNPROVEN with a mutation reason.
+  describe('mutation (ADR-15)', () => {
+    // Mutation is now a sibling assessment, passed as fuseVerdict's 5th arg.
+    const complete: CoverageAssessment = {
+      tool: 'coverage.py',
+      changedLinesCovered: true,
+      uncovered: [],
+      changedStatements: { total: 1, covered: 1 },
+    };
+    const withSurvivors = (
+      survivors: Array<{ file: string; line: number; operator: string; mutatedTo: string }>,
+    ): MutationResult => ({
+      ran: true,
+      tested: survivors.length,
+      killed: 0,
+      inconclusive: 0,
+      survivors,
+    });
+
+    it('floors to UNPROVEN and names the surviving mutant', () => {
+      const m = withSurvivors([{ file: 'calc.py', line: 2, operator: '+', mutatedTo: '-' }]);
+      const r = fuse(result(true), ['calc.py'], complete, FULL_SCOPE, m);
+      expect(r.verdict).toBe('UNPROVEN');
+      expect(r.reason.toLowerCase()).toContain('mutant');
+      expect(r.reason).toContain('calc.py:2');
+      expect(r.reason).not.toMatch(/1 of 1/);
+    });
+
+    it('the SAFE gate blocks on a survivor even with coverage complete', () => {
+      // Defense in depth: the survivor is asserted at the gate, not only trusted
+      // to have floored changedLinesCovered.
+      const m = withSurvivors([{ file: 'calc.py', line: 2, operator: '+', mutatedTo: '-' }]);
+      expect(fuse(result(true), ['calc.py'], complete, FULL_SCOPE, m).verdict).not.toBe('SAFE');
+    });
+
+    it('names the plural form for multiple survivors', () => {
+      const m = withSurvivors([
+        { file: 'a.py', line: 2, operator: '+', mutatedTo: '-' },
+        { file: 'b.py', line: 9, operator: '<=', mutatedTo: '<' },
+      ]);
+      const r = fuse(result(true), ['a.py', 'b.py'], complete, FULL_SCOPE, m);
+      expect(r.reason).toContain('2 mutants');
+    });
+
+    it('a clean mutation run (no survivors) does not block a covered change', () => {
+      // The negative direction: mutation ran and killed everything, so it must
+      // not over-block — the change still reaches SAFE.
+      const clean: MutationResult = {
+        ran: true,
+        tested: 3,
+        killed: 3,
+        inconclusive: 0,
+        survivors: [],
+      };
+      const r = fuse(result(true), ['a.py'], complete, FULL_SCOPE, clean);
+      expect(r.verdict).toBe('SAFE');
+      expect(r.reason.toLowerCase()).not.toContain('mutant');
+    });
+
+    it('never strengthens: a clean mutation result cannot lift a thin-coverage UNPROVEN', () => {
+      // Not a tautology: this fails if a future change let the presence of a
+      // clean mutation result bypass the coverage floor. Mutation only ever adds
+      // a blocking conjunct; it can never clear one.
+      const clean: MutationResult = {
+        ran: true,
+        tested: 0,
+        killed: 0,
+        inconclusive: 0,
+        survivors: [],
+      };
+      expect(fuse(result(true), ['a.py'], uncovered, FULL_SCOPE, clean).verdict).toBe('UNPROVEN');
+    });
+
+    it('reads survivors only when coverage is complete (reason guard)', () => {
+      // If a producer ever attached survivors under incomplete coverage, the
+      // verdict must stay UNPROVEN AND the reason must not claim a survived
+      // mutant while coverage was never complete.
+      const m = withSurvivors([{ file: 'a.py', line: 2, operator: '+', mutatedTo: '-' }]);
+      const r = fuse(result(true), ['a.py'], uncovered, FULL_SCOPE, m);
+      expect(r.verdict).toBe('UNPROVEN');
+      expect(r.reason.toLowerCase()).not.toContain('mutant');
     });
   });
 });

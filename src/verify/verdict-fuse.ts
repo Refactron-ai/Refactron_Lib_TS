@@ -3,6 +3,7 @@
 // into the honest three-way verdict. No I/O.
 import type { VerificationResult, GateResult } from '../contracts.js';
 import type { TestScopeAssessment } from './test-scope.js';
+import type { MutationResult } from './mutation.js';
 
 export type Verdict = 'SAFE' | 'UNSAFE' | 'UNPROVEN';
 
@@ -79,6 +80,11 @@ export interface VerdictReport {
   // the caller supplied an assessment; absent only for direct callers of
   // fuseVerdict that omit it, which cannot happen through verify-diff.
   testScope?: TestScopeAssessment;
+  // The mutation half of the evidence (ADR-15), a sibling of `coverage` because
+  // it is a different tool. Present only under opt-in --mutate. A surviving
+  // mutant blocks SAFE; `ran: false` with a `skippedReason` says the deep check
+  // did not conclude, so a SAFE beside it is coverage-backed, not mutation-proven.
+  mutation?: MutationResult;
 }
 
 // The tests gate carries flakySuspects on the SAME object it returns as the
@@ -126,6 +132,7 @@ export function fuseVerdict(
   changedFiles: string[],
   cov: CoverageAssessment,
   testScope: TestScopeAssessment,
+  mutation?: MutationResult,
 ): VerdictReport {
   const flakyTests = flakySuspectsOf(result.gates.tests);
   const base = {
@@ -136,6 +143,7 @@ export function fuseVerdict(
     coverage: cov,
     ...(flakyTests ? { flakyTests } : {}),
     testScope,
+    ...(mutation ? { mutation } : {}),
   };
 
   if (!result.passed) {
@@ -195,11 +203,13 @@ export function fuseVerdict(
       ? `Tests pass, but the test command narrowed the suite (${testScope.signals.join('; ')}), so the tests that ran are a subset the caller chose.`
       : null;
 
-  // partialBranches is asserted here, not only via changedLinesCovered, so a
-  // future producer that carries a branch gap without flooring cannot leak SAFE.
+  // Each blocking signal is asserted at the gate, not only via
+  // changedLinesCovered, so a future producer that sets one without flooring
+  // cannot leak SAFE. A surviving mutant is the ADR-15 conjunct.
   if (
     cov.changedLinesCovered === true &&
     (cov.partialBranches?.length ?? 0) === 0 &&
+    (mutation?.survivors.length ?? 0) === 0 &&
     !flakyReason &&
     !narrowedReason
   ) {
@@ -254,13 +264,27 @@ export function fuseVerdict(
     branchGaps.length === 1
       ? `Tests pass, but a changed conditional has a branch no test took (${branchGaps[0]!.file}:${branchGaps[0]!.line}). Add a test that enters the other branch.`
       : `Tests pass, but ${branchGaps.length} changed conditionals have a branch no test took. Add tests that enter the untaken branches.`;
-  const coverageReason = nothingToAttest
-    ? nothingToAttestReason
-    : cov.changedLinesCovered === 'unknown'
-      ? 'Tests pass, but coverage of the changed code could not be determined.'
-      : branchGaps.length > 0
-        ? branchReason
-        : partialReason;
+  // Top precedence, and gated on complete coverage: a survivor is only reported
+  // when mutation ran, which is only when coverage was complete, so "N of N
+  // exercised" would mislead. The changedLinesCovered guard is defense in depth
+  // against a future producer emitting survivors under incomplete coverage.
+  const survivors = cov.changedLinesCovered === true ? (mutation?.survivors ?? []) : [];
+  const fmt = (s: { file: string; line: number; operator: string; mutatedTo: string }) =>
+    `${s.file}:${s.line}, ${s.operator} to ${s.mutatedTo}`;
+  const mutationReason =
+    survivors.length === 1
+      ? `Tests pass, but a mutant of a changed statement survived (${fmt(survivors[0]!)}): no test failed when its behaviour changed. Add a test that asserts on it.`
+      : `Tests pass, but ${survivors.length} mutants of changed statements survived: no test failed when their behaviour changed. Add assertions that would catch them.`;
+  const coverageReason =
+    survivors.length > 0
+      ? mutationReason
+      : nothingToAttest
+        ? nothingToAttestReason
+        : cov.changedLinesCovered === 'unknown'
+          ? 'Tests pass, but coverage of the changed code could not be determined.'
+          : branchGaps.length > 0
+            ? branchReason
+            : partialReason;
   // Tie-break when more than one thing could explain the UNPROVEN. A scope or
   // flaky reason wins ONLY when coverage would otherwise have said SAFE; when
   // coverage already forces UNPROVEN ('unknown' or false) the coverage reason

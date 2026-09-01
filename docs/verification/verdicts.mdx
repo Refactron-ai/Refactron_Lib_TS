@@ -80,6 +80,29 @@ ternary, or a boolean short-circuit (`a and b`): `coverage.py` does not report
 those as branches, so a changed expression of that kind can still read `SAFE`
 with a sub-path untested.
 
+## `--mutate`: was the change actually asserted?
+
+Coverage proves a changed statement _ran_. It does not prove any test would
+_fail_ if that statement's behaviour changed. A line a test executes but never
+asserts on counts as covered and earns `SAFE`.
+
+`refactron verify-diff --mutate` closes that gap. It perturbs the operators in
+your changed statements — a boundary (`<=` → `<`), an arithmetic sign, a boolean
+`and`/`or` — reruns your suite against each, and if any mutant **survives** (the
+suite still passes), the verdict floors at `UNPROVEN`, naming the survivor:
+
+```
+[UNPROVEN] Tests pass, but a mutant of a changed statement survived
+(calc.py:2, + to -): no test failed when its behaviour changed. Add a test
+that asserts on it.
+```
+
+It is opt-in and slower — it reruns your suite once per mutant — so it is a
+deep check, not the default. It is also **downgrade-only**: a surviving mutant
+can move `SAFE` to `UNPROVEN`, but a clean mutation run never lifts a verdict.
+An inconclusive mutant (one that times out) is skipped, not held against you.
+Python-only, and bounded to the statements the diff changed.
+
 <Note>
   This is stricter than it was in 0.4.0. The old rule cleared a whole file as
   soon as **one** changed statement in it ran, so a diff changing 40 statements

@@ -23,6 +23,13 @@ unabridged log lives in [`CHANGELOG.md`](https://github.com/Refactron-ai/refactr
   (calc.py:3). Add a test that enters the other branch.
   ```
 
+  **Also new: `--mutate`, an opt-in assertion check.** Coverage proves a changed
+  statement ran, not that a test would fail if its behaviour changed.
+  `verify-diff --mutate` perturbs the changed statements' operators, reruns the
+  suite per mutant, and floors to `UNPROVEN` if any survives (the suite passed
+  while behaviour changed), naming it. Off by default and slower; downgrade-only
+  (never lifts a verdict); Python-only; bounded to changed statements. ADR-15.
+
   Decided on measurement (ADR-14): `--branch` added no runtime cost on a real
   600-test suite, and the flip is surgical — it bites only a changed conditional
   with an untaken arc, never straight-line code or a fully-tested conditional, so

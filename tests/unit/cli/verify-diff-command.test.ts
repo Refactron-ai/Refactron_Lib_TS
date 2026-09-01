@@ -108,6 +108,7 @@ describe('parseVerifyDiffFlags', () => {
       diffPath: null,
       json: false,
       testCmd: null,
+      mutate: false,
     });
   });
   it('parses repoRoot + --diff + --json + --test-cmd', () => {
@@ -118,6 +119,7 @@ describe('parseVerifyDiffFlags', () => {
       diffPath: 'c.patch',
       json: true,
       testCmd: 'pytest -q',
+      mutate: false,
     });
   });
   it('parses --diff= and --test-cmd= equals form', () => {
@@ -126,7 +128,11 @@ describe('parseVerifyDiffFlags', () => {
       diffPath: 'c.patch',
       json: false,
       testCmd: 'pytest -q',
+      mutate: false,
     });
+  });
+  it('parses --mutate', () => {
+    expect(parseVerifyDiffFlags(['--mutate']).mutate).toBe(true);
   });
   it('throws on unknown flag', () => {
     expect(() => parseVerifyDiffFlags(['--nope'])).toThrow(VerifyDiffFlagError);

@@ -17,11 +17,11 @@ Refactron applies the diff in an isolated shadow tree, runs the syntax, imports,
 
 ## The verdict, in one line
 
-| Verdict    | Meaning                                                                                                   | Exit |
-| ---------- | --------------------------------------------------------------------------------------------------------- | ---- |
-| `SAFE`     | Every gate passed **and** your tests exercised every coverable changed statement. | `0`  |
-| `UNSAFE`   | A gate failed: the change broke something.                                                                | `1`  |
-| `UNPROVEN` | Tests pass, but the changed code isn't exercised (or coverage couldn't be assessed).                      | `0`  |
+| Verdict    | Meaning                                                                              | Exit |
+| ---------- | ------------------------------------------------------------------------------------ | ---- |
+| `SAFE`     | Every gate passed **and** your tests exercised every coverable changed statement.    | `0`  |
+| `UNSAFE`   | A gate failed: the change broke something.                                           | `1`  |
+| `UNPROVEN` | Tests pass, but the changed code isn't exercised (or coverage couldn't be assessed). | `0`  |
 
 `UNPROVEN` is the honest verdict. "Tests pass" is not the same as "this change is proven safe": if nothing runs the lines you changed, a green suite proves nothing about them. Refactron says so out loud and tells you which test to add. See [Verdicts](/verification/verdicts) for the full model.
 
@@ -47,9 +47,8 @@ That puts `refactron` (and `refactron-mcp`) on your `PATH`. To skip the install,
 
 <Note>
   `pip install refactron==0.3.0` installs a thin `refactron` shim that shells out to the npm CLI. It
-  is not a Node-free path: you still need Node.js ≥ 18 **and** `npm install -g refactron`.
-  When the npm CLI is missing, the shim prints the exact matching install command and exits
-  non-zero.
+  is not a Node-free path: you still need Node.js ≥ 18 **and** `npm install -g refactron`. When the
+  npm CLI is missing, the shim prints the exact matching install command and exits non-zero.
 </Note>
 
 ### Build from source (contributors)
@@ -101,11 +100,12 @@ Output is the verdict, its reason, and (for `UNPROVEN` by lack of coverage) the 
 
 ### Flags
 
-| Flag               | Type   | Default     | Description                                                                                                |
-| ------------------ | ------ | ----------- | ---------------------------------------------------------------------------------------------------------- |
-| `--diff <file>`    | path   | none        | Required. The unified diff to verify.                                                                      |
-| `--test-cmd <cmd>` | string | auto-detect | Override the test command (e.g. `"python3 -m pytest -q"`). Drives both the test gate and the coverage run. |
-| `--json`           | bool   | false       | Emit the full report as JSON instead of the one-line verdict.                                              |
+| Flag               | Type   | Default     | Description                                                                                                                                                                                                                        |
+| ------------------ | ------ | ----------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `--diff <file>`    | path   | none        | Required. The unified diff to verify.                                                                                                                                                                                              |
+| `--test-cmd <cmd>` | string | auto-detect | Override the test command (e.g. `"python3 -m pytest -q"`). Drives both the test gate and the coverage run.                                                                                                                         |
+| `--mutate`         | bool   | false       | Deep check (Python, slower): mutate the changed statements and rerun the suite; a surviving mutant caps the verdict at `UNPROVEN`. Downgrade-only. See [Verdicts](/verification/verdicts#mutate-was-the-change-actually-asserted). |
+| `--json`           | bool   | false       | Emit the full report as JSON instead of the one-line verdict.                                                                                                                                                                      |
 
 ### Exit codes
 
