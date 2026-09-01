@@ -195,7 +195,14 @@ export function fuseVerdict(
       ? `Tests pass, but the test command narrowed the suite (${testScope.signals.join('; ')}), so the tests that ran are a subset the caller chose.`
       : null;
 
-  if (cov.changedLinesCovered === true && !flakyReason && !narrowedReason) {
+  // partialBranches is asserted here, not only via changedLinesCovered, so a
+  // future producer that carries a branch gap without flooring cannot leak SAFE.
+  if (
+    cov.changedLinesCovered === true &&
+    (cov.partialBranches?.length ?? 0) === 0 &&
+    !flakyReason &&
+    !narrowedReason
+  ) {
     return {
       verdict: 'SAFE',
       ...base,

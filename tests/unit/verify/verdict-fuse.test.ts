@@ -496,6 +496,35 @@ describe('fuseVerdict test scope', () => {
       expect(r.verdict).toBe('UNPROVEN');
       expect(r.reason.toLowerCase()).not.toContain('branch');
     });
+
+    it('names the plural form for multiple branch gaps', () => {
+      const many: CoverageAssessment = {
+        tool: 'coverage.py',
+        changedLinesCovered: false,
+        uncovered: [],
+        changedStatements: { total: 2, covered: 2 },
+        partialBranches: [
+          { file: 'a.py', line: 3 },
+          { file: 'b.py', line: 9 },
+        ],
+      };
+      const r = fuse(result(true), ['a.py', 'b.py'], many);
+      expect(r.verdict).toBe('UNPROVEN');
+      expect(r.reason).toContain('2 changed conditionals');
+    });
+
+    it('the SAFE gate itself blocks on a branch gap, not only via changedLinesCovered', () => {
+      // Defense in depth: an inconsistent assessment (statement rule says covered,
+      // but a branch gap is present) must still not reach SAFE. Guards against a
+      // future producer that sets partialBranches without flooring allFilesProven.
+      const inconsistent: CoverageAssessment = {
+        tool: 'coverage.py',
+        changedLinesCovered: true,
+        uncovered: [],
+        partialBranches: [{ file: 'calc.py', line: 3 }],
+      };
+      expect(fuse(result(true), ['calc.py'], inconsistent).verdict).not.toBe('SAFE');
+    });
   });
 });
 
