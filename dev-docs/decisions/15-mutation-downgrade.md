@@ -133,6 +133,16 @@ Rejected as a non-goal. The changed-statement set (already computed in
 
 ## Open questions / follow-ups
 
+- [ ] **Windows: a hung mutant leaks its process.** `runRunner` times out via
+      execa, which kills the shell child but not the `python` grandchild (Node
+      does not tree-kill on Windows), so a mutant that never terminates orphans a
+      process and locks the shadow temp dir. The verdict is unaffected — a timeout
+      is never a survivor — but the process leaks. The fix is process-group /
+      tree kill in the shared runner, deferred to its own PR rather than rushed
+      onto verdict-adjacent shared code. The timeout->inconclusive path is tested
+      on POSIX; the two hang tests skip on win32.
+
+
 - [ ] Return-value and statement-deletion operators. A larger mutant set catches
       more, at more runtime. Start with operator swaps.
 - [ ] A mutant budget / sampling cap for very large diffs, so cost stays bounded.

@@ -23,6 +23,11 @@ function hasPython(): boolean {
   }
 }
 const NO_PYTHON = !hasPython();
+// A deliberately-hung mutant orphans its process on Windows (execa times out the
+// shell but Node does not tree-kill the grandchild), which locks the temp dir.
+// The timeout->inconclusive path is verified on POSIX; Windows tree-kill is a
+// tracked follow-up. See ADR-15 known limitations.
+const NO_HANG = NO_PYTHON || process.platform === 'win32';
 
 const roots: string[] = [];
 afterEach(async () => {

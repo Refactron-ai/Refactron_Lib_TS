@@ -24,6 +24,9 @@ function hasPythonTooling(): boolean {
   }
 }
 const NO_PYTHON = !hasPythonTooling();
+// See tests/unit/verify/mutation.test.ts: a hung mutant orphans on Windows, so
+// the inconclusive-path assertion is POSIX-only (ADR-15 known limitation).
+const NO_HANG = NO_PYTHON || process.platform === 'win32';
 
 const roots: string[] = [];
 afterEach(async () => {
@@ -107,7 +110,7 @@ describe('a surviving mutant downgrades SAFE under --mutate (#116)', () => {
     240_000,
   );
 
-  it.skipIf(NO_PYTHON)(
+  it.skipIf(NO_HANG)(
     'an inconclusive mutant (one that hangs) is skipped, not counted as a survivor',
     async () => {
       // Mutating `-` to `+` in the loop makes it never terminate, so the mutant
