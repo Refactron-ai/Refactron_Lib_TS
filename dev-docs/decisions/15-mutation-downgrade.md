@@ -69,9 +69,28 @@ arithmetic (`+`↔`-`, `*`↔`/`, `//`↔`/`), and boolean (`and`↔`or`). A reg
 changed lines was rejected: it would mutate inside strings and produce false
 survivors, i.e. false `UNPROVEN`s. Fail-safe, but needlessly noisy.
 
-Python-only, like coverage. `reportVersion` stays `1`: `survivingMutants` is an
-additive optional field. `engineVersion` (ADR-13) already distinguishes the
+Python-only, like coverage. `reportVersion` stays `1`: the mutation evidence is
+an additive optional field. `engineVersion` (ADR-13) already distinguishes the
 semantics change.
+
+**Amendment, 2026-09-01 (pre-merge review).** Two contract-shape decisions were
+sharpened before the first release, while migration was still free:
+
+- The mutation evidence is a **sibling** `mutation?: MutationResult` on
+  `VerdictReport`, not a field on `CoverageAssessment`. Mutation is a different
+  tool (the `mutate.py` sidecar plus suite reruns), so it does not belong under
+  `coverage`'s `tool: 'coverage.py'`. The SAFE gate reads
+  `(mutation?.survivors.length ?? 0) === 0`.
+- A survivor carries `{ operator, mutatedTo }`, not an `"orig->repl"` string.
+  The roadmap operators below (return-value, statement-deletion) cannot be
+  expressed as a swap string, so the encoding would have broken on the first
+  follow-up.
+
+The block also carries `ran`, `tested`, `killed`, `inconclusive`, `truncated`
+and `skippedReason`, so a `--mutate` `SAFE` where the deep check was skipped,
+capped, or entirely inconclusive is disclosed rather than reading as a clean
+sweep — the project's honesty rule, which the first draft violated by discarding
+those counts.
 
 ## Alternatives considered
 
