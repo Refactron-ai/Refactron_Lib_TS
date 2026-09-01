@@ -105,6 +105,27 @@ Only the repository root is read. pytest walks up to find its rootdir, but your
 suite runs inside an isolated copy whose parent is a temporary directory, so a
 config above your repository never reaches the run being judged.
 
+### Added — `--mutate`, an opt-in check for whether the change was asserted
+
+Coverage proves a changed statement ran, not that any test would fail if its
+behaviour changed. A line a test executes but never asserts on earns `SAFE`.
+
+`refactron verify-diff --mutate` perturbs the operators in the changed statements
+(boundary, arithmetic, boolean), reruns the suite against each, and floors the
+verdict at `UNPROVEN` if any mutant survives — the suite passed while the changed
+behaviour was altered — naming the survivor:
+
+```
+[UNPROVEN] Tests pass, but a mutant of a changed statement survived
+(calc.py:2, +->-): no test failed when its behaviour changed.
+```
+
+Off by default and slower (it reruns the suite once per mutant), so it is a deep
+check, not the fast gate. Downgrade-only: a survivor can move `SAFE` to
+`UNPROVEN`, never the reverse; a clean run never lifts a verdict; an inconclusive
+mutant (timeout) is skipped. Bounded to the changed statements, Python-only. See
+ADR-15.
+
 ### Changed
 
 - **`full` now means more than it did.** It was "no filter in the command"; it is
