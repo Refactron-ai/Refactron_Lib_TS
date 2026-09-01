@@ -83,25 +83,22 @@ describe('runMutation (ADR-15)', () => {
     expect(r.killed).toBe(1);
   });
 
-  it.skipIf(NO_PYTHON)(
-    'classifies a hanging mutant as inconclusive, never a survivor',
-    async () => {
-      // `-`->`+` makes the loop never terminate; the run times out. Timeout must be
-      // inconclusive (skipped), not a survivor. The check order in the runner
-      // (timedOut before exitCode) is what this pins.
-      const root = await repo({
-        'calc.py': 'def f(n):\n    while n > 0:\n        n = n - 1\n    return n\n',
-      });
-      const r = await runMutation({
-        shadowRoot: root,
-        ranges: ranges({ path: 'calc.py', lines: [3] }),
-        testCmd: 'python3 -c "import calc; assert calc.f(3) == 0"',
-        timeoutMs: 3_000,
-      });
-      expect(r.survivors).toEqual([]);
-      expect(r.inconclusive).toBe(1);
-    },
-  );
+  it.skipIf(NO_HANG)('classifies a hanging mutant as inconclusive, never a survivor', async () => {
+    // `-`->`+` makes the loop never terminate; the run times out. Timeout must be
+    // inconclusive (skipped), not a survivor. The check order in the runner
+    // (timedOut before exitCode) is what this pins.
+    const root = await repo({
+      'calc.py': 'def f(n):\n    while n > 0:\n        n = n - 1\n    return n\n',
+    });
+    const r = await runMutation({
+      shadowRoot: root,
+      ranges: ranges({ path: 'calc.py', lines: [3] }),
+      testCmd: 'python3 -c "import calc; assert calc.f(3) == 0"',
+      timeoutMs: 3_000,
+    });
+    expect(r.survivors).toEqual([]);
+    expect(r.inconclusive).toBe(1);
+  });
 
   it.skipIf(NO_PYTHON)('skips mutation when the baseline is not green', async () => {
     const root = await repo({ 'calc.py': 'def f(n):\n    return n + 1\n' });
