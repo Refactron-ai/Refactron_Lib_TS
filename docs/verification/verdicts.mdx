@@ -74,6 +74,12 @@ A conditional whose branches are all exercised still reaches `SAFE`, so this
 never blocks a fully-tested change. Branch coverage is Python-only, like the rest
 of the coverage check.
 
+This covers statement-level branches — `if`, `elif`, `while`, `for`/`else`,
+`match`. It does not cover an untested path inside a comprehension filter, a
+ternary, or a boolean short-circuit (`a and b`): `coverage.py` does not report
+those as branches, so a changed expression of that kind can still read `SAFE`
+with a sub-path untested.
+
 <Note>
   This is stricter than it was in 0.4.0. The old rule cleared a whole file as
   soon as **one** changed statement in it ran, so a diff changing 40 statements
