@@ -69,4 +69,24 @@ describe('mutate.py sidecar (#116)', () => {
     const src = 'x = 2 ** 3\ny = 0\ny += 1\n';
     expect(mutate(src, [1, 3])).toEqual([]);
   });
+
+  it.skipIf(NO_PYTHON)('returns [] for un-tokenizable source instead of crashing', () => {
+    // The refusal path: a source with a lexical error yields no mutants rather
+    // than a non-zero exit or a stack trace. Mutation is opt-in evidence; its
+    // absence must never grant SAFE, so producing nothing is the safe outcome.
+    const src = 'def f(:\n    return 1 + 2\n'; // syntactically broken
+    expect(mutate(src, [1, 2])).toEqual([]);
+  });
+
+  it.skipIf(NO_PYTHON)(
+    'emits a star-in-unpacking mutant (fail-safe: it can only be killed)',
+    () => {
+      // Known imprecision: tokenize cannot tell `*args` unpacking from `*`
+      // multiply, so `def f(*a)` yields a `*->/` mutant. Pinned as a fail-safe
+      // wart: `def f(/a)` is a SyntaxError, so the mutant can only be classified
+      // killed or over-block — never a survivor, never a false SAFE.
+      const ops = mutate('def f(*a):\n    return a\n', [1]).map((m) => m.op);
+      expect(ops).toContain('*->/');
+    },
+  );
 });

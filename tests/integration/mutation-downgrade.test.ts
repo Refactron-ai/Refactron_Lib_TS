@@ -84,7 +84,8 @@ describe('a surviving mutant downgrades SAFE under --mutate (#116)', () => {
       });
       expect(report.verdict).toBe('UNPROVEN');
       expect(report.reason.toLowerCase()).toContain('mutant');
-      expect(report.coverage.survivingMutants?.length ?? 0).toBeGreaterThan(0);
+      expect(report.mutation?.survivors.length ?? 0).toBeGreaterThan(0);
+      expect(report.mutation?.ran).toBe(true);
     },
     240_000,
   );
@@ -146,7 +147,10 @@ describe('a surviving mutant downgrades SAFE under --mutate (#116)', () => {
       });
       // No confirmed survivor, so no downgrade: the change is SAFE.
       expect(report.verdict).toBe('SAFE');
-      expect(report.coverage.survivingMutants).toBeUndefined();
+      // Mutation ran but the only mutant was inconclusive: no survivors, and the
+      // report discloses that it ran rather than silently omitting it.
+      expect(report.mutation?.survivors).toEqual([]);
+      expect(report.mutation?.inconclusive ?? 0).toBeGreaterThan(0);
     },
     240_000,
   );

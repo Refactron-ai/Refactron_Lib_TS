@@ -12,6 +12,10 @@ export interface RunResult {
 export interface RunOptions {
   retries?: number;
   onAttempt?: (attempt: number) => void;
+  // Extra env vars merged over the redacted base. Used by mutation to force
+  // fresh bytecode (PYTHONDONTWRITEBYTECODE), so a mutant is not masked by a
+  // stale .pyc of the original from an earlier run.
+  envAdd?: Record<string, string>;
 }
 
 /** Credentials that must not reach the verified suite.
@@ -81,7 +85,7 @@ export async function runRunner(spec: RunnerSpec, opts: RunOptions = {}): Promis
         // merge off actually removes them. The redacted copy already carries
         // PATH, HOME and the rest, so the child loses nothing it needs.
         extendEnv: false,
-        env: { ...redactEnvForRunner(process.env), CI: '1' },
+        env: { ...redactEnvForRunner(process.env), CI: '1', ...opts.envAdd },
       });
       const elapsedMs = Date.now() - t0;
       // execa's r.timedOut field is unreliable across Node versions when

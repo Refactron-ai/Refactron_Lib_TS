@@ -21,9 +21,17 @@ const SIDECAR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), 'chec
 export interface SurvivingMutant {
   file: string;
   line: number;
-  mutation: string;
+  // Structured, not "+->-": return-value and statement-deletion operators (the
+  // ADR-15 roadmap) cannot be an orig->repl string, so the encoding would break.
+  operator: string;
+  mutatedTo: string;
 }
 
+// The mutation half of the verdict evidence, a sibling of CoverageAssessment on
+// the report — a distinct tool (mutate.py + suite reruns), not coverage.py, so
+// it does not live under `tool: 'coverage.py'`. `ran` false with a skippedReason
+// means the deep check did not conclude; a clean SAFE must disclose that rather
+// than read as a full sweep.
 export interface MutationResult {
   ran: boolean;
   survivors: SurvivingMutant[];
@@ -34,7 +42,7 @@ export interface MutationResult {
   skippedReason?: string;
 }
 
-interface Mutant {
+export interface Mutant {
   line: number;
   col: number;
   endCol: number;
@@ -54,6 +62,26 @@ export interface MutationInput {
 
 const DEFAULT_BUDGET = 40;
 
+/** Recursively delete `__pycache__` directories so no run reads a stale .pyc.
+ *  Best-effort: a failure to remove one only risks a fail-safe false UNPROVEN. */
+async function removePycache(root: string): Promise<void> {
+  let entries;
+  try {
+    entries = await fs.readdir(root, { withFileTypes: true });
+  } catch {
+    return;
+  }
+  for (const e of entries) {
+    if (!e.isDirectory()) continue;
+    const child = path.join(root, e.name);
+    if (e.name === '__pycache__') {
+      await fs.rm(child, { recursive: true, force: true }).catch(() => {});
+    } else if (e.name !== '.git' && e.name !== 'node_modules') {
+      await removePycache(child);
+    }
+  }
+}
+
 async function mutantsFor(file: string, lines: number[], pythonBin: string): Promise<Mutant[]> {
   try {
     const r = await execa(pythonBin, [SIDECAR], {
@@ -71,8 +99,9 @@ async function mutantsFor(file: string, lines: number[], pythonBin: string): Pro
 
 /** Replace the mutant's operator in `content`, or null if the source at that
  *  span no longer matches — a guard against mutating a file the numbers do not
- *  describe, which would produce a meaningless survivor. */
-function applyMutant(content: string, m: Mutant): string | null {
+ *  describe, which would produce a meaningless survivor. Exported for the guard
+ *  test; a regression here could manufacture a bogus survivor (false UNPROVEN). */
+export function applyMutant(content: string, m: Mutant): string | null {
   const lines = content.split('\n');
   const idx = m.line - 1;
   if (idx < 0 || idx >= lines.length) return null;
@@ -99,10 +128,18 @@ export async function runMutation(input: MutationInput): Promise<MutationResult>
   });
   if (spec === null) return { ...empty, skippedReason: 'no test runner to mutate against' };
 
+  // Every run compiles from source, not a stale .pyc. The gates and coverage
+  // runs already wrote __pycache__ into the shadow; without this a mutant
+  // re-imported within the same second reads the ORIGINAL cached bytecode, the
+  // mutation vanishes, and it is misread as a survivor (a false UNPROVEN).
+  // DONTWRITEBYTECODE stops new caches; the sweep removes the pre-existing ones.
+  await removePycache(input.shadowRoot);
+  const runOpts = { envAdd: { PYTHONDONTWRITEBYTECODE: '1' } };
+
   // A mutant is only meaningful against a GREEN baseline: kill vs survive is
   // defined by whether a mutant BREAKS a passing suite. If the plain suite is
   // not green here, mutation is inconclusive and must not downgrade.
-  const baseline = await runRunner(spec);
+  const baseline = await runRunner(spec, runOpts);
   if (baseline.exitCode !== 0) {
     return { ...empty, skippedReason: 'baseline suite is not green under the plain test command' };
   }
@@ -139,9 +176,10 @@ export async function runMutation(input: MutationInput): Promise<MutationResult>
     }
     try {
       await fs.writeFile(abs, mutated);
-      const r = await runRunner(spec);
+      const r = await runRunner(spec, runOpts);
       if (r.timedOut) inconclusive += 1;
-      else if (r.exitCode === 0) survivors.push({ file, line: m.line, mutation: m.op });
+      else if (r.exitCode === 0)
+        survivors.push({ file, line: m.line, operator: m.orig, mutatedTo: m.repl });
       else killed += 1;
     } catch {
       inconclusive += 1;

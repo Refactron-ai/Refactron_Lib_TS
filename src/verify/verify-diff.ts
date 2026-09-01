@@ -22,7 +22,7 @@ import {
 import { detectRunner } from './runners/detect.js';
 import { ENGINE_VERSION } from '../engine-version.js';
 import { changedLinesForEdits, editsFromUnifiedDiff, type FileEdit } from './diff-input.js';
-import { runMutation, type SurvivingMutant } from './mutation.js';
+import { runMutation, type MutationResult } from './mutation.js';
 import type { FileChange, RefactorPlan, TransformId } from '../contracts.js';
 
 export interface VerifyDiffInput {
@@ -79,10 +79,22 @@ export async function verifyDiff(input: VerifyDiffInput): Promise<VerdictReport>
     preconditions: [],
   } as RefactorPlan);
 
-  // 2. Coverage (only when gates pass; Python only).
+  // Scope resolved before coverage so mutation can gate on the FULL would-be-SAFE
+  // precondition. A narrowed suite already floors the verdict, so mutating it
+  // would burn minutes for a decided verdict (ADR-15 perf; the tests-gate flaky
+  // signal is the other half).
+  const testScope = await resolveTestScope(input);
+  const flaky = (result.gates.tests as { flakySuspects?: unknown[] }).flakySuspects?.length ?? 0;
+  const wouldBeSafe = result.passed && flaky === 0 && testScope.scope !== 'narrowed';
+
+  // 2. Coverage (only when gates pass; Python only), and mutation alongside it
+  // when --mutate is set and the change could still reach SAFE.
   let cov: CoverageAssessment = unknownCoverage();
+  let mutation: MutationResult | undefined;
   if (result.passed) {
-    cov = await assessCoverage(input, edits);
+    const assessed = await assessCoverage(input, edits, input.mutate === true && wouldBeSafe);
+    cov = assessed.coverage;
+    mutation = assessed.mutation;
   }
 
   // 3. Fuse. The scope of the run is a verdict input, not a note: a green run of
@@ -91,7 +103,7 @@ export async function verifyDiff(input: VerifyDiffInput): Promise<VerdictReport>
   // engineVersion is stamped HERE rather than inside fuseVerdict, which
   // documents itself as pure with no I/O. This is already the I/O layer.
   return {
-    ...fuseVerdict(result, changedFiles, cov, await resolveTestScope(input)),
+    ...fuseVerdict(result, changedFiles, cov, testScope, mutation),
     engineVersion: ENGINE_VERSION,
   };
 }
@@ -231,7 +243,8 @@ function listFiles(paths: string[]): string {
 async function assessCoverage(
   input: VerifyDiffInput,
   edits: FileEdit[],
-): Promise<CoverageAssessment> {
+  runMut: boolean,
+): Promise<{ coverage: CoverageAssessment; mutation?: MutationResult }> {
   const pyEdits = edits.filter((e) => e.path.endsWith('.py'));
   // Coverage is Python-only. If ANY edit is non-Python (or there are no Python
   // edits at all), we cannot assess the WHOLE change. Reporting "covered" here
@@ -247,11 +260,13 @@ async function assessCoverage(
     // stops a reader concluding the tool is broken when it is working exactly
     // as designed.
     const nonPy = edits.filter((e) => !e.path.endsWith('.py')).map((e) => e.path);
-    return unknownCoverage(
-      nonPy.length === 0
-        ? 'the change contains no Python files, and changed-line coverage is measured only for Python (coverage.py)'
-        : `changed-line coverage is measured only for Python (coverage.py), and this change also touches ${listFiles(nonPy)}`,
-    );
+    return {
+      coverage: unknownCoverage(
+        nonPy.length === 0
+          ? 'the change contains no Python files, and changed-line coverage is measured only for Python (coverage.py)'
+          : `changed-line coverage is measured only for Python (coverage.py), and this change also touches ${listFiles(nonPy)}`,
+      ),
+    };
   }
   const shadow = await createShadowTree(input.repoRoot, toChanges(input.repoRoot, edits));
   try {
@@ -270,7 +285,7 @@ async function assessCoverage(
       // very failure this file guards against: a silent UNPROVEN that looks
       // identical whether the wrapper declined the command or the suite simply
       // never touched the code. Absent when we genuinely have no reason.
-      return unknownCoverage(report.measurementFailureReason);
+      return { coverage: unknownCoverage(report.measurementFailureReason) };
     }
     const ranges = await changedLinesForEdits(input.repoRoot, pyEdits);
     // Shadow-bypass guard. If a changed file was never MEASURED at all, the
@@ -292,12 +307,14 @@ async function assessCoverage(
       // documented at verdicts.mdx "Make sure the tests run the code being
       // verified", but nobody who lands here has a reason to go read it.
       const names = unmeasured.map((r) => r.path).join(', ');
-      return unknownCoverage(
-        `the test run never imported ${names}, so the suite exercised a different copy ` +
-          `than the one being verified (usually an installed or editable package). ` +
-          `Put the verified tree first on sys.path, for example by prefixing the test ` +
-          `command with PYTHONPATH=. (or PYTHONPATH=src for a src layout).`,
-      );
+      return {
+        coverage: unknownCoverage(
+          `the test run never imported ${names}, so the suite exercised a different copy ` +
+            `than the one being verified (usually an installed or editable package). ` +
+            `Put the verified tree first on sys.path, for example by prefixing the test ` +
+            `command with PYTHONPATH=. (or PYTHONPATH=src for a src layout).`,
+        ),
+      };
     }
     // Judge coverage on STATEMENTS, not physical lines, using real extents from
     // the Python AST. coverage.py only ever marks a statement's FIRST line, so a
@@ -318,13 +335,13 @@ async function assessCoverage(
       // to "covered" here would be a false SAFE bought with no evidence at all.
       // Carry WHY: a silent unknown is indistinguishable from an untested change
       // and cost us a full CI cycle to diagnose once already.
-      return unknownCoverage(err instanceof Error ? err.message : String(err));
+      return { coverage: unknownCoverage(err instanceof Error ? err.message : String(err)) };
     }
     // A file we could not parse has no honest containment map, and guessing one
     // means guessing which changed lines are inert. Unknown, never covered.
     if (statements.errors.size > 0) {
       const [file, reason] = [...statements.errors.entries()][0] ?? [];
-      return unknownCoverage(`could not map statements in ${file}: ${reason}`);
+      return { coverage: unknownCoverage(`could not map statements in ${file}: ${reason}`) };
     }
     const attributed = attributeChangedLines({
       ranges,
@@ -338,30 +355,29 @@ async function assessCoverage(
     // "nothing to attest" instead of implying a coverage miss. (Its inert-only
     // sibling gets the same treatment and rides along on `attributed`.)
     const removalOnlyFiles = ranges.filter((r) => r.lines.length === 0).map((r) => r.path);
-    // Mutation runs only when the change would otherwise be SAFE: it can only
-    // downgrade, so a change already floored by coverage needs no mutants, and
-    // skipping saves its minutes-scale cost (ADR-15).
-    let survivingMutants: SurvivingMutant[] | undefined;
-    if (input.mutate === true && attributed.changedLinesCovered === true) {
-      const mut = await runMutation({
+    // Mutation runs only when the change is otherwise coverage-complete: it can
+    // only downgrade, so a change already floored needs no mutants (the caller's
+    // `runMut` already excludes flaky/narrowed; ADR-15).
+    let mutation: MutationResult | undefined;
+    if (runMut && attributed.changedLinesCovered === true) {
+      mutation = await runMutation({
         shadowRoot: shadow.path,
         ranges,
         ...(input.testCmd ? { testCmd: input.testCmd } : {}),
         ...(input.timeoutMs ? { timeoutMs: input.timeoutMs } : {}),
       });
-      if (mut.survivors.length > 0) survivingMutants = mut.survivors;
     }
     // Spread, never rebuild field by field: an allow-list silently drops any
     // field a future CoverageAttribution adds, and the last allow-list here also
     // DELETED `uncovered` whenever the verdict was SAFE, which is precisely how
     // the false SAFE stayed invisible. A SAFE report that discloses the changed
     // statements it did not prove is strictly more honest.
-    return {
+    const coverage: CoverageAssessment = {
       tool: 'coverage.py',
       ...attributed,
       ...(removalOnlyFiles.length > 0 ? { removalOnlyFiles } : {}),
-      ...(survivingMutants ? { survivingMutants } : {}),
     };
+    return { coverage, ...(mutation ? { mutation } : {}) };
   } finally {
     await shadow.cleanup();
   }
