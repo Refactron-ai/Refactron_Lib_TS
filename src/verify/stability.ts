@@ -25,6 +25,10 @@ import type { FileChange } from '../contracts.js';
 export interface StabilityResult {
   ran: boolean;
   runs: number;
+  // Ids of tests whose outcome varied across the reruns. Each entry is a failing
+  // test id when the rerun's output parses, or a synthetic `run N (seed S)` marker
+  // when it does not, so an unparseable red still floors. Not every entry is a
+  // distinct test id: a consumer must not read this as a deduped test-id list.
   varied: string[];
   inconclusive: number;
   skippedReason?: string;
@@ -71,30 +75,34 @@ export async function runStabilityCheck(input: StabilityInput): Promise<Stabilit
   for (let i = 0; i < seeds.length; i++) {
     const seed = seeds[i]!;
     // A fresh tree per rerun, and PYTHONDONTWRITEBYTECODE so a run compiles from
-    // source rather than a cached .pyc left by a sibling run.
-    const handle = await createShadowTree(input.repoRoot, input.changes);
+    // source rather than a cached .pyc left by a sibling run. The shadow build is
+    // INSIDE the try: a creation failure on a rerun is an infrastructure problem,
+    // so it degrades this rerun to inconclusive rather than throwing out of a
+    // would-be-SAFE verify. Inconclusive never floors, so this cannot leak SAFE.
+    let handle: Awaited<ReturnType<typeof createShadowTree>> | undefined;
     try {
+      handle = await createShadowTree(input.repoRoot, input.changes);
       const r = await runRunner(
         { ...spec, cwd: handle.path },
         { envAdd: { PYTHONHASHSEED: seed, PYTHONDONTWRITEBYTECODE: '1' } },
       );
       if (r.timedOut) {
         inconclusive += 1;
-        continue;
-      }
-      runs += 1;
-      if (r.exitCode !== 0) {
-        // The gate already saw green, so a red rerun is variance. Name the tests
-        // when the output parses; fall back to a run-level token so a parse gap
-        // still floors.
-        const ids = extractFailureIds(r.stdout, r.stderr);
-        if (ids.size > 0) for (const id of ids) varied.add(id);
-        else varied.add(`run ${i + 1} (seed ${seed})`);
+      } else {
+        runs += 1;
+        if (r.exitCode !== 0) {
+          // The gate already saw green, so a red rerun is variance. Name the
+          // tests when the output parses; fall back to a run-level token so a
+          // parse gap still floors.
+          const ids = extractFailureIds(r.stdout, r.stderr);
+          if (ids.size > 0) for (const id of ids) varied.add(id);
+          else varied.add(`run ${i + 1} (seed ${seed})`);
+        }
       }
     } catch {
       inconclusive += 1;
     } finally {
-      await handle.cleanup();
+      if (handle) await handle.cleanup();
     }
   }
 
