@@ -158,3 +158,101 @@ describe('a surviving mutant downgrades SAFE under --mutate (#116)', () => {
     240_000,
   );
 });
+
+// Issue #149. --mutate only perturbed OPERATORS, so a changed line whose behaviour
+// lives in a CONSTANT (a number, string, True/False/None, or a bare `return
+// <literal>`) generated zero mutants and stayed SAFE even under --mutate. A real
+// value change executed but unasserted is exactly the false-green --mutate exists
+// to close.
+describe('a surviving constant mutant downgrades SAFE under --mutate (#149)', () => {
+  const CONST_DIFF = [
+    '--- a/calc.py',
+    '+++ b/calc.py',
+    '@@ -1,2 +1,2 @@',
+    ' def status():',
+    '-    return 2',
+    '+    return 3',
+    '',
+  ].join('\n');
+
+  /** `weak` asserts only the TYPE, so the constant mutant survives. `strong`
+   *  asserts the VALUE, so it is killed — but a value assertion cannot survive a
+   *  2->3 baseline, so the strong case uses a behaviour-preserving diff instead. */
+  async function constFixture(strength: 'weak' | 'strong'): Promise<string> {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'const-'));
+    roots.push(root);
+    await fs.writeFile(path.join(root, 'calc.py'), 'def status():\n    return 2\n');
+    await fs.mkdir(path.join(root, 'tests'));
+    const body =
+      strength === 'weak'
+        ? 'from calc import status\n\n\ndef test_status():\n    assert isinstance(status(), int)\n'
+        : 'from calc import status\n\n\ndef test_status():\n    assert status() == 2\n';
+    await fs.writeFile(path.join(root, 'tests', 'test_status.py'), body);
+    return root;
+  }
+
+  it.skipIf(NO_PYTHON)(
+    'a constant change with a type-only test is SAFE without --mutate',
+    async () => {
+      // The control, and the reproduced gap: the change is covered and the suite
+      // passes, so the base engine calls it SAFE though nothing asserted the value.
+      const root = await constFixture('weak');
+      const report = await verifyDiff({
+        repoRoot: root,
+        unifiedDiff: CONST_DIFF,
+        testCmd: 'python3 -m pytest -q',
+      });
+      expect(report.verdict).toBe('SAFE');
+    },
+    240_000,
+  );
+
+  it.skipIf(NO_PYTHON)(
+    'the same change floors to UNPROVEN under --mutate, naming the constant mutant',
+    async () => {
+      const root = await constFixture('weak');
+      const report = await verifyDiff({
+        repoRoot: root,
+        unifiedDiff: CONST_DIFF,
+        testCmd: 'python3 -m pytest -q',
+        mutate: true,
+      });
+      expect(report.verdict).toBe('UNPROVEN');
+      expect(report.reason.toLowerCase()).toContain('mutant');
+      const survivors = report.mutation?.survivors ?? [];
+      expect(survivors.length).toBeGreaterThan(0);
+      // The mutant is the constant `3` on the changed line, not an operator.
+      expect(survivors.some((s) => s.file === 'calc.py' && s.line === 2)).toBe(true);
+      expect(survivors.some((s) => s.operator === '3')).toBe(true);
+    },
+    240_000,
+  );
+
+  it.skipIf(NO_PYTHON)(
+    'a value-asserted constant is killed and still reaches SAFE under --mutate',
+    async () => {
+      // No over-block: a behaviour-preserving edit to the constant's line (a
+      // comment) keeps the baseline green while still marking the line changed, so
+      // its `2` is mutated; the value assertion kills the mutant. Without this,
+      // constant mutation could make SAFE unreachable for any asserted constant.
+      const root = await constFixture('strong');
+      const diff = [
+        '--- a/calc.py',
+        '+++ b/calc.py',
+        '@@ -1,2 +1,2 @@',
+        ' def status():',
+        '-    return 2',
+        '+    return 2  # touched',
+        '',
+      ].join('\n');
+      const report = await verifyDiff({
+        repoRoot: root,
+        unifiedDiff: diff,
+        testCmd: 'python3 -m pytest -q',
+        mutate: true,
+      });
+      expect(report.verdict).toBe('SAFE');
+    },
+    240_000,
+  );
+});

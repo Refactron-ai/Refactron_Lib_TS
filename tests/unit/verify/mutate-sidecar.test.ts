@@ -51,23 +51,62 @@ describe('mutate.py sidecar (#116)', () => {
     expect(ops).toContain('+->-');
   });
 
-  it.skipIf(NO_PYTHON)('never mutates inside a string or a comment', () => {
-    // The `<=` and `+` here live in a string and a comment; tokenize classifies
-    // them as STRING/COMMENT, so no mutant may target them.
+  it.skipIf(NO_PYTHON)('mutates a string value but never its contents or a comment (#149)', () => {
+    // The `<=` lives inside the string and `and`/`+` inside the comment; tokenize
+    // keeps those as STRING/COMMENT tokens, so no mutant targets them. The string
+    // used as a VALUE is a legitimate whole-token target (#149).
     const src = 'x = "a <= b"  # and a + comment\ny = 1\n';
-    expect(mutate(src, [1])).toEqual([]);
+    const ms = mutate(src, [1]);
+    expect(ms).toHaveLength(1);
+    expect(ms[0]!.orig).toBe('"a <= b"');
+    expect(ms[0]!.op).toBe('"a <= b"->""');
+    const ops = ms.map((m) => m.op);
+    expect(ops).not.toContain('<=-><');
+    expect(ops).not.toContain('+->-');
+    expect(ops).not.toContain('and->or');
   });
 
-  it.skipIf(NO_PYTHON)('ignores operators on unchanged lines', () => {
+  it.skipIf(NO_PYTHON)('ignores tokens on unchanged lines', () => {
+    // Line 2 now yields several mutants (the `+` and both constants); the point
+    // is that none of line 1's tokens are touched.
     const src = 'a = 1 + 2\nb = 3 + 4\n';
-    const ops = mutate(src, [2]);
-    expect(ops).toHaveLength(1);
-    expect(ops[0]!.line).toBe(2);
+    const ms = mutate(src, [2]);
+    expect(ms.length).toBeGreaterThan(0);
+    expect(ms.every((m) => m.line === 2)).toBe(true);
   });
 
-  it.skipIf(NO_PYTHON)('does not treat ** or += as mutable * or +', () => {
+  it.skipIf(NO_PYTHON)('does not treat ** or += as a mutable * or +', () => {
+    // The constants on these lines mutate now, but neither compound operator is
+    // split into a mutable `*` or `+`.
     const src = 'x = 2 ** 3\ny = 0\ny += 1\n';
-    expect(mutate(src, [1, 3])).toEqual([]);
+    const ops = mutate(src, [1, 3]).map((m) => m.op);
+    expect(ops).not.toContain('*->/');
+    expect(ops).not.toContain('+->-');
+  });
+
+  it.skipIf(NO_PYTHON)(
+    'emits a constant mutant for a number, string, and True/False/None (#149)',
+    () => {
+      const src = 'a = 5\nb = "hi"\nc = True\nd = None\ne = 0\n';
+      const ms = mutate(src, [1, 2, 3, 4, 5]);
+      const op = (ln: number) => ms.find((m) => m.line === ln)?.op;
+      expect(op(1)).toBe('5->0');
+      expect(op(2)).toBe('"hi"->""');
+      expect(op(3)).toBe('True->False');
+      expect(op(4)).toBe('None->True');
+      expect(op(5)).toBe('0->1'); // a zero-valued literal maps to 1, never to 0
+      for (const m of ms) expect(m.repl).not.toBe(m.orig); // never a no-op mutant
+    },
+  );
+
+  it.skipIf(NO_PYTHON)('never mutates a docstring or a bare string statement (#149)', () => {
+    // A module docstring, a function docstring, and a bare string statement are
+    // all standalone expression statements: behaviour-inert, so mutating them
+    // would manufacture a survivor no test could ever kill (a false UNPROVEN).
+    const src = '"module doc"\n\n\ndef f():\n    "func doc"\n    "bare"\n    return 1\n';
+    const ms = mutate(src, [1, 5, 6, 7]);
+    expect(ms.map((m) => m.line)).toEqual([7]); // only the `1` value on line 7
+    expect(ms[0]!.op).toBe('1->0');
   });
 
   it.skipIf(NO_PYTHON)('returns [] for un-tokenizable source instead of crashing', () => {
