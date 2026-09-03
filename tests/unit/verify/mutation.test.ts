@@ -59,7 +59,10 @@ describe('runMutation (ADR-15)', () => {
   });
 
   it.skipIf(NO_PYTHON)('records a survivor a weak test does not catch', async () => {
-    const root = await repo({ 'calc.py': 'def f(n):\n    return n + 1\n' });
+    // `n + n`, not `n + 1`: an operator-only line keeps this a focused test of the
+    // runner's survivor classification. Constant mutants are covered by the
+    // sidecar and #149 integration tests.
+    const root = await repo({ 'calc.py': 'def f(n):\n    return n + n\n' });
     const r = await runMutation({
       shadowRoot: root,
       ranges: ranges({ path: 'calc.py', lines: [2] }),
@@ -72,11 +75,11 @@ describe('runMutation (ADR-15)', () => {
   });
 
   it.skipIf(NO_PYTHON)('classifies a mutant a strong test catches as killed', async () => {
-    const root = await repo({ 'calc.py': 'def f(n):\n    return n + 1\n' });
+    const root = await repo({ 'calc.py': 'def f(n):\n    return n + n\n' });
     const r = await runMutation({
       shadowRoot: root,
       ranges: ranges({ path: 'calc.py', lines: [2] }),
-      testCmd: 'python3 -c "import calc; assert calc.f(2) == 3"',
+      testCmd: 'python3 -c "import calc; assert calc.f(2) == 4"',
       timeoutMs: 30_000,
     });
     expect(r.survivors).toEqual([]);
@@ -97,7 +100,10 @@ describe('runMutation (ADR-15)', () => {
       timeoutMs: 3_000,
     });
     expect(r.survivors).toEqual([]);
-    expect(r.inconclusive).toBe(1);
+    // Both mutants of line 3 (`-`->`+` and the constant `1`->`0`) make the loop
+    // never terminate, so both time out; the point is that a timeout is
+    // inconclusive, never a survivor.
+    expect(r.inconclusive).toBeGreaterThan(0);
   });
 
   it.skipIf(NO_PYTHON)('skips mutation when the baseline is not green', async () => {
