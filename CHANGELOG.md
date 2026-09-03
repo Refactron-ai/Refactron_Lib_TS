@@ -7,6 +7,34 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [Unreleased]
+
+### Added — `--flaky-check`, an opt-in stability check
+
+A default `SAFE` assumes your tests are deterministic. The suite runs once, so a
+test that passes because of randomness, ordering, timing, or hash-seed dependence
+— not because behaviour is preserved — still counts toward `SAFE`. The single-run
+fast path cannot tell a stable green from a lucky one.
+
+`verify-diff --flaky-check` closes that gap. After a would-be-`SAFE` verdict, it
+reruns the suite K times (default 3) on fresh trees, each under a different
+`PYTHONHASHSEED`. If any test's outcome varies across the reruns, the green was
+never stable, so the verdict floors at `UNPROVEN`, naming the flaky test:
+
+```
+[UNPROVEN] Tests pass, but a test outcome varied across reruns
+(tests/test_x.py::test_scale); the green is flaky, not stable. Fix the
+flakiness or the verdict cannot be SAFE.
+```
+
+Off by default and slower (K extra full-suite runs); downgrade-only (a varied
+test moves `SAFE` to `UNPROVEN`, a stable rerun never lifts a verdict); an
+inconclusive rerun that times out is skipped, not held against you. Varying
+`PYTHONHASHSEED` catches dict/set order-dependence deterministically; timing,
+network, and `random`-based flakes are probabilistic, so K reruns give K chances.
+Python-focused, like coverage and mutation. Decided on measurement (ADR-16). The
+default gate is documented as assuming deterministic tests.
+
 ## [0.4.5] — 2026-09-01
 
 ### Fixed — a changed conditional with an untested branch could earn `SAFE`
