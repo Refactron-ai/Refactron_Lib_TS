@@ -28,9 +28,10 @@ function hasPythonTooling(): boolean {
   }
 }
 const NO_PYTHON = !hasPythonTooling();
-// The inconclusive case sleeps to force a timeout; a sleeping python orphans on
-// Windows (Node does not tree-kill the grandchild), so that case is POSIX-only,
-// like the mutation hang test.
+// The inconclusive case spins to force a timeout; that python orphans on Windows
+// (Node does not tree-kill the grandchild), so that case is POSIX-only, like the
+// mutation hang test. A busy loop, not time.sleep: on Node 18 execa's timeout
+// reliably kills a CPU-spinning child but was flaky killing a sleeping one.
 const NO_HANG = NO_PYTHON || process.platform === 'win32';
 
 const roots: string[] = [];
@@ -75,7 +76,7 @@ const DIFF = [
  *             it passes under the gate (unset/0) and fails under a non-zero seed.
  * `stable`  — covers the change with a value assertion (green on both trees since
  *             the diff is behaviour-preserving); green under every seed.
- * `slow`    — covers the change; sleeps (and so times out) under a non-zero seed,
+ * `slow`    — covers the change; spins (and so times out) under a non-zero seed,
  *             modelling a rerun that is inconclusive rather than red.
  */
 async function fixture(kind: 'flaky' | 'stable' | 'slow'): Promise<string> {
@@ -88,7 +89,7 @@ async function fixture(kind: 'flaky' | 'stable' | 'slow'): Promise<string> {
       ? 'import os\nfrom calc import scale\n\n\ndef test_scale():\n    scale(5)\n    assert os.environ.get("PYTHONHASHSEED") in (None, "0")\n'
       : kind === 'stable'
         ? 'from calc import scale\n\n\ndef test_scale():\n    assert scale(5) == 10\n'
-        : 'import os, time\nfrom calc import scale\n\n\ndef test_scale():\n    scale(5)\n    if os.environ.get("PYTHONHASHSEED") not in (None, "0"):\n        time.sleep(3600)\n    assert True\n';
+        : 'import os\nfrom calc import scale\n\n\ndef test_scale():\n    scale(5)\n    if os.environ.get("PYTHONHASHSEED") not in (None, "0"):\n        while True:\n            pass\n    assert True\n';
   await fs.writeFile(path.join(root, 'tests', 'test_scale.py'), body);
   return root;
 }
@@ -155,10 +156,10 @@ describe('a flaky test downgrades SAFE under --flaky-check (#146)', () => {
     async () => {
       // A rerun that times out is inconclusive: it must NOT downgrade, or a slow
       // suite would produce false UNPROVENs. Under a non-zero seed the fixture
-      // sleeps and the rerun times out; the seed-0 rerun still passes, so there
+      // spins and the rerun times out; the seed-0 rerun still passes, so there
       // is no confirmed variance and the change stays SAFE. The timeout is short
-      // (the non-sleeping runs finish in well under it) to bound the two
-      // sleep-to-timeout reruns and keep the test's wall time down.
+      // (the non-spinning runs finish in well under it) to bound the two
+      // spin-to-timeout reruns and keep the test's wall time down.
       const root = await fixture('slow');
       const report = await verifyDiff({
         repoRoot: root,

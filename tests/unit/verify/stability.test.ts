@@ -23,9 +23,12 @@ function hasPython(): boolean {
   }
 }
 const NO_PYTHON = !hasPython();
-// A rerun that sleeps to force a timeout orphans its python on Windows (Node does
+// A rerun that spins to force a timeout orphans its python on Windows (Node does
 // not tree-kill the grandchild), locking the temp dir. The inconclusive path is
 // verified on POSIX; Windows tree-kill is the same tracked follow-up as ADR-15.
+// A busy loop, not time.sleep: on Node 18 execa's timeout reliably kills a
+// CPU-spinning child but was flaky killing a sleeping one (the mutation hang test
+// uses the same loop form for the same reason).
 const NO_HANG = NO_PYTHON || process.platform === 'win32';
 
 const roots: string[] = [];
@@ -94,12 +97,12 @@ describe('runStabilityCheck (#146)', () => {
   });
 
   it.skipIf(NO_HANG)('a rerun that times out is inconclusive, never variance', async () => {
-    // Under a non-zero seed the test sleeps and the rerun times out. A timeout is
+    // Under a non-zero seed the test spins and the rerun times out. A timeout is
     // inconclusive: it must not be counted as a varied (red) outcome, or a slow
     // suite would manufacture a false UNPROVEN.
     const calc = 'def scale(x):\n    return x * 2\n';
     const test =
-      'import os, time\nfrom calc import scale\n\n\ndef test_scale():\n    scale(5)\n    if os.environ.get("PYTHONHASHSEED") not in (None, "0"):\n        time.sleep(3600)\n    assert True\n';
+      'import os\nfrom calc import scale\n\n\ndef test_scale():\n    scale(5)\n    if os.environ.get("PYTHONHASHSEED") not in (None, "0"):\n        while True:\n            pass\n    assert True\n';
     const root = await repo({ 'calc.py': calc, 'tests/test_scale.py': test });
     const r = await runStabilityCheck({
       repoRoot: root,
