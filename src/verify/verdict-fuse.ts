@@ -90,7 +90,9 @@ export interface VerdictReport {
   // --flaky-check. Distinct from `flakyTests` (the fail→heal signal from the
   // tests gate): this is the result of rerunning a would-be-SAFE suite under
   // varied conditions. A non-empty `varied` blocks SAFE; `ran: false` with a
-  // `skippedReason` says the check did not conclude.
+  // `skippedReason` says the check did not conclude. `varied` entries are test
+  // ids OR synthetic `run N (seed S)` markers when the output did not parse, so
+  // it is not a deduped test-id list (see StabilityResult).
   stability?: StabilityResult;
 }
 
@@ -217,11 +219,14 @@ export function fuseVerdict(
   // fail→heal flake above: this is the opt-in --flaky-check rerunning a
   // would-be-SAFE suite. Any confirmed variance disqualifies SAFE. An
   // inconclusive rerun (a timeout) is not variance and does not floor.
+  // "test outcome(s) varied", not "N tests": a `varied` entry can be a run-level
+  // token when the output did not parse, so counting them as distinct tests would
+  // overstate. An outcome that varied is exactly what was observed either way.
   const stabilityReason =
     stability && stability.varied.length > 0
       ? stability.varied.length === 1
-        ? `Tests pass, but a test changed outcome across reruns (${stability.varied[0]}); the green is flaky, not stable. Fix the flakiness or the verdict cannot be SAFE.`
-        : `Tests pass, but ${stability.varied.length} tests changed outcome across reruns; the green is flaky, not stable. Fix the flakiness or the verdict cannot be SAFE.`
+        ? `Tests pass, but a test outcome varied across reruns (${stability.varied[0]}); the green is flaky, not stable. Fix the flakiness or the verdict cannot be SAFE.`
+        : `Tests pass, but ${stability.varied.length} test outcomes varied across reruns; the green is flaky, not stable. Fix the flakiness or the verdict cannot be SAFE.`
       : null;
 
   // Each blocking signal is asserted at the gate, not only via
