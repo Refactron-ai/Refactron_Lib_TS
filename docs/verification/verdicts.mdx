@@ -86,9 +86,10 @@ Coverage proves a changed statement _ran_. It does not prove any test would
 _fail_ if that statement's behaviour changed. A line a test executes but never
 asserts on counts as covered and earns `SAFE`.
 
-`refactron verify-diff --mutate` closes that gap. It perturbs the operators in
-your changed statements — a boundary (`<=` → `<`), an arithmetic sign, a boolean
-`and`/`or` — reruns your suite against each, and if any mutant **survives** (the
+`refactron verify-diff --mutate` closes that gap. It perturbs the operators and
+constants in your changed statements — a boundary (`<=` → `<`), an arithmetic
+sign, a boolean `and`/`or`, or a constant (a number, a string, `True`/`False`/
+`None`) — reruns your suite against each, and if any mutant **survives** (the
 suite still passes), the verdict floors at `UNPROVEN`, naming the survivor:
 
 ```

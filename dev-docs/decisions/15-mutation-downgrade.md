@@ -69,6 +69,15 @@ arithmetic (`+`↔`-`, `*`↔`/`, `//`↔`/`), and boolean (`and`↔`or`). A reg
 changed lines was rejected: it would mutate inside strings and produce false
 survivors, i.e. false `UNPROVEN`s. Fail-safe, but needlessly noisy.
 
+**Constants (#149).** The mutant set was later extended to constants — numbers,
+strings, and `True`/`False`/`None` — because an operator-only set left a real
+false-green: a changed `return 2` earned `SAFE` under `--mutate` (zero mutable
+operators). The same tokenize discipline holds (a constant inside a string or
+comment is part of that token and is never mutated), and a constant that is a
+bare expression statement (a docstring) is skipped so it cannot manufacture a
+false survivor. Still downgrade-only: the worst a constant mutant can add is a
+false `UNPROVEN`, never a false `SAFE`.
+
 Python-only, like coverage. `reportVersion` stays `1`: the mutation evidence is
 an additive optional field. `engineVersion` (ADR-13) already distinguishes the
 semantics change.
@@ -143,8 +152,10 @@ Rejected as a non-goal. The changed-statement set (already computed in
       on POSIX; the two hang tests skip on win32.
 
 
-- [ ] Return-value and statement-deletion operators. A larger mutant set catches
-      more, at more runtime. Start with operator swaps.
+- [x] Constant operators (numbers, strings, `True`/`False`/`None`) — done in #149.
+- [ ] Return-value (#150) and statement-deletion operators. A larger mutant set
+      catches more, at more runtime. Return-value is blocked on a sentinel /
+      equivalent-mutant decision; statement-deletion must keep the mutant valid.
 - [ ] A mutant budget / sampling cap for very large diffs, so cost stays bounded.
 - [ ] Non-Python languages. Python-only, like coverage.
 - [ ] Condition/path coverage (#140) is a coverage-side gap; mutation is the
