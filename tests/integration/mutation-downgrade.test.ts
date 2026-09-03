@@ -252,6 +252,13 @@ describe('a surviving constant mutant downgrades SAFE under --mutate (#149)', ()
         mutate: true,
       });
       expect(report.verdict).toBe('SAFE');
+      // The real pin (not just "SAFE"): a constant mutant was generated AND
+      // killed. On main this case is also SAFE, but because NO constant mutant
+      // exists there — asserting only the verdict would pass identically on both
+      // trees and prove nothing. `MutationResult` itemizes only survivors, so
+      // tested>0 && killed>0 is the strongest available "generated and died" pin.
+      expect(report.mutation?.tested ?? 0).toBeGreaterThan(0);
+      expect(report.mutation?.killed ?? 0).toBeGreaterThan(0);
     },
     240_000,
   );
