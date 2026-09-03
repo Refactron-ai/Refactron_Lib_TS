@@ -667,13 +667,35 @@ describe('fuseVerdict test scope', () => {
       expect(r.reason.toLowerCase()).not.toContain('flaky');
     });
 
-    it('inconclusive reruns (all timed out) do not floor: no confirmed variance', () => {
+    it('inconclusive reruns (all timed out) do not floor, but the SAFE discloses the sweep', () => {
       // A rerun that times out is inconclusive, never variance. A slow suite must
-      // not manufacture a false UNPROVEN.
+      // not manufacture a false UNPROVEN. But the SAFE must still CARRY the
+      // stability block, so a reader sees the sweep was all-inconclusive rather
+      // than a clean pass (the honesty rule; platform-independent here, unlike the
+      // NO_HANG-gated integration case).
       const inconclusive: StabilityResult = { ran: true, runs: 0, varied: [], inconclusive: 3 };
-      expect(
-        fuse(result(true), ['a.py'], complete, FULL_SCOPE, undefined, inconclusive).verdict,
-      ).toBe('SAFE');
+      const r = fuse(result(true), ['a.py'], complete, FULL_SCOPE, undefined, inconclusive);
+      expect(r.verdict).toBe('SAFE');
+      expect(r.stability).toEqual(inconclusive);
+    });
+
+    it('a fail→heal flake outranks stability variance in the reason (C1 over C3)', () => {
+      // If both fire, the fail→heal flake means no stable full green was ever
+      // observed even once, which is a deeper problem than a green that varied on
+      // rerun. The reason must say "flipped on retry", not "varied across reruns".
+      const healed: VerificationResult = {
+        ...result(true),
+        gates: {
+          syntax: ok,
+          imports: ok,
+          tests: { passed: true, durationMs: 1, flakySuspects: ['tests/x.py::t_heal'] },
+        },
+      };
+      const s = withVaried(['tests/x.py::t_rerun']);
+      const r = fuse(healed, ['calc.py'], complete, FULL_SCOPE, undefined, s);
+      expect(r.verdict).toBe('UNPROVEN');
+      expect(r.reason).toContain('flipped on retry');
+      expect(r.reason).not.toContain('across reruns');
     });
 
     it('never strengthens: a clean stability result cannot lift a thin-coverage UNPROVEN', () => {
