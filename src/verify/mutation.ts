@@ -153,7 +153,11 @@ export async function runMutation(input: MutationInput): Promise<MutationResult>
     }
   }
   if (all.length === 0)
-    return { ...empty, ran: true, skippedReason: 'no mutable operators in the changed statements' };
+    return {
+      ...empty,
+      ran: true,
+      skippedReason: 'no mutable operators or constants in the changed statements',
+    };
 
   const chosen = all.slice(0, budget);
   const survivors: SurvivingMutant[] = [];
