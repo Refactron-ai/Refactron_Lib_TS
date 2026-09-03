@@ -12,7 +12,7 @@
 // outcome depends on PYTHONHASHSEED. That is the cleanest DETERMINISTIC instance
 // of the class the feature detects — green under the gate's default seed, red
 // under the injected non-default seeds — so the red-first proof is repeatable.
-import { describe, it, expect, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { execSync } from 'node:child_process';
 import * as fs from 'node:fs/promises';
 import * as os from 'node:os';
@@ -36,6 +36,22 @@ const NO_HANG = NO_PYTHON || process.platform === 'win32';
 const roots: string[] = [];
 afterEach(async () => {
   for (const r of roots.splice(0)) await fs.rm(r, { recursive: true, force: true });
+});
+
+// The fixtures key their flakiness to PYTHONHASHSEED, and the gate + coverage
+// runs inherit process.env (only the stability reruns force the seed). If the CI
+// runner exports PYTHONHASHSEED (pytest-randomly, a hardened image, a dev seeking
+// reproducibility), the gate's baseline would run under that seed and the fixture
+// green would depend on it. Neutralize it here so the baseline is deterministic;
+// restore it so no other suite is affected.
+let priorSeed: string | undefined;
+beforeEach(() => {
+  priorSeed = process.env.PYTHONHASHSEED;
+  delete process.env.PYTHONHASHSEED;
+});
+afterEach(() => {
+  if (priorSeed === undefined) delete process.env.PYTHONHASHSEED;
+  else process.env.PYTHONHASHSEED = priorSeed;
 });
 
 // `return x * 2` -> `return 2 * x`. Behaviour-preserving on purpose: every fixture
@@ -140,15 +156,16 @@ describe('a flaky test downgrades SAFE under --flaky-check (#146)', () => {
       // A rerun that times out is inconclusive: it must NOT downgrade, or a slow
       // suite would produce false UNPROVENs. Under a non-zero seed the fixture
       // sleeps and the rerun times out; the seed-0 rerun still passes, so there
-      // is no confirmed variance and the change stays SAFE. A short timeout
-      // bounds the test.
+      // is no confirmed variance and the change stays SAFE. The timeout is short
+      // (the non-sleeping runs finish in well under it) to bound the two
+      // sleep-to-timeout reruns and keep the test's wall time down.
       const root = await fixture('slow');
       const report = await verifyDiff({
         repoRoot: root,
         unifiedDiff: DIFF,
         testCmd: 'python3 -m pytest -q',
         flakyCheck: true,
-        timeoutMs: 8_000,
+        timeoutMs: 4_000,
       });
       expect(report.verdict).toBe('SAFE');
       expect(report.stability?.varied).toEqual([]);
