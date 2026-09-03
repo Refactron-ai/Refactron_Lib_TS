@@ -7,152 +7,180 @@ description: Release history for Refactron, newest first.
 Refactron follows [Semantic Versioning](https://semver.org/). The full,
 unabridged log lives in [`CHANGELOG.md`](https://github.com/Refactron-ai/refactron/blob/main/CHANGELOG.md).
 
+<Update label="Unreleased">
+  **`--flaky-check`, an opt-in stability check.** A default `SAFE` assumes your
+  tests are deterministic: the suite runs once, so a test that passes by luck
+  (randomness, ordering, timing, hash-seed dependence) still counts toward `SAFE`.
+
+`verify-diff --flaky-check` reruns a would-be-`SAFE` suite K times (default 3)
+on fresh trees, each under a different `PYTHONHASHSEED`. If any test's outcome
+varies across the reruns, the green was never stable, so the verdict floors at
+`UNPROVEN`, naming the flaky test:
+
+```
+[UNPROVEN] Tests pass, but a test changed outcome across reruns
+(tests/test_x.py::test_scale); the green is flaky, not stable. Fix the
+flakiness or the verdict cannot be SAFE.
+```
+
+Off by default and slower (K extra full-suite runs); downgrade-only (never
+lifts a verdict); an inconclusive rerun that times out is skipped. Varying
+`PYTHONHASHSEED` catches order-dependence deterministically; timing/network/
+`random` flakes are probabilistic, so K reruns give K chances. Python-focused.
+Decided on measurement (ADR-16); the default gate is documented as assuming
+deterministic tests.
+
+</Update>
+
 <Update label="0.4.5" description="September 1, 2026">
   **A changed conditional with an untested branch could earn `SAFE`.**
 
-  Coverage was statement-level: a changed `if`/`elif` counted as covered once its
-  header executed, so a change to a conditional whose one branch no test entered
-  earned `SAFE` with the changed behaviour untested.
+Coverage was statement-level: a changed `if`/`elif` counted as covered once its
+header executed, so a change to a conditional whose one branch no test entered
+earned `SAFE` with the changed behaviour untested.
 
-  `SAFE` now also requires changed conditionals to be fully branched. A changed
-  line coverage.py reports as a partially-taken branch floors at `UNPROVEN`, and
-  the reason names it:
+`SAFE` now also requires changed conditionals to be fully branched. A changed
+line coverage.py reports as a partially-taken branch floors at `UNPROVEN`, and
+the reason names it:
 
-  ```
-  [UNPROVEN] Tests pass, but a changed conditional has a branch no test took
-  (calc.py:3). Add a test that enters the other branch.
-  ```
+```
+[UNPROVEN] Tests pass, but a changed conditional has a branch no test took
+(calc.py:3). Add a test that enters the other branch.
+```
 
-  **Also new: `--mutate`, an opt-in assertion check.** Coverage proves a changed
-  statement ran, not that a test would fail if its behaviour changed.
-  `verify-diff --mutate` perturbs the changed statements' operators, reruns the
-  suite per mutant, and floors to `UNPROVEN` if any survives (the suite passed
-  while behaviour changed), naming it. Off by default and slower; downgrade-only
-  (never lifts a verdict); Python-only; bounded to changed statements. ADR-15.
+**Also new: `--mutate`, an opt-in assertion check.** Coverage proves a changed
+statement ran, not that a test would fail if its behaviour changed.
+`verify-diff --mutate` perturbs the changed statements' operators, reruns the
+suite per mutant, and floors to `UNPROVEN` if any survives (the suite passed
+while behaviour changed), naming it. Off by default and slower; downgrade-only
+(never lifts a verdict); Python-only; bounded to changed statements. ADR-15.
 
-  Decided on measurement (ADR-14): `--branch` added no runtime cost on a real
-  600-test suite, and the flip is surgical — it bites only a changed conditional
-  with an untaken arc, never straight-line code or a fully-tested conditional, so
-  it cannot make `SAFE` unreachable for ordinary changes. Fail-safe throughout:
-  the rule only moves `SAFE` to `UNPROVEN`, and absent branch data falls back to
-  the statement rule. Python-only, like the rest of coverage.
+Decided on measurement (ADR-14): `--branch` added no runtime cost on a real
+600-test suite, and the flip is surgical — it bites only a changed conditional
+with an untaken arc, never straight-line code or a fully-tested conditional, so
+it cannot make `SAFE` unreachable for ordinary changes. Fail-safe throughout:
+the rule only moves `SAFE` to `UNPROVEN`, and absent branch data falls back to
+the statement rule. Python-only, like the rest of coverage.
+
 </Update>
 
 <Update label="0.4.4" description="August 21, 2026">
   **A pytest config file could turn `UNSAFE` into `SAFE`.** If your project sets
   `addopts` or `testpaths`, read this.
 
-  Refactron classified the scope of a run from the **command string**. Narrowing
-  declared in a config file was invisible, so the report said `scope: "full"` —
-  the classifier's strongest claim — for a run that was narrowed.
+Refactron classified the scope of a run from the **command string**. Narrowing
+declared in a config file was invisible, so the report said `scope: "full"` —
+the classifier's strongest claim — for a run that was narrowed.
 
-  With `addopts = -k test_a` in `pytest.ini`, a change that the full suite
-  **fails** on returned `SAFE`. Every gate was satisfied honestly: the tests
-  passed because the failing one never ran, coverage was complete because a
-  weaker test executed the changed statement, and the command carried no filter.
-  Remove the config file and the same change correctly returned `UNSAFE`, so it
-  was the config that flipped the verdict. This is an inverted verdict rather
-  than a missed abstention, and it was reachable in 0.4.1 through 0.4.3.
+With `addopts = -k test_a` in `pytest.ini`, a change that the full suite
+**fails** on returned `SAFE`. Every gate was satisfied honestly: the tests
+passed because the failing one never ran, coverage was complete because a
+weaker test executed the changed statement, and the command carried no filter.
+Remove the config file and the same change correctly returned `UNSAFE`, so it
+was the config that flipped the verdict. This is an inverted verdict rather
+than a missed abstention, and it was reachable in 0.4.1 through 0.4.3.
 
-  `addopts` and `testpaths` are now read from `pytest.ini`, `tox.ini`,
-  `setup.cfg` and `pyproject.toml`, and the verdict floors at `UNPROVEN` when
-  either narrows the run. The reason names the file, so it no longer points at a
-  command line that contains no filter.
+`addopts` and `testpaths` are now read from `pytest.ini`, `tox.ini`,
+`setup.cfg` and `pyproject.toml`, and the verdict floors at `UNPROVEN` when
+either narrows the run. The reason names the file, so it no longer points at a
+command line that contains no filter.
 
-  **This does not floor every configured project.** `addopts` goes through the
-  same scanner the command line uses, so `addopts = -q --strict-markers` still
-  classifies as `full`. `testpaths` is compared against the test files your
-  repository actually has: `testpaths = ["tests"]` with every test already under
-  `tests/` excludes nothing and stays `full`, while the same line in a project
-  with a test outside that directory floors and names what it leaves out.
+**This does not floor every configured project.** `addopts` goes through the
+same scanner the command line uses, so `addopts = -q --strict-markers` still
+classifies as `full`. `testpaths` is compared against the test files your
+repository actually has: `testpaths = ["tests"]` with every test already under
+`tests/` excludes nothing and stays `full`, while the same line in a project
+with a test outside that directory floors and names what it leaves out.
 
-  Not covered: a vitest `include` or a jest `testMatch`. Those are JavaScript and
-  would have to be executed rather than parsed. They cannot currently produce a
-  false `SAFE`, because coverage is Python-only and a JavaScript or TypeScript
-  change already caps at `UNPROVEN`.
+Not covered: a vitest `include` or a jest `testMatch`. Those are JavaScript and
+would have to be executed rather than parsed. They cannot currently produce a
+false `SAFE`, because coverage is Python-only and a JavaScript or TypeScript
+change already caps at `UNPROVEN`.
 
-  `full` now means "no filter in the command, the environment, or your pytest
-  config". It is still not a proof that the whole suite ran: a plugin or a
-  `conftest.py` can deselect tests in ways nothing here inspects.</Update>
+`full` now means "no filter in the command, the environment, or your pytest
+config". It is still not a proof that the whole suite ran: a plugin or a
+`conftest.py` can deselect tests in ways nothing here inspects.</Update>
 
 <Update label="0.4.3" description="August 20, 2026">
   **Two fixes to what the verified test suite can reach.**
 
-  Neither is exploitable without already being able to hand Refactron a diff or a
-  test command, which is the normal mode of use. That is the point: the CI gate
-  this tool is built for verifies untrusted pull requests, so "the attacker
-  controls the input" is the design assumption.
+Neither is exploitable without already being able to hand Refactron a diff or a
+test command, which is the normal mode of use. That is the point: the CI gate
+this tool is built for verifies untrusted pull requests, so "the attacker
+controls the input" is the design assumption.
 
-  **The verified suite no longer inherits your credentials.** Refactron runs your
-  repository's own test suite, and the diff under verification defines that
-  suite. It was handed the full parent environment. Reproduced: a test read
-  `REFACTRON_TOKEN`, `GITHUB_TOKEN`, `NPM_TOKEN` and `AWS_SECRET_ACCESS_KEY` in
-  plaintext. This matters most in the deployment Refactron is built for, a CI
-  gate holding the credentials of the repository being protected.
+**The verified suite no longer inherits your credentials.** Refactron runs your
+repository's own test suite, and the diff under verification defines that
+suite. It was handed the full parent environment. Reproduced: a test read
+`REFACTRON_TOKEN`, `GITHUB_TOKEN`, `NPM_TOKEN` and `AWS_SECRET_ACCESS_KEY` in
+plaintext. This matters most in the deployment Refactron is built for, a CI
+gate holding the credentials of the repository being protected.
 
-  Credentials are now removed from the environment of every spawn that executes
-  your suite — the common names, plus anything ending in `_TOKEN`, `_SECRET`,
-  `_API_KEY`, `_PASSWORD` or `_CREDENTIALS`. `PATH`, `HOME`, `VIRTUAL_ENV` and
-  the rest of your toolchain are untouched.
+Credentials are now removed from the environment of every spawn that executes
+your suite — the common names, plus anything ending in `_TOKEN`, `_SECRET`,
+`_API_KEY`, `_PASSWORD` or `_CREDENTIALS`. `PATH`, `HOME`, `VIRTUAL_ENV` and
+the rest of your toolchain are untouched.
 
-  This is redaction, not a sandbox. Running `verify-diff` still runs your tests,
-  exactly as running them yourself does. `SECURITY.md` now says so plainly.
+This is redaction, not a sandbox. Running `verify-diff` still runs your tests,
+exactly as running them yourself does. `SECURITY.md` now says so plainly.
 
-  **A diff can no longer name a file outside the repository.** The path came from
-  the diff's own `+++` header and was read with no containment check, so a diff
-  naming `../../../.ssh/id_rsa` caused Refactron to open it. The shadow tree
-  blocked the resulting write, but the read had already happened, and whether the
-  patch applied was an oracle for the file's contents. Containment now runs at
-  intake, before the first read, and resolves symlinks — a link planted inside
-  the repository defeated a purely lexical check.
+**A diff can no longer name a file outside the repository.** The path came from
+the diff's own `+++` header and was read with no containment check, so a diff
+naming `../../../.ssh/id_rsa` caused Refactron to open it. The shadow tree
+blocked the resulting write, but the read had already happened, and whether the
+patch applied was an oracle for the file's contents. Containment now runs at
+intake, before the first read, and resolves symlinks — a link planted inside
+the repository defeated a purely lexical check.
 
-  Both fixes shipped with a bypass of themselves, found in review of the release
-  and fixed in it. The coverage probe still ran unredacted, and it executes a
-  `coverage.py` planted at your repository root. Recording that because the
-  pattern is the lesson: a redaction covering two of three spawns is not a
-  redaction.
+Both fixes shipped with a bypass of themselves, found in review of the release
+and fixed in it. The coverage probe still ran unredacted, and it executes a
+`coverage.py` planted at your repository root. Recording that because the
+pattern is the lesson: a redaction covering two of three spawns is not a
+redaction.
 
-  `SECURITY.md` was also rewritten. The previous version described the
-  refactoring product removed in 0.4.0, and it now documents what actually ships,
-  including a section on what Refactron explicitly does **not** defend.
+`SECURITY.md` was also rewritten. The previous version described the
+refactoring product removed in 0.4.0, and it now documents what actually ships,
+including a section on what Refactron explicitly does **not** defend.
+
 </Update>
 
 <Update label="0.4.2" description="August 19, 2026">
   **Security: Refactron could write to your working tree. Update immediately.**
 
-  The shadow tree was populated with **hardlinks**, so every file your diff did
-  not change shared an inode with your real file. The tests gate runs the suite
-  *as the diff defines it* — and a diff may edit `conftest.py`, a fixture, or any
-  test file — so any in-place write from that suite went straight into your
-  repository. The verdict said `SAFE` while it happened.
+The shadow tree was populated with **hardlinks**, so every file your diff did
+not change shared an inode with your real file. The tests gate runs the suite
+_as the diff defines it_ — and a diff may edit `conftest.py`, a fixture, or any
+test file — so any in-place write from that suite went straight into your
+repository. The verdict said `SAFE` while it happened.
 
-  **No attacker required.** Any suite with a snapshot updater, a golden-file
-  regenerator, or a test that writes a fixture could silently modify the
-  repository being verified.
+**No attacker required.** Any suite with a snapshot updater, a golden-file
+regenerator, or a test that writes a fixture could silently modify the
+repository being verified.
 
-  Affected: every published version, `0.1.0-beta.2` through `0.4.1`, on npm and
-  PyPI. Reachable from the CLI and from the MCP `verify_change` tool, which
-  applies no authentication. It contradicts the guarantee the README, the docs and
-  `SECURITY.md` all state — "your working tree is never touched" — which was false
-  for the entire life of the product.
+Affected: every published version, `0.1.0-beta.2` through `0.4.1`, on npm and
+PyPI. Reachable from the CLI and from the MCP `verify_change` tool, which
+applies no authentication. It contradicts the guarantee the README, the docs and
+`SECURITY.md` all state — "your working tree is never touched" — which was false
+for the entire life of the product.
 
-  Fixed by copying instead of hardlinking, with copy-on-write where the
-  filesystem supports it. Two related fixes ship with it: shadow-tree containment
-  could be escaped by a repository symlink pointing outside itself, and a rejected
-  change left a full copy of your source in the temp directory. Both now have
-  tests; neither did before, which is how this survived four minor releases.
+Fixed by copying instead of hardlinking, with copy-on-write where the
+filesystem supports it. Two related fixes ship with it: shadow-tree containment
+could be escaped by a repository symlink pointing outside itself, and a rejected
+change left a full copy of your source in the temp directory. Both now have
+tests; neither did before, which is how this survived four minor releases.
 
-  **Also fixed: four more false `SAFE` verdicts** in the 0.4.1 narrowing check,
-  found by an adversarial review of that release. The serious one is that the
-  command scanner stopped at the first flag it did not recognise and discarded
-  any filter after it — so `pytest -q --durations-min=0.5 tests/test_a.py`, using
-  a stock pytest flag, returned `SAFE`. Also `unittest discover -s tests/unit`,
-  `pytest --cov --collect-only`, and a bare `runtests.py` being granted the
-  classifier's strongest claim about a file it never opened.
+**Also fixed: four more false `SAFE` verdicts** in the 0.4.1 narrowing check,
+found by an adversarial review of that release. The serious one is that the
+command scanner stopped at the first flag it did not recognise and discarded
+any filter after it — so `pytest -q --durations-min=0.5 tests/test_a.py`, using
+a stock pytest flag, returned `SAFE`. Also `unittest discover -s tests/unit`,
+`pytest --cov --collect-only`, and a bare `runtests.py` being granted the
+classifier's strongest claim about a file it never opened.
 
-  The docs no longer state the narrowing check as an absolute: it is a strong
-  check on the runners and flags Refactron knows, not a guarantee. Run the bare
-  command if you need certainty.
+The docs no longer state the narrowing check as an absolute: it is a strong
+check on the runners and flags Refactron knows, not a guarantee. Run the bare
+command if you need certainty.
+
 </Update>
 
 <Update label="0.4.1" description="August 19, 2026">
@@ -160,37 +188,38 @@ unabridged log lives in [`CHANGELOG.md`](https://github.com/Refactron-ai/refactr
   The report's shape did not change, so the version number alone will not tell
   you that — read this entry.
 
-  Each of these was reproduced before being fixed. In every case the suite
-  **passed** and coverage **was measured**, and the verdict was still wrong:
+Each of these was reproduced before being fixed. In every case the suite
+**passed** and coverage **was measured**, and the verdict was still wrong:
 
-  | Command | Was | Now |
-  | --- | --- | --- |
-  | `pytest -q tests/test_scale.py` | `SAFE` on a change that breaks a test | `UNPROVEN` |
-  | `pytest -q --collect-only` | `SAFE` while running **zero** tests | `UNPROVEN` |
-  | `PYTEST_ADDOPTS="-k x" pytest -q` | `SAFE` while running one test | `UNPROVEN` |
-  | `python3 -m unittest tests.test_scale` | `SAFE` on a change the suite catches | `UNPROVEN` |
-  | 40 statements changed, 1 executed | `SAFE`, "the changed code is covered" | `UNPROVEN` |
+| Command                                | Was                                   | Now        |
+| -------------------------------------- | ------------------------------------- | ---------- |
+| `pytest -q tests/test_scale.py`        | `SAFE` on a change that breaks a test | `UNPROVEN` |
+| `pytest -q --collect-only`             | `SAFE` while running **zero** tests   | `UNPROVEN` |
+| `PYTEST_ADDOPTS="-k x" pytest -q`      | `SAFE` while running one test         | `UNPROVEN` |
+| `python3 -m unittest tests.test_scale` | `SAFE` on a change the suite catches  | `UNPROVEN` |
+| 40 statements changed, 1 executed      | `SAFE`, "the changed code is covered" | `UNPROVEN` |
 
-  Two rules changed to close them. A test command that names a **subset** of
-  your suite now caps the verdict at `UNPROVEN`, and `SAFE` requires **every
-  changed statement a test could reach** to have run, rather than one per file.
-  Statements coverage.py excludes (`# pragma: no cover`, `if TYPE_CHECKING:`)
-  are subtracted rather than held against you.
+Two rules changed to close them. A test command that names a **subset** of
+your suite now caps the verdict at `UNPROVEN`, and `SAFE` requires **every
+changed statement a test could reach** to have run, rather than one per file.
+Statements coverage.py excludes (`# pragma: no cover`, `if TYPE_CHECKING:`)
+are subtracted rather than held against you.
 
-  Every verdict that moves, moves from `SAFE` toward `UNPROVEN`. Nothing that was
-  `UNSAFE` or `UNPROVEN` can become `SAFE`. Exit codes are unchanged, so no CI
-  pipeline breaks — pipelines that read the verdict string will see more
-  `UNPROVEN`.
+Every verdict that moves, moves from `SAFE` toward `UNPROVEN`. Nothing that was
+`UNSAFE` or `UNPROVEN` can become `SAFE`. Exit codes are unchanged, so no CI
+pipeline breaks — pipelines that read the verdict string will see more
+`UNPROVEN`.
 
-  **If you acted on a `SAFE` from 0.4.0 or earlier** for a change verified with a
-  narrowed test command, or one whose `coverage.changedStatements` showed
-  `covered < total`, that verdict claimed more than it proved. Re-verify.
+**If you acted on a `SAFE` from 0.4.0 or earlier** for a change verified with a
+narrowed test command, or one whose `coverage.changedStatements` showed
+`covered < total`, that verdict claimed more than it proved. Re-verify.
 
-  Two new report fields: `testScope` (was the command `full`, `narrowed` or
-  `unknown`) and `engineVersion` (which rules produced this verdict — 
-  `reportVersion` only tells you which shape you hold). `unittest` joins
-  `pytest`, `vitest` and `jest` as a recognised runner. Also clears two high
-  security advisories, lockfile-only.
+Two new report fields: `testScope` (was the command `full`, `narrowed` or
+`unknown`) and `engineVersion` (which rules produced this verdict —
+`reportVersion` only tells you which shape you hold). `unittest` joins
+`pytest`, `vitest` and `jest` as a recognised runner. Also clears two high
+security advisories, lockfile-only.
+
 </Update>
 
 <Update label="0.4.0" description="August 6, 2026">
@@ -200,14 +229,15 @@ unabridged log lives in [`CHANGELOG.md`](https://github.com/Refactron-ai/refactr
   and the tier taxonomy. They were the demo of the verification engine, not the
   product.
 
-  If you use any of them, pin `refactron@0.3.1`. The code is archived with its
-  full history and is not currently published under any name.
+If you use any of them, pin `refactron@0.3.1`. The code is archived with its
+full history and is not currently published under any name.
 
-  `verify-diff` and the MCP `verify_change` tool are unchanged. Bare `refactron`
-  now prints help and exits 2 instead of opening the TUI, `refactron login` is a
-  real command for the first time, and `import { verifyDiff } from 'refactron'`
-  resolves for the first time. Full detail in
-  [`CHANGELOG.md`](https://github.com/Refactron-ai/refactron/blob/main/CHANGELOG.md).
+`verify-diff` and the MCP `verify_change` tool are unchanged. Bare `refactron`
+now prints help and exits 2 instead of opening the TUI, `refactron login` is a
+real command for the first time, and `import { verifyDiff } from 'refactron'`
+resolves for the first time. Full detail in
+[`CHANGELOG.md`](https://github.com/Refactron-ai/refactron/blob/main/CHANGELOG.md).
+
 </Update>
 
 <Update label="0.3.1" description="August 6, 2026">

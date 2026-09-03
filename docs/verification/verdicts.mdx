@@ -111,6 +111,39 @@ Python-only, and bounded to the statements the diff changed.
   under the old rule.
 </Note>
 
+## `--flaky-check`: was the green stable, or lucky?
+
+A default `SAFE` assumes your tests are **deterministic**. The suite runs once; a
+test that passes because of randomness, ordering, timing, or hash-seed dependence
+— not because behaviour is preserved — still counts toward `SAFE`. The single-run
+fast path cannot tell a stable green from a lucky one.
+
+`refactron verify-diff --flaky-check` closes that gap. After a would-be-`SAFE`
+verdict, it reruns your suite several times on fresh trees, each under a different
+`PYTHONHASHSEED`, and if any test's outcome **varies** across the reruns, the
+green was never stable, so the verdict floors at `UNPROVEN`, naming the flaky
+test:
+
+```
+[UNPROVEN] Tests pass, but a test changed outcome across reruns
+(tests/test_x.py::test_scale); the green is flaky, not stable. Fix the
+flakiness or the verdict cannot be SAFE.
+```
+
+Like `--mutate` it is opt-in and slower — it reruns your whole suite K times
+(default 3) — so it is a deep check, not the default. It is also
+**downgrade-only**: a varied test can move `SAFE` to `UNPROVEN`, but a run where
+every rerun agrees never lifts a verdict. A rerun that times out is inconclusive
+(skipped), not held against you. Varying `PYTHONHASHSEED` catches dict/set
+order-dependence deterministically; timing, network, and `random`-based flakes are
+probabilistic, so K reruns give K chances rather than a guarantee.
+
+<Note>
+  Because the default gate runs the suite once, a **default** `SAFE` cannot detect a lucky-pass
+  flake. It is an honest verdict on the run it observed. If your suite has any non-determinism, use
+  `--flaky-check` before trusting a `SAFE`.
+</Note>
+
 `SAFE` also requires that the suite was not narrowed. If your `testCmd` names a
 subset of the suite, the verdict floors at `UNPROVEN` however well the changed
 code is covered, because a green run of the tests you selected says nothing

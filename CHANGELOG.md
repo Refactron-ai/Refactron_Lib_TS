@@ -7,6 +7,34 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [Unreleased]
+
+### Added — `--flaky-check`, an opt-in stability check
+
+A default `SAFE` assumes your tests are deterministic. The suite runs once, so a
+test that passes because of randomness, ordering, timing, or hash-seed dependence
+— not because behaviour is preserved — still counts toward `SAFE`. The single-run
+fast path cannot tell a stable green from a lucky one.
+
+`verify-diff --flaky-check` closes that gap. After a would-be-`SAFE` verdict, it
+reruns the suite K times (default 3) on fresh trees, each under a different
+`PYTHONHASHSEED`. If any test's outcome varies across the reruns, the green was
+never stable, so the verdict floors at `UNPROVEN`, naming the flaky test:
+
+```
+[UNPROVEN] Tests pass, but a test changed outcome across reruns
+(tests/test_x.py::test_scale); the green is flaky, not stable. Fix the
+flakiness or the verdict cannot be SAFE.
+```
+
+Off by default and slower (K extra full-suite runs); downgrade-only (a varied
+test moves `SAFE` to `UNPROVEN`, a stable rerun never lifts a verdict); an
+inconclusive rerun that times out is skipped, not held against you. Varying
+`PYTHONHASHSEED` catches dict/set order-dependence deterministically; timing,
+network, and `random`-based flakes are probabilistic, so K reruns give K chances.
+Python-focused, like coverage and mutation. Decided on measurement (ADR-16). The
+default gate is documented as assuming deterministic tests.
+
 ## [0.4.5] — 2026-09-01
 
 ### Fixed — a changed conditional with an untested branch could earn `SAFE`
@@ -230,7 +258,7 @@ containment.
 
 The shadow tree was populated with **hardlinks**, so every file your diff did not
 change shared an inode with your real file. The tests gate then runs the test
-suite *as the diff defines it* — and a diff may edit `conftest.py`, a fixture, or
+suite _as the diff defines it_ — and a diff may edit `conftest.py`, a fixture, or
 any test file. Any in-place write from that suite went straight through into your
 repository, and the verdict said `SAFE` while it happened.
 
@@ -271,12 +299,12 @@ the classifier parsed and confidently mislabelled, so the documented hedge did n
 cover them. None is a regression — 0.4.0 also returns `SAFE` — but 0.4.1 wrote an
 affirmative `testScope` into the report while doing it.
 
-| Command | Was | Now |
-| --- | --- | --- |
+| Command                                         | Was    | Now        |
+| ----------------------------------------------- | ------ | ---------- |
 | `pytest -q --durations-min=0.5 tests/test_a.py` | `SAFE` | `UNPROVEN` |
-| `python3 -m unittest discover -s tests/unit` | `SAFE` | `UNPROVEN` |
-| `pytest --cov --collect-only` | `full` | `narrowed` |
-| `python3 runtests.py` | `full` | `unknown` |
+| `python3 -m unittest discover -s tests/unit`    | `SAFE` | `UNPROVEN` |
+| `pytest --cov --collect-only`                   | `full` | `narrowed` |
+| `python3 runtests.py`                           | `full` | `unknown`  |
 
 The first is the serious one: the scanner stopped at the first flag it did not
 recognise and discarded any filter after it, so a single stock pytest flag
@@ -311,13 +339,13 @@ these are correctness fixes and they should reach you without a manual bump.
 Each was reproduced before being fixed. In every case a **passing** suite and
 **measured** coverage still produced a `SAFE` that the full suite contradicts.
 
-| The command | Was | Now |
-| --- | --- | --- |
-| `pytest -q tests/test_scale.py` | `SAFE` on a change that breaks a test | `UNPROVEN` |
-| `pytest -q --collect-only` | `SAFE` while running **zero** tests | `UNPROVEN` |
-| `PYTEST_ADDOPTS="-k x" pytest -q` | `SAFE` while running one test | `UNPROVEN` |
-| `python3 -m unittest tests.test_scale` | `SAFE` on a change the suite catches | `UNPROVEN` |
-| 40 statements changed, 1 executed | `SAFE`, "the changed code is covered" | `UNPROVEN` |
+| The command                            | Was                                   | Now        |
+| -------------------------------------- | ------------------------------------- | ---------- |
+| `pytest -q tests/test_scale.py`        | `SAFE` on a change that breaks a test | `UNPROVEN` |
+| `pytest -q --collect-only`             | `SAFE` while running **zero** tests   | `UNPROVEN` |
+| `PYTEST_ADDOPTS="-k x" pytest -q`      | `SAFE` while running one test         | `UNPROVEN` |
+| `python3 -m unittest tests.test_scale` | `SAFE` on a change the suite catches  | `UNPROVEN` |
+| 40 statements changed, 1 executed      | `SAFE`, "the changed code is covered" | `UNPROVEN` |
 
 If you acted on a `SAFE` from 0.4.0 or earlier for a change verified with a
 narrowed test command, or one where `coverage.changedStatements` showed
@@ -390,7 +418,6 @@ parse the verdict string will see more `UNPROVEN`.
 - The MCP `testCmd` schema now states the narrowing rule, so an agent learns it
   before spending a verification run rather than after.
 
-
 ### Security
 
 - Cleared two high and one moderate advisory (`nanoid`, `ip-address`, `hono`),
@@ -412,7 +439,6 @@ parse the verdict string will see more `UNPROVEN`.
   your config files are not. Tracked in #118.
 - **Statement-level, not branch-level.** A changed `if` whose true branch never
   ran still counts as covered. Tracked in #117.
-
 
 ---
 

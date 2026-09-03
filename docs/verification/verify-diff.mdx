@@ -100,12 +100,13 @@ Output is the verdict, its reason, and (for `UNPROVEN` by lack of coverage) the 
 
 ### Flags
 
-| Flag               | Type   | Default     | Description                                                                                                                                                                                                                        |
-| ------------------ | ------ | ----------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `--diff <file>`    | path   | none        | Required. The unified diff to verify.                                                                                                                                                                                              |
-| `--test-cmd <cmd>` | string | auto-detect | Override the test command (e.g. `"python3 -m pytest -q"`). Drives both the test gate and the coverage run.                                                                                                                         |
-| `--mutate`         | bool   | false       | Deep check (Python, slower): mutate the changed statements and rerun the suite; a surviving mutant caps the verdict at `UNPROVEN`. Downgrade-only. See [Verdicts](/verification/verdicts#mutate-was-the-change-actually-asserted). |
-| `--json`           | bool   | false       | Emit the full report as JSON instead of the one-line verdict.                                                                                                                                                                      |
+| Flag               | Type   | Default     | Description                                                                                                                                                                                                                                                       |
+| ------------------ | ------ | ----------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `--diff <file>`    | path   | none        | Required. The unified diff to verify.                                                                                                                                                                                                                             |
+| `--test-cmd <cmd>` | string | auto-detect | Override the test command (e.g. `"python3 -m pytest -q"`). Drives both the test gate and the coverage run.                                                                                                                                                        |
+| `--mutate`         | bool   | false       | Deep check (Python, slower): mutate the changed statements and rerun the suite; a surviving mutant caps the verdict at `UNPROVEN`. Downgrade-only. See [Verdicts](/verification/verdicts#mutate-was-the-change-actually-asserted).                                |
+| `--flaky-check`    | bool   | false       | Deep check (Python, slower): rerun a would-be-`SAFE` suite K times under a varied `PYTHONHASHSEED`; a test whose outcome varies caps the verdict at `UNPROVEN`. Downgrade-only. See [Verdicts](/verification/verdicts#flaky-check-was-the-green-stable-or-lucky). |
+| `--json`           | bool   | false       | Emit the full report as JSON instead of the one-line verdict.                                                                                                                                                                                                     |
 
 ### Exit codes
 
