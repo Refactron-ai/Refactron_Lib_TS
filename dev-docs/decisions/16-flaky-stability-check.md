@@ -29,21 +29,26 @@ where a stable-looking rerun could **strengthen** a verdict.
 
 ## Measurements
 
-Taken against purpose-built passing fixtures (a green suite is a precondition —
-the check only runs on a would-be-`SAFE` verdict). A rerun's cost is one suite
-execution plus a fresh-shadow copy.
+Taken against passing suites (a green suite is a precondition — the check only
+runs on a would-be-`SAFE` verdict). A rerun's cost is one suite execution plus a
+fresh-shadow copy. The last row is a **real repo** (`playground/large-python`,
+600 modules / 1200 tests), the others purpose-built fixtures.
 
-| suite | one suite run | stability (K=3) | per-rerun |
-| --- | --- | --- | --- |
-| 30 tests | ~1.23s | ~2.80s | ~0.93s |
-| 200 tests | ~1.32s | ~4.13s | ~1.38s |
+| suite | shadow copy | one suite run | stability (K=3) | per-rerun |
+| --- | --- | --- | --- | --- |
+| 30 tests | — | ~1.23s | ~2.80s | ~0.93s |
+| 200 tests | — | ~1.32s | ~4.13s | ~1.38s |
+| `large-python` (1200 tests) | ~0.58s | ~13.8s | ~53.7s | ~17.9s |
 
 `--flaky-check` adds **K full-suite runs** (default K=3), each ≈ one suite
-execution plus a shadow copy. End-to-end, a base verify already runs the suite
-about five times (baseline retries + after-run + coverage), so on these fixtures
-`--flaky-check` ran roughly 1.0–1.9x a plain verify; the ratio rises with suite
-runtime. Minutes-scale on a mid-size suite. Too slow for the default gate;
-affordable only when opted into.
+execution plus a shadow copy (the copy is sub-second even on the 1200-file real
+repo; the suite runtime dominates). On `large-python` that is **+~54s** for K=3,
+and the check correctly returned no variance on that genuinely stable suite (no
+over-block). End-to-end, a base verify already runs the suite about five times
+(baseline retries + after-run + coverage), so `--flaky-check` ran roughly 1.0–1.9x
+a plain verify on the small fixtures; the added time scales with suite runtime.
+Minutes-scale on a large suite. Too slow for the default gate; affordable only
+when opted into.
 
 **The hole reproduced.** A diff whose only covering test is
 `assert os.environ.get("PYTHONHASHSEED") in (None, "0")` earns `[SAFE]` with no
@@ -166,6 +171,10 @@ pin one that suppresses it.
 - [ ] A shared `--deep` tier that runs `--mutate` and `--flaky-check` together,
       and short-circuits mutation when the suite is found flaky (mutation of a
       flaky suite is unreliable). Kept separate for now: one flag, one feature.
+      Until then, running both flags still runs mutation even when this check
+      proves the suite flaky, so the `mutation` block can carry survivors that are
+      flakiness artifacts. Both only downgrade, so there is no false `SAFE`; the
+      reason precedence surfaces the stability fact first.
 - [ ] The cheap always-on advisory that warns when a covering test contains
       non-determinism sources (#147). Complementary: this check runs the suite;
       that one reads it statically and only warns.
