@@ -23,6 +23,7 @@ import { detectRunner } from './runners/detect.js';
 import { ENGINE_VERSION } from '../engine-version.js';
 import { changedLinesForEdits, editsFromUnifiedDiff, type FileEdit } from './diff-input.js';
 import { runMutation, type MutationResult } from './mutation.js';
+import { runStabilityCheck, type StabilityResult } from './stability.js';
 import type { FileChange, RefactorPlan, TransformId } from '../contracts.js';
 
 export interface VerifyDiffInput {
@@ -34,6 +35,10 @@ export interface VerifyDiffInput {
   // Opt-in mutation testing (ADR-15). Off by default; when set, a surviving
   // mutant of a changed statement downgrades SAFE to UNPROVEN. Never strengthens.
   mutate?: boolean;
+  // Opt-in stability check (#146). Off by default; when set, a would-be-SAFE
+  // suite is rerun under varied conditions and a test whose outcome varies
+  // downgrades SAFE to UNPROVEN. Never strengthens.
+  flakyCheck?: boolean;
 }
 
 // Inert at verify time (keystone spike: transformId/oldHash are never read).
@@ -87,14 +92,21 @@ export async function verifyDiff(input: VerifyDiffInput): Promise<VerdictReport>
   const flaky = (result.gates.tests as { flakySuspects?: unknown[] }).flakySuspects?.length ?? 0;
   const wouldBeSafe = result.passed && flaky === 0 && testScope.scope !== 'narrowed';
 
-  // 2. Coverage (only when gates pass; Python only), and mutation alongside it
-  // when --mutate is set and the change could still reach SAFE.
+  // 2. Coverage (only when gates pass; Python only), and the opt-in deep checks
+  // alongside it (mutation, stability) when requested and the change could still
+  // reach SAFE. Both only downgrade, so running them on an already-floored
+  // verdict burns minutes for a decided answer.
   let cov: CoverageAssessment = unknownCoverage();
   let mutation: MutationResult | undefined;
+  let stability: StabilityResult | undefined;
   if (result.passed) {
-    const assessed = await assessCoverage(input, edits, input.mutate === true && wouldBeSafe);
+    const assessed = await assessCoverage(input, edits, {
+      runMut: input.mutate === true && wouldBeSafe,
+      runFlaky: input.flakyCheck === true && wouldBeSafe,
+    });
     cov = assessed.coverage;
     mutation = assessed.mutation;
+    stability = assessed.stability;
   }
 
   // 3. Fuse. The scope of the run is a verdict input, not a note: a green run of
@@ -103,7 +115,7 @@ export async function verifyDiff(input: VerifyDiffInput): Promise<VerdictReport>
   // engineVersion is stamped HERE rather than inside fuseVerdict, which
   // documents itself as pure with no I/O. This is already the I/O layer.
   return {
-    ...fuseVerdict(result, changedFiles, cov, testScope, mutation),
+    ...fuseVerdict(result, changedFiles, cov, testScope, mutation, stability),
     engineVersion: ENGINE_VERSION,
   };
 }
@@ -243,8 +255,12 @@ function listFiles(paths: string[]): string {
 async function assessCoverage(
   input: VerifyDiffInput,
   edits: FileEdit[],
-  runMut: boolean,
-): Promise<{ coverage: CoverageAssessment; mutation?: MutationResult }> {
+  deep: { runMut: boolean; runFlaky: boolean },
+): Promise<{
+  coverage: CoverageAssessment;
+  mutation?: MutationResult;
+  stability?: StabilityResult;
+}> {
   const pyEdits = edits.filter((e) => e.path.endsWith('.py'));
   // Coverage is Python-only. If ANY edit is non-Python (or there are no Python
   // edits at all), we cannot assess the WHOLE change. Reporting "covered" here
@@ -355,17 +371,30 @@ async function assessCoverage(
     // "nothing to attest" instead of implying a coverage miss. (Its inert-only
     // sibling gets the same treatment and rides along on `attributed`.)
     const removalOnlyFiles = ranges.filter((r) => r.lines.length === 0).map((r) => r.path);
-    // Mutation runs only when the change is otherwise coverage-complete: it can
-    // only downgrade, so a change already floored needs no mutants (the caller's
-    // `runMut` already excludes flaky/narrowed; ADR-15).
+    // The deep checks run only when the change is otherwise coverage-complete:
+    // both can only downgrade, so a change already floored needs neither (the
+    // caller's flags already exclude flaky/narrowed; ADR-15, #146).
     let mutation: MutationResult | undefined;
-    if (runMut && attributed.changedLinesCovered === true) {
-      mutation = await runMutation({
-        shadowRoot: shadow.path,
-        ranges,
-        ...(input.testCmd ? { testCmd: input.testCmd } : {}),
-        ...(input.timeoutMs ? { timeoutMs: input.timeoutMs } : {}),
-      });
+    let stability: StabilityResult | undefined;
+    if (attributed.changedLinesCovered === true) {
+      if (deep.runMut) {
+        mutation = await runMutation({
+          shadowRoot: shadow.path,
+          ranges,
+          ...(input.testCmd ? { testCmd: input.testCmd } : {}),
+          ...(input.timeoutMs ? { timeoutMs: input.timeoutMs } : {}),
+        });
+      }
+      if (deep.runFlaky) {
+        // A fresh shadow per rerun, so the check builds its own from the same
+        // changes rather than sharing the coverage shadow (state isolation).
+        stability = await runStabilityCheck({
+          repoRoot: input.repoRoot,
+          changes: toChanges(input.repoRoot, edits),
+          ...(input.testCmd ? { testCmd: input.testCmd } : {}),
+          ...(input.timeoutMs ? { timeoutMs: input.timeoutMs } : {}),
+        });
+      }
     }
     // Spread, never rebuild field by field: an allow-list silently drops any
     // field a future CoverageAttribution adds, and the last allow-list here also
@@ -377,7 +406,7 @@ async function assessCoverage(
       ...attributed,
       ...(removalOnlyFiles.length > 0 ? { removalOnlyFiles } : {}),
     };
-    return { coverage, ...(mutation ? { mutation } : {}) };
+    return { coverage, ...(mutation ? { mutation } : {}), ...(stability ? { stability } : {}) };
   } finally {
     await shadow.cleanup();
   }

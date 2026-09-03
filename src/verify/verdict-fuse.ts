@@ -4,6 +4,7 @@
 import type { VerificationResult, GateResult } from '../contracts.js';
 import type { TestScopeAssessment } from './test-scope.js';
 import type { MutationResult } from './mutation.js';
+import type { StabilityResult } from './stability.js';
 
 export type Verdict = 'SAFE' | 'UNSAFE' | 'UNPROVEN';
 
@@ -85,6 +86,14 @@ export interface VerdictReport {
   // mutant blocks SAFE; `ran: false` with a `skippedReason` says the deep check
   // did not conclude, so a SAFE beside it is coverage-backed, not mutation-proven.
   mutation?: MutationResult;
+  // The stability half of the evidence (#146), present only under opt-in
+  // --flaky-check. Distinct from `flakyTests` (the fail→heal signal from the
+  // tests gate): this is the result of rerunning a would-be-SAFE suite under
+  // varied conditions. A non-empty `varied` blocks SAFE; `ran: false` with a
+  // `skippedReason` says the check did not conclude. `varied` entries are test
+  // ids OR synthetic `run N (seed S)` markers when the output did not parse, so
+  // it is not a deduped test-id list (see StabilityResult).
+  stability?: StabilityResult;
 }
 
 // The tests gate carries flakySuspects on the SAME object it returns as the
@@ -133,6 +142,7 @@ export function fuseVerdict(
   cov: CoverageAssessment,
   testScope: TestScopeAssessment,
   mutation?: MutationResult,
+  stability?: StabilityResult,
 ): VerdictReport {
   const flakyTests = flakySuspectsOf(result.gates.tests);
   const base = {
@@ -144,6 +154,7 @@ export function fuseVerdict(
     ...(flakyTests ? { flakyTests } : {}),
     testScope,
     ...(mutation ? { mutation } : {}),
+    ...(stability ? { stability } : {}),
   };
 
   if (!result.passed) {
@@ -203,13 +214,30 @@ export function fuseVerdict(
       ? `Tests pass, but the test command narrowed the suite (${testScope.signals.join('; ')}), so the tests that ran are a subset the caller chose.`
       : null;
 
+  // C3 (zero-false-SAFE): a suite whose outcome VARIES across reruns under
+  // varied conditions was never a stable green (#146). Distinct from the C1
+  // fail→heal flake above: this is the opt-in --flaky-check rerunning a
+  // would-be-SAFE suite. Any confirmed variance disqualifies SAFE. An
+  // inconclusive rerun (a timeout) is not variance and does not floor.
+  // "test outcome(s) varied", not "N tests": a `varied` entry can be a run-level
+  // token when the output did not parse, so counting them as distinct tests would
+  // overstate. An outcome that varied is exactly what was observed either way.
+  const stabilityReason =
+    stability && stability.varied.length > 0
+      ? stability.varied.length === 1
+        ? `Tests pass, but a test outcome varied across reruns (${stability.varied[0]}); the green is flaky, not stable. Fix the flakiness or the verdict cannot be SAFE.`
+        : `Tests pass, but ${stability.varied.length} test outcomes varied across reruns; the green is flaky, not stable. Fix the flakiness or the verdict cannot be SAFE.`
+      : null;
+
   // Each blocking signal is asserted at the gate, not only via
   // changedLinesCovered, so a future producer that sets one without flooring
-  // cannot leak SAFE. A surviving mutant is the ADR-15 conjunct.
+  // cannot leak SAFE. A surviving mutant is the ADR-15 conjunct; a varied test
+  // is the #146 conjunct.
   if (
     cov.changedLinesCovered === true &&
     (cov.partialBranches?.length ?? 0) === 0 &&
     (mutation?.survivors.length ?? 0) === 0 &&
+    (stability?.varied.length ?? 0) === 0 &&
     !flakyReason &&
     !narrowedReason
   ) {
@@ -292,9 +320,14 @@ export function fuseVerdict(
   // suite was narrowed, "a stable green could not be established" understates
   // the problem, which is that no full green was ever attempted. Both ride on
   // `base` in every branch, so the report always carries them regardless.
+  // stabilityReason outranks coverageReason (which carries the mutation reason):
+  // a flaky suite makes the mutation result itself unreliable, so a varied test
+  // is the more fundamental fact to surface. It ranks below narrowed/fail→heal
+  // for the same reason those outrank each other — a suite that never ran a
+  // stable full green is a deeper problem than one that ran once and varied.
   const reason =
     cov.changedLinesCovered === true
-      ? (narrowedReason ?? flakyReason ?? coverageReason)
+      ? (narrowedReason ?? flakyReason ?? stabilityReason ?? coverageReason)
       : coverageReason;
   // Cap the hint list. A mass reformat once emitted 3666 hints and an 883 KB
   // JSON report; nobody reads that, and no agent should have to stream it. The

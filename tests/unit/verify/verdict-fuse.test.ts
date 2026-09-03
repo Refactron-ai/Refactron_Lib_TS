@@ -7,6 +7,7 @@ import {
 import type { VerificationResult } from '../../../src/contracts.js';
 import type { TestScopeAssessment } from '../../../src/verify/test-scope.js';
 import type { MutationResult } from '../../../src/verify/mutation.js';
+import type { StabilityResult } from '../../../src/verify/stability.js';
 
 const ok = { passed: true, durationMs: 1 };
 function result(passed: boolean, testsReason?: string): VerificationResult {
@@ -45,8 +46,9 @@ function fuse(
   cov: CoverageAssessment,
   scope: TestScopeAssessment = FULL_SCOPE,
   mutation?: MutationResult,
+  stability?: StabilityResult,
 ) {
-  return fuseVerdict(result, changedFiles, cov, scope, mutation);
+  return fuseVerdict(result, changedFiles, cov, scope, mutation, stability);
 }
 
 describe('fuseVerdict', () => {
@@ -610,6 +612,115 @@ describe('fuseVerdict test scope', () => {
       const m = withSurvivors([{ file: 'a.py', line: 2, operator: '+', mutatedTo: '-' }]);
       const r = fuse(result(true), ['a.py'], uncovered, FULL_SCOPE, m);
       expect(r.verdict).toBe('UNPROVEN');
+      expect(r.reason.toLowerCase()).not.toContain('mutant');
+    });
+  });
+
+  // #146. The opt-in --flaky-check reruns a would-be-SAFE suite K times under
+  // varied conditions (PYTHONHASHSEED). A test whose outcome VARIES across the
+  // reruns was never a stable green, so SAFE is disqualified. Passed as
+  // fuseVerdict's 6th arg, a sibling of `mutation`. Downgrade-only in both
+  // directions, exactly like mutation.
+  describe('stability (#146)', () => {
+    const complete: CoverageAssessment = {
+      tool: 'coverage.py',
+      changedLinesCovered: true,
+      uncovered: [],
+      changedStatements: { total: 1, covered: 1 },
+    };
+    const withVaried = (varied: string[]): StabilityResult => ({
+      ran: true,
+      runs: 3,
+      varied,
+      inconclusive: 0,
+    });
+
+    it('floors a covered change to UNPROVEN and names the flaky test', () => {
+      const s = withVaried(['tests/test_x.py::test_flaky']);
+      const r = fuse(result(true), ['calc.py'], complete, FULL_SCOPE, undefined, s);
+      expect(r.verdict).toBe('UNPROVEN');
+      expect(r.reason.toLowerCase()).toContain('flaky');
+      expect(r.reason).toContain('test_flaky');
+    });
+
+    it('the SAFE gate blocks on variance even with coverage complete', () => {
+      // Defense in depth: variance is asserted at the SAFE conjunction, not only
+      // trusted to have floored some other signal.
+      const s = withVaried(['run 2 (seed 1)']);
+      expect(fuse(result(true), ['calc.py'], complete, FULL_SCOPE, undefined, s).verdict).not.toBe(
+        'SAFE',
+      );
+    });
+
+    it('names the plural form for multiple flaky tests', () => {
+      const s = withVaried(['tests/a.py::t1', 'tests/b.py::t2']);
+      const r = fuse(result(true), ['a.py', 'b.py'], complete, FULL_SCOPE, undefined, s);
+      expect(r.reason).toContain('2 test');
+    });
+
+    it('a clean stability run (no variance) does not block a covered change', () => {
+      // The negative direction: all reruns agreed, so it must not over-block —
+      // the change still reaches SAFE.
+      const clean: StabilityResult = { ran: true, runs: 3, varied: [], inconclusive: 0 };
+      const r = fuse(result(true), ['a.py'], complete, FULL_SCOPE, undefined, clean);
+      expect(r.verdict).toBe('SAFE');
+      expect(r.reason.toLowerCase()).not.toContain('flaky');
+    });
+
+    it('inconclusive reruns (all timed out) do not floor, but the SAFE discloses the sweep', () => {
+      // A rerun that times out is inconclusive, never variance. A slow suite must
+      // not manufacture a false UNPROVEN. But the SAFE must still CARRY the
+      // stability block, so a reader sees the sweep was all-inconclusive rather
+      // than a clean pass (the honesty rule; platform-independent here, unlike the
+      // NO_HANG-gated integration case).
+      const inconclusive: StabilityResult = { ran: true, runs: 0, varied: [], inconclusive: 3 };
+      const r = fuse(result(true), ['a.py'], complete, FULL_SCOPE, undefined, inconclusive);
+      expect(r.verdict).toBe('SAFE');
+      expect(r.stability).toEqual(inconclusive);
+    });
+
+    it('a fail→heal flake outranks stability variance in the reason (C1 over C3)', () => {
+      // If both fire, the fail→heal flake means no stable full green was ever
+      // observed even once, which is a deeper problem than a green that varied on
+      // rerun. The reason must say "flipped on retry", not "varied across reruns".
+      const healed: VerificationResult = {
+        ...result(true),
+        gates: {
+          syntax: ok,
+          imports: ok,
+          tests: { passed: true, durationMs: 1, flakySuspects: ['tests/x.py::t_heal'] },
+        },
+      };
+      const s = withVaried(['tests/x.py::t_rerun']);
+      const r = fuse(healed, ['calc.py'], complete, FULL_SCOPE, undefined, s);
+      expect(r.verdict).toBe('UNPROVEN');
+      expect(r.reason).toContain('flipped on retry');
+      expect(r.reason).not.toContain('across reruns');
+    });
+
+    it('never strengthens: a clean stability result cannot lift a thin-coverage UNPROVEN', () => {
+      // Not a tautology: fails if a future change let a clean stability result
+      // bypass the coverage floor. Stability only ever adds a blocking conjunct.
+      const clean: StabilityResult = { ran: true, runs: 3, varied: [], inconclusive: 0 };
+      expect(fuse(result(true), ['a.py'], uncovered, FULL_SCOPE, undefined, clean).verdict).toBe(
+        'UNPROVEN',
+      );
+    });
+
+    it('stability variance outranks a surviving mutant in the reason', () => {
+      // If both fire, a flaky suite makes the mutation result itself unreliable,
+      // so the stability reason is the more fundamental one to surface.
+      const m: MutationResult = {
+        ran: true,
+        tested: 1,
+        killed: 0,
+        inconclusive: 0,
+        survivors: [{ file: 'calc.py', line: 2, operator: '+', mutatedTo: '-' }],
+      };
+      const s = withVaried(['tests/test_x.py::test_flaky']);
+      const r = fuse(result(true), ['calc.py'], complete, FULL_SCOPE, m, s);
+      expect(r.verdict).toBe('UNPROVEN');
+      expect(r.reason.toLowerCase()).toContain('flaky');
       expect(r.reason.toLowerCase()).not.toContain('mutant');
     });
   });

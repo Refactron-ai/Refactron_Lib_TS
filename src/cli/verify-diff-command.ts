@@ -15,6 +15,7 @@ interface VerifyDiffFlags {
   json: boolean;
   testCmd: string | null;
   mutate: boolean;
+  flakyCheck: boolean;
 }
 
 export function parseVerifyDiffFlags(argv: string[]): VerifyDiffFlags {
@@ -23,6 +24,7 @@ export function parseVerifyDiffFlags(argv: string[]): VerifyDiffFlags {
   let json = false;
   let testCmd: string | null = null;
   let mutate = false;
+  let flakyCheck = false;
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i]!;
     if (a === '--json') {
@@ -31,6 +33,10 @@ export function parseVerifyDiffFlags(argv: string[]): VerifyDiffFlags {
     }
     if (a === '--mutate') {
       mutate = true;
+      continue;
+    }
+    if (a === '--flaky-check') {
+      flakyCheck = true;
       continue;
     }
     if (a === '--diff') {
@@ -57,7 +63,7 @@ export function parseVerifyDiffFlags(argv: string[]): VerifyDiffFlags {
     if (repoRoot !== null) throw new VerifyDiffFlagError(`unexpected extra argument: ${a}`);
     repoRoot = a;
   }
-  return { repoRoot: repoRoot ?? '.', diffPath, json, testCmd, mutate };
+  return { repoRoot: repoRoot ?? '.', diffPath, json, testCmd, mutate, flakyCheck };
 }
 
 const VERDICT_COLOR: Record<string, string> = {
@@ -180,6 +186,21 @@ export function formatMutationNote(mutation: VerdictReport['mutation']): string 
   return `note: --mutate was incomplete — ${parts.join('; ')}; a surviving mutant could have been missed`;
 }
 
+// Disclose when --flaky-check did not fully conclude, so a SAFE beside it is not
+// read as a clean stability sweep. A confirmed varied test is already in the
+// verdict reason; this covers "skipped" and "every rerun was inconclusive". Null
+// when the check was not requested or ran to a real conclusion.
+export function formatStabilityNote(stability: VerdictReport['stability']): string | null {
+  if (!stability) return null;
+  if (!stability.ran) {
+    return `note: --flaky-check did not run (${stability.skippedReason ?? 'no conclusion'}); this verdict is not stability-checked`;
+  }
+  if (stability.varied.length === 0 && stability.runs === 0 && stability.inconclusive > 0) {
+    return `note: --flaky-check reran the suite but every rerun was inconclusive (${stability.inconclusive} timed out); flakiness could have been missed`;
+  }
+  return null;
+}
+
 export async function runVerifyDiffCommand(argv: string[]): Promise<number> {
   const authResult = await requireAuth('verify-diff');
   if (authResult !== true) return authResult;
@@ -207,6 +228,7 @@ export async function runVerifyDiffCommand(argv: string[]): Promise<number> {
       unifiedDiff,
       ...(flags.testCmd ? { testCmd: flags.testCmd } : {}),
       ...(flags.mutate ? { mutate: true } : {}),
+      ...(flags.flakyCheck ? { flakyCheck: true } : {}),
     });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
@@ -238,6 +260,8 @@ export async function runVerifyDiffCommand(argv: string[]): Promise<number> {
     if (flakyNote) process.stdout.write(flakyNote + '\n');
     const mutationNote = formatMutationNote(report.mutation);
     if (mutationNote) process.stdout.write(mutationNote + '\n');
+    const stabilityNote = formatStabilityNote(report.stability);
+    if (stabilityNote) process.stdout.write(stabilityNote + '\n');
   }
   return report.verdict === 'UNSAFE' ? 1 : 0;
 }

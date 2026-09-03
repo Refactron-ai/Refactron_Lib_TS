@@ -7,7 +7,9 @@ import {
   formatUncoveredLines,
   formatCoverageSummary,
   formatTestScopeNote,
+  formatStabilityNote,
 } from '../../../src/cli/verify-diff-command.js';
+import type { StabilityResult } from '../../../src/verify/stability.js';
 
 describe('formatUncoveredLines', () => {
   it('prints one line per uncovered statement', () => {
@@ -109,6 +111,7 @@ describe('parseVerifyDiffFlags', () => {
       json: false,
       testCmd: null,
       mutate: false,
+      flakyCheck: false,
     });
   });
   it('parses repoRoot + --diff + --json + --test-cmd', () => {
@@ -120,6 +123,7 @@ describe('parseVerifyDiffFlags', () => {
       json: true,
       testCmd: 'pytest -q',
       mutate: false,
+      flakyCheck: false,
     });
   });
   it('parses --diff= and --test-cmd= equals form', () => {
@@ -129,10 +133,14 @@ describe('parseVerifyDiffFlags', () => {
       json: false,
       testCmd: 'pytest -q',
       mutate: false,
+      flakyCheck: false,
     });
   });
   it('parses --mutate', () => {
     expect(parseVerifyDiffFlags(['--mutate']).mutate).toBe(true);
+  });
+  it('parses --flaky-check', () => {
+    expect(parseVerifyDiffFlags(['--flaky-check']).flakyCheck).toBe(true);
   });
   it('throws on unknown flag', () => {
     expect(() => parseVerifyDiffFlags(['--nope'])).toThrow(VerifyDiffFlagError);
@@ -210,5 +218,32 @@ describe('formatTestScopeNote', () => {
     expect(note).toContain('tests/test_scale.py');
     expect(note).toContain('cannot be SAFE');
     expect(note).toContain('Re-run without the filter');
+  });
+});
+
+describe('formatStabilityNote', () => {
+  const base: StabilityResult = { ran: true, runs: 3, varied: [], inconclusive: 0 };
+  it('returns null when the check was not requested', () => {
+    expect(formatStabilityNote(undefined)).toBeNull();
+  });
+  it('returns null for a clean conclusive run (a confirmed varied test is in the reason)', () => {
+    expect(formatStabilityNote(base)).toBeNull();
+    expect(formatStabilityNote({ ...base, varied: ['tests/x.py::t'] })).toBeNull();
+  });
+  it('discloses when the check did not run', () => {
+    const note = formatStabilityNote({
+      ran: false,
+      runs: 0,
+      varied: [],
+      inconclusive: 0,
+      skippedReason: 'no test runner to rerun',
+    });
+    expect(note).toContain('did not run');
+    expect(note).toContain('no test runner to rerun');
+  });
+  it('discloses when every rerun was inconclusive', () => {
+    const note = formatStabilityNote({ ran: true, runs: 0, varied: [], inconclusive: 3 });
+    expect(note).toContain('every rerun was inconclusive');
+    expect(note).toContain('could have been missed');
   });
 });
