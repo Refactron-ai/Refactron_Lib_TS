@@ -3,21 +3,22 @@
 (ADR-15, #116; constants #149).
 
 stdin:  one JSON object {"path": str, "changed_lines": [int, ...]}
-stdout: JSON list of {"line", "col", "endCol", "orig", "repl", "op"}, one per
-        mutable token found on a changed line.
+stdout: JSON list of {"line", "col", "endCol", "orig", "repl", "op", "kind"}, one
+        per mutable token found on a changed line. `kind` is "operator" or
+        "constant" so the runner can fill its budget operators-first (a constant
+        must never evict a higher-signal operator mutant past the cap).
 
-Tokenize, not regex or AST: token boundaries are exact, string and comment
-contents are separate token types and so are never mutated, and the operator's
-own position is what a swap needs (AST gives operand positions, not the operator).
+Tokenize, not regex or AST, for the mutation positions: token boundaries are
+exact, string and comment contents are separate token types and so are never
+mutated, and the operator's own position is what a swap needs (AST gives operand
+positions, not the operator). AST is used ONLY to locate docstrings (below), which
+tokenize cannot identify without reimplementing the grammar.
+
 A mutant that turns out syntactically invalid is the runner's problem, not ours:
-it simply runs and is classified as killed, which is the fail-safe direction.
-
-Constants are a whole token too, so the same tokenize discipline holds: a number
-or `<=` INSIDE a string or comment is part of that STRING/COMMENT token and is
-never emitted, while a string or number used as a VALUE is its own token and is a
-legitimate target. Only failure mode a richer mutant set can add is a false
-SURVIVOR (an equivalent mutant), i.e. a false UNPROVEN, never a false SAFE, since
-mutation is downgrade-only.
+it simply runs and is classified as killed, which is the fail-safe direction. The
+only failure mode a richer mutant set can add is a false SURVIVOR (an equivalent
+mutant), i.e. a false UNPROVEN, never a false SAFE, since mutation is
+downgrade-only.
 """
 import ast
 import io
@@ -47,8 +48,10 @@ CONST_NAME_SWAP = {"True": "False", "False": "True", "None": "True"}
 
 # Tokens that begin a logical line. A constant whose previous significant token is
 # one of these AND whose next significant token is a NEWLINE is a standalone
-# expression statement (a docstring, a bare string, a bare literal) — inert, so
-# mutating it manufactures a survivor no test can kill.
+# expression statement (a bare string, a bare literal) — inert, so mutating it
+# manufactures a survivor no test can kill. Docstrings that are NOT this simple
+# shape (inline `def f(): "doc"`, implicit-concatenated `"a" "b"`) are caught by
+# the AST span check instead.
 _LINE_START = frozenset(
     {tokenize.NEWLINE, tokenize.INDENT, tokenize.DEDENT, tokenize.ENCODING}
 )
@@ -67,14 +70,58 @@ def _num_repl(s: str) -> str:
 
 def _str_repl(s: str) -> str:
     """A different, valid string literal: empty string for a non-empty literal, a
-    sentinel for an already-empty one. An f-string (no literal value) maps to the
-    empty string, which drops its interpolation and so changes behaviour."""
+    sentinel for an already-empty one.
+
+    Fail-safe imprecision, documented rather than special-cased: a bytes literal
+    maps to a str (`b"x"` -> `""`), a cross-type mutant that is never equivalent
+    (so no false UNPROVEN) but is usually killed on sight. An EMPTY f-string on
+    Python < 3.12 (`f""`, one STRING token there) maps to `""`, which is
+    behaviourally equal -> an equivalent mutant -> a false UNPROVEN; on 3.12+ an
+    f-string is FSTRING_* tokens and is not mutated at all. Both are downgrade-only
+    and rare."""
     try:
         v = ast.literal_eval(s)
         empty = v == "" or v == b""
     except Exception:
         empty = False
     return '"__mut__"' if empty else '""'
+
+
+def _docstring_spans(source: str) -> list:
+    """(lineno, col, end_lineno, end_col) for every docstring, so the tokenize
+    pass can skip string tokens that are (part of) one. A docstring is
+    behaviour-inert, so mutating it manufactures a survivor no test could ever kill
+    (a false UNPROVEN). AST identifies them exactly — inline, implicit-concatenated
+    and multi-line alike — where a tokenize heuristic cannot. A parse failure
+    yields no spans (the tokenize pass then also fails, or degrades fail-safe)."""
+    try:
+        tree = ast.parse(source)
+    except (SyntaxError, ValueError):
+        return []
+    spans = []
+    holders = (ast.Module, ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)
+    for node in ast.walk(tree):
+        if not isinstance(node, holders):
+            continue
+        body = getattr(node, "body", None)
+        if not body:
+            continue
+        first = body[0]
+        if (
+            isinstance(first, ast.Expr)
+            and isinstance(first.value, ast.Constant)
+            and isinstance(first.value.value, (str, bytes))
+        ):
+            c = first.value
+            spans.append((c.lineno, c.col_offset, c.end_lineno, c.end_col_offset))
+    return spans
+
+
+def _in_docstring(spans: list, row: int, col: int) -> bool:
+    for (l, c, el, ec) in spans:
+        if l <= row <= el and (row > l or col >= c) and (row < el or col < ec):
+            return True
+    return False
 
 
 def _significant(toks: list, i: int, step: int):
@@ -96,40 +143,52 @@ def _is_bare_stmt(toks: list, i: int) -> bool:
     return at_line_start and ends_stmt
 
 
-def _repl_for(toks: list, i: int):
-    """The replacement string for the token at index i, or None if it is not
-    mutable. Constants are skipped when they form a bare expression statement."""
+def _mutation_for(toks: list, i: int, spans: list):
+    """(replacement, kind) for the token at index i, or None if it is not mutable.
+    Constants are skipped when they are behaviour-inert (a bare expression
+    statement, or any part of a docstring)."""
     tok = toks[i]
     if tok.type == tokenize.OP and tok.string in OP_SWAP:
-        return OP_SWAP[tok.string]
+        return OP_SWAP[tok.string], "operator"
     if tok.type == tokenize.NAME and tok.string in NAME_SWAP:
-        return NAME_SWAP[tok.string]
+        return NAME_SWAP[tok.string], "operator"
     if tok.type == tokenize.NAME and tok.string in CONST_NAME_SWAP:
-        return None if _is_bare_stmt(toks, i) else CONST_NAME_SWAP[tok.string]
+        if _is_bare_stmt(toks, i):
+            return None
+        return CONST_NAME_SWAP[tok.string], "constant"
     if tok.type == tokenize.NUMBER:
-        return None if _is_bare_stmt(toks, i) else _num_repl(tok.string)
+        if _is_bare_stmt(toks, i):
+            return None
+        return _num_repl(tok.string), "constant"
     if tok.type == tokenize.STRING:
-        return None if _is_bare_stmt(toks, i) else _str_repl(tok.string)
+        (row, col) = tok.start
+        if _is_bare_stmt(toks, i) or _in_docstring(spans, row, col):
+            return None
+        return _str_repl(tok.string), "constant"
     return None
 
 
 def mutants(source: str, changed: set) -> list:
-    out = []
     try:
         toks = list(tokenize.generate_tokens(io.StringIO(source).readline))
     except (tokenize.TokenError, IndentationError, SyntaxError):
         # A file we cannot tokenize yields no mutants rather than crashing the
         # run. Mutation is opt-in evidence; its absence never grants SAFE.
         return []
+    spans = _docstring_spans(source)
+    out = []
     for i, tok in enumerate(toks):
         (row, col) = tok.start
         (erow, ecol) = tok.end
         if row not in changed or row != erow:
             continue
-        repl = _repl_for(toks, i)
-        if repl is None or repl == tok.string:
-            # `repl == tok.string` guards against a no-op mutant (a mutant equal
-            # to the original is a survivor no test could ever kill).
+        res = _mutation_for(toks, i, spans)
+        if res is None:
+            continue
+        repl, kind = res
+        if repl == tok.string:
+            # A mutant equal to the original is a survivor no test could ever
+            # kill; never emit one.
             continue
         out.append(
             {
@@ -139,6 +198,7 @@ def mutants(source: str, changed: set) -> list:
                 "orig": tok.string,
                 "repl": repl,
                 "op": tok.string + "->" + repl,
+                "kind": kind,
             }
         )
     return out
