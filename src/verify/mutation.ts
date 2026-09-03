@@ -21,8 +21,12 @@ const SIDECAR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), 'chec
 export interface SurvivingMutant {
   file: string;
   line: number;
-  // Structured, not "+->-": return-value and statement-deletion operators (the
-  // ADR-15 roadmap) cannot be an orig->repl string, so the encoding would break.
+  // The original source token, paired with `mutatedTo` as an orig->repl pair. An
+  // operator (`<=`), a boolean name (`and`), OR a constant literal (`2`, `"hi"`,
+  // `None`) since #149 — the field name predates constants but the slot has always
+  // held the original token. Structured, not "+->-": statement-deletion (the
+  // ADR-15 roadmap) has no orig->repl target and will add a `kind` discriminator
+  // additively then, which a constant does not need.
   operator: string;
   mutatedTo: string;
 }
@@ -49,6 +53,10 @@ export interface Mutant {
   orig: string;
   repl: string;
   op: string;
+  // "operator" or "constant" (#149). The budget is filled operators-first so a
+  // constant never evicts a higher-signal operator mutant past the cap. Absent
+  // (older sidecar / unrecognised) is treated as non-constant, i.e. kept first.
+  kind?: string;
 }
 
 export interface MutationInput {
@@ -159,7 +167,15 @@ export async function runMutation(input: MutationInput): Promise<MutationResult>
       skippedReason: 'no mutable operators or constants in the changed statements',
     };
 
-  const chosen = all.slice(0, budget);
+  // Operators before constants (#149): constants are far more numerous and have a
+  // higher equivalent-mutant rate, so a flat positional cap would let a constant
+  // evict a higher-signal operator mutant a smaller diff would have tested. A
+  // stable partition keeps token order within each group.
+  const ordered = [
+    ...all.filter((x) => x.m.kind !== 'constant'),
+    ...all.filter((x) => x.m.kind === 'constant'),
+  ];
+  const chosen = ordered.slice(0, budget);
   const survivors: SurvivingMutant[] = [];
   let killed = 0;
   let inconclusive = 0;
