@@ -101,8 +101,8 @@ describe('mutate.py sidecar (#116)', () => {
       // Includes the two sub-rules the replacement helpers document: an
       // already-empty string maps to a sentinel (never a no-op `""->""`), and
       // every zero-valued literal maps to 1 (int and float alike), never to 0.
-      const src = 'a = 5\nb = "hi"\nc = True\nd = None\ne = 0\nf = ""\ng = 0.0\n';
-      const ms = mutate(src, [1, 2, 3, 4, 5, 6, 7]);
+      const src = 'a = 5\nb = "hi"\nc = True\nd = None\ne = 0\nf = ""\ng = 0.0\nh = False\n';
+      const ms = mutate(src, [1, 2, 3, 4, 5, 6, 7, 8]);
       const op = (ln: number) => ms.find((m) => m.line === ln)?.op;
       expect(op(1)).toBe('5->0');
       expect(op(2)).toBe('"hi"->""');
@@ -111,6 +111,7 @@ describe('mutate.py sidecar (#116)', () => {
       expect(op(5)).toBe('0->1');
       expect(op(6)).toBe('""->"__mut__"');
       expect(op(7)).toBe('0.0->1');
+      expect(op(8)).toBe('False->True');
       for (const m of ms) expect(m.repl).not.toBe(m.orig); // never a no-op mutant
       for (const m of ms) expect(m.kind).toBe('constant');
     },
