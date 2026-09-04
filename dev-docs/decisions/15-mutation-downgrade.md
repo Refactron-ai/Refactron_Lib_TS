@@ -69,6 +69,40 @@ arithmetic (`+`↔`-`, `*`↔`/`, `//`↔`/`), and boolean (`and`↔`or`). A reg
 changed lines was rejected: it would mutate inside strings and produce false
 survivors, i.e. false `UNPROVEN`s. Fail-safe, but needlessly noisy.
 
+**Constants (#149).** The mutant set was later extended to constants — numbers,
+strings, and `True`/`False`/`None` — because an operator-only set left a real
+false-green: a changed `return 2` earned `SAFE` under `--mutate` (zero mutable
+operators). The same tokenize discipline holds: a constant inside a string or
+comment is part of that STRING/COMMENT token and is never mutated.
+
+Replacement rules, chosen to guarantee a different, valid, behaviour-changing
+literal: a number maps to `0`, except a zero-valued literal (`0`, `0.0`, `0x0`,
+`0j`) maps to `1` so the mutant is never numerically equal; a non-empty string
+maps to `""` and an already-empty one to a sentinel; `True`↔`False` and `None`→
+`True` (flipping both truthiness and an `is None` identity check).
+
+Docstrings are excluded so an inert string cannot manufacture a false survivor.
+They are located by their AST span — module, class, function, inline
+`def f(): "doc"`, and implicit-concatenated `"a" "b"` alike — rather than a
+tokenize line-start heuristic, which misses the inline and concatenated shapes;
+AST is used ONLY to locate docstrings, mutation positions stay tokenize. Other
+bare literal statements (a bare string, number, or bool) are skipped by the
+tokenize bare-expression check.
+
+Constants are numerous, so the flat budget is filled OPERATORS-FIRST: a constant
+must never evict a higher-signal operator mutant past the cap and quietly weaken
+the check to a truncated `SAFE`. The budget/sampling question the counts now press
+on is tracked as its own follow-up.
+
+Known fail-safe imprecisions, none a false `SAFE`: an empty f-string on Python
+< 3.12 (`f""`, one STRING token there) maps to `""`, an equivalent mutant (a false
+`UNPROVEN`); on 3.12+ f-strings are not mutated at all. A bytes literal maps to a
+str (a cross-type mutant, never equivalent). A constant the code genuinely ignores
+survives — an honest `SAFE`→`UNPROVEN` on a thin suite.
+
+Still downgrade-only: the worst a constant mutant can add is a false `UNPROVEN`,
+never a false `SAFE`.
+
 Python-only, like coverage. `reportVersion` stays `1`: the mutation evidence is
 an additive optional field. `engineVersion` (ADR-13) already distinguishes the
 semantics change.
@@ -143,9 +177,12 @@ Rejected as a non-goal. The changed-statement set (already computed in
       on POSIX; the two hang tests skip on win32.
 
 
-- [ ] Return-value and statement-deletion operators. A larger mutant set catches
-      more, at more runtime. Start with operator swaps.
-- [ ] A mutant budget / sampling cap for very large diffs, so cost stays bounded.
+- [x] Constant operators (numbers, strings, `True`/`False`/`None`) — done in #149.
+- [ ] Return-value (#150) and statement-deletion operators. A larger mutant set
+      catches more, at more runtime. Return-value is blocked on a sentinel /
+      equivalent-mutant decision; statement-deletion must keep the mutant valid.
+- [ ] A smarter mutant budget / sampling cap for very large diffs (#149 fills it
+      operators-first as a floor; constants make the flat cap bite sooner).
 - [ ] Non-Python languages. Python-only, like coverage.
 - [ ] Condition/path coverage (#140) is a coverage-side gap; mutation is the
       assertion-side one. They are complementary.

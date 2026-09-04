@@ -59,7 +59,10 @@ describe('runMutation (ADR-15)', () => {
   });
 
   it.skipIf(NO_PYTHON)('records a survivor a weak test does not catch', async () => {
-    const root = await repo({ 'calc.py': 'def f(n):\n    return n + 1\n' });
+    // `n + n`, not `n + 1`: an operator-only line keeps this a focused test of the
+    // runner's survivor classification. Constant mutants are covered by the
+    // sidecar and #149 integration tests.
+    const root = await repo({ 'calc.py': 'def f(n):\n    return n + n\n' });
     const r = await runMutation({
       shadowRoot: root,
       ranges: ranges({ path: 'calc.py', lines: [2] }),
@@ -72,11 +75,11 @@ describe('runMutation (ADR-15)', () => {
   });
 
   it.skipIf(NO_PYTHON)('classifies a mutant a strong test catches as killed', async () => {
-    const root = await repo({ 'calc.py': 'def f(n):\n    return n + 1\n' });
+    const root = await repo({ 'calc.py': 'def f(n):\n    return n + n\n' });
     const r = await runMutation({
       shadowRoot: root,
       ranges: ranges({ path: 'calc.py', lines: [2] }),
-      testCmd: 'python3 -c "import calc; assert calc.f(2) == 3"',
+      testCmd: 'python3 -c "import calc; assert calc.f(2) == 4"',
       timeoutMs: 30_000,
     });
     expect(r.survivors).toEqual([]);
@@ -97,7 +100,10 @@ describe('runMutation (ADR-15)', () => {
       timeoutMs: 3_000,
     });
     expect(r.survivors).toEqual([]);
-    expect(r.inconclusive).toBe(1);
+    // Both mutants of line 3 (`-`->`+` and the constant `1`->`0`) make the loop
+    // never terminate, so both time out; the point is that a timeout is
+    // inconclusive, never a survivor.
+    expect(r.inconclusive).toBeGreaterThan(0);
   });
 
   it.skipIf(NO_PYTHON)('skips mutation when the baseline is not green', async () => {
@@ -154,4 +160,27 @@ describe('runMutation (ADR-15)', () => {
     });
     expect(await fs.readFile(path.join(root, 'calc.py'), 'utf8')).toBe(original);
   });
+
+  it.skipIf(NO_PYTHON)(
+    'fills the budget operators-first so a constant cannot evict an operator (#149)',
+    async () => {
+      // `return 5 + a` yields a constant `5` (emitted first in token order) and an
+      // operator `+`. With budget 1, operators-first must test the `+`, not the
+      // `5`; a plain token-order slice would evict the higher-signal operator and
+      // let its survivor escape (a silent downgrade of the deep check).
+      const root = await repo({ 'calc.py': 'def f(a):\n    return 5 + a\n' });
+      const r = await runMutation({
+        shadowRoot: root,
+        ranges: ranges({ path: 'calc.py', lines: [2] }),
+        testCmd: 'python3 -c "import calc; assert isinstance(calc.f(2), int)"',
+        timeoutMs: 30_000,
+        budget: 1,
+      });
+      expect(r.tested).toBe(1);
+      expect(r.truncated).toEqual({ tested: 1, total: 2 });
+      // The operator was the one tested (and survived the weak test), not the
+      // constant — proving operators-first, not token order.
+      expect(r.survivors).toEqual([{ file: 'calc.py', line: 2, operator: '+', mutatedTo: '-' }]);
+    },
+  );
 });

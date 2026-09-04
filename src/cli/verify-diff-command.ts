@@ -173,7 +173,7 @@ export function formatMutationNote(mutation: VerdictReport['mutation']): string 
     return `note: --mutate did not run (${mutation.skippedReason ?? 'no conclusion'}); this verdict is not mutation-checked`;
   }
   if (mutation.tested === 0) {
-    return `note: --mutate found no mutable operators in the changed statements; nothing to check`;
+    return `note: --mutate found no mutable operators or constants in the changed statements; nothing to check`;
   }
   const parts: string[] = [];
   if (mutation.truncated) {
