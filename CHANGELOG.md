@@ -35,6 +35,25 @@ network, and `random`-based flakes are probabilistic, so K reruns give K chances
 Python-focused, like coverage and mutation. Decided on measurement (ADR-16). The
 default gate is documented as assuming deterministic tests.
 
+### Changed — `--mutate` now perturbs constants, not only operators
+
+`--mutate` swapped only operators, so a changed line whose behaviour lives in a
+constant — a number, a string, `True`/`False`/`None`, or a bare `return
+<literal>` — generated zero mutants and earned `SAFE` even when no test asserted
+the value. `verify-diff --mutate` now also mutates those constants; a surviving
+constant mutant floors the verdict at `UNPROVEN`, naming it:
+
+```
+[UNPROVEN] Tests pass, but a mutant of a changed statement survived
+(status.py:2, 3 to 0): no test failed when its behaviour changed. Add a test
+that asserts on it.
+```
+
+Docstrings and other behaviour-inert literals are excluded (by AST span), so an
+inert string cannot manufacture a false survivor, and the budget is filled
+operators-first so a constant never evicts a higher-signal operator mutant. Still
+opt-in, downgrade-only, and Python-only (ADR-15).
+
 ## [0.4.5] — 2026-09-01
 
 ### Fixed — a changed conditional with an untested branch could earn `SAFE`
