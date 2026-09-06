@@ -1,10 +1,10 @@
 ---
 title: Verify a diff
 icon: shield-check
-description: Prove a change preserved behavior. Refactron runs your real tests in an isolated shadow tree and returns SAFE, UNSAFE, or UNPROVEN.
+description: Prove a change preserves the behavior your tests check, or find out it can't be proven. Refactron runs your real tests in an isolated shadow tree and returns SAFE, UNSAFE, or UNPROVEN.
 ---
 
-`verify-diff` takes a change (your AI agent's, a codemod's, or your own) and answers one question: **did it preserve behavior, and can you prove it?**
+`verify-diff` takes a change (your AI agent's, a codemod's, or your own) and answers one question: **did it preserve the behavior your tests check, and can you prove it?**
 
 Refactron applies the diff in an isolated shadow tree, runs the syntax, imports, and test gates against it, checks whether your tests actually exercise the changed statements, and returns one of three verdicts. Your working tree is never touched.
 
