@@ -1,14 +1,14 @@
 ---
 title: Overview
 icon: house
-description: Prove that any change, your AI agent's, a codemod's, or your own, preserved behavior. Refactron runs your real tests in an isolated shadow tree and lands only on green, with a reproducible record of why it's safe.
+description: Prove that any change, your AI agent's, a codemod's, or your own, preserves the behavior your tests check, or find out it can't be proven. Refactron runs your real tests in an isolated shadow tree and returns a reproducible SAFE, UNSAFE, or UNPROVEN verdict.
 ---
 
 ## What is Refactron?
 
 Refactron is the **verification layer for AI code change**. As agents write more of your code, the bottleneck moves from _generating_ changes to _trusting_ them. Refactron is the deterministic gate that answers one question about any diff (your AI agent's, a codemod's, or your own):
 
-> **Did this change preserve behavior, and can you prove it?**
+> **Did this change preserve the behavior your tests check, and can you prove it?**
 
 It applies the change in an isolated **shadow tree**, runs three gates against it (syntax, then imports, then your real test suite) and checks whether your tests actually exercise the lines that changed. It returns one of three verdicts. Your working tree is never touched.
 

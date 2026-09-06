@@ -308,7 +308,7 @@ Without that wiring, a change whose only exercise happens inside a subprocess re
 
 ## SAFE means suite-approved, not proven correct
 
-`SAFE` says your suite ran the changed code and stayed green. It does not claim the change is correct in some absolute sense: it inherits exactly what your suite checks. Audits of AI agent patches (for example on SWE-bench) find that a substantial share of patches which pass the project's tests are still wrong, because the suite was too weak to catch the defect.
+`SAFE` says your suite ran the changed code and stayed green. It does not claim the change is correct in some absolute sense: it inherits exactly what your suite checks. That includes side effects your suite never observes, an extra or missing database write, an email that stopped sending, a log a downstream system parses: Refactron sees a change only through your tests, so behavior no test watches is outside the verdict. Audits of AI agent patches (for example on SWE-bench) find that a substantial share of patches which pass the project's tests are still wrong, because the suite was too weak to catch the defect.
 
 Refactron cannot turn a weak suite into a strong one, but it refuses to overstate what a green run proves. That is why `UNPROVEN` exists, and why every uncovered statement ships with a `missingTests` hint: the path to a `SAFE` you can trust is a suite that actually exercises the behavior you care about.
 
